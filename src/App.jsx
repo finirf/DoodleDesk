@@ -746,27 +746,34 @@ function Desk({ user }) {
     const itemKey = getItemKey(item)
 
     if (!isChecklistItem(item)) {
+      const notePayloads = [
+        { content: editValue, rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId },
+        { content: editValue, rotation: nextRotation, color: nextColor, desk_id: selectedDeskId },
+        { content: editValue, rotation: nextRotation, desk_id: selectedDeskId },
+        { content: editValue, rotation: nextRotation }
+      ]
+
       let saveError = null
+      let saved = false
 
-      const { error: noteErrorWithFont } = await supabase
-        .from('notes')
-        .update({ content: editValue, rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId })
-        .eq('id', item.id)
-        .eq('desk_id', selectedDeskId)
-
-      if (noteErrorWithFont) {
-        const { error: noteErrorWithoutFont } = await supabase
+      for (const payload of notePayloads) {
+        const { error } = await supabase
           .from('notes')
-          .update({ content: editValue, rotation: nextRotation, color: nextColor, desk_id: selectedDeskId })
+          .update(payload)
           .eq('id', item.id)
           .eq('desk_id', selectedDeskId)
 
-        saveError = noteErrorWithoutFont
+        if (!error) {
+          saved = true
+          break
+        }
+
+        saveError = error
       }
 
-      if (saveError) {
+      if (!saved) {
         console.error('Failed to save note:', saveError)
-        return false
+        return { ok: false, errorMessage: saveError?.message || 'Failed to save note.' }
       }
 
       setNotes((prev) =>
@@ -774,7 +781,7 @@ function Desk({ user }) {
           getItemKey(row) === itemKey ? { ...row, content: editValue, rotation: nextRotation, color: nextColor, font_family: nextFontFamily } : row
         )
       )
-      return true
+      return { ok: true }
     }
 
     const nextItems = checklistEditItems
@@ -785,27 +792,34 @@ function Desk({ user }) {
       }))
       .filter((entry) => entry.text.length > 0)
 
+    const checklistPayloads = [
+      { title: editValue.trim() || 'Checklist', rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId },
+      { title: editValue.trim() || 'Checklist', rotation: nextRotation, color: nextColor, desk_id: selectedDeskId },
+      { title: editValue.trim() || 'Checklist', rotation: nextRotation, desk_id: selectedDeskId },
+      { title: editValue.trim() || 'Checklist', rotation: nextRotation }
+    ]
+
     let checklistSaveError = null
+    let checklistSaved = false
 
-    const { error: checklistErrorWithFont } = await supabase
-      .from('checklists')
-      .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId })
-      .eq('id', item.id)
-      .eq('desk_id', selectedDeskId)
-
-    if (checklistErrorWithFont) {
-      const { error: checklistErrorWithoutFont } = await supabase
+    for (const payload of checklistPayloads) {
+      const { error } = await supabase
         .from('checklists')
-        .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation, color: nextColor, desk_id: selectedDeskId })
+        .update(payload)
         .eq('id', item.id)
         .eq('desk_id', selectedDeskId)
 
-      checklistSaveError = checklistErrorWithoutFont
+      if (!error) {
+        checklistSaved = true
+        break
+      }
+
+      checklistSaveError = error
     }
 
-    if (checklistSaveError) {
+    if (!checklistSaved) {
       console.error('Failed to save checklist:', checklistSaveError)
-      return false
+      return { ok: false, errorMessage: checklistSaveError?.message || 'Failed to save checklist.' }
     }
 
     const { error: deleteItemsError } = await supabase
@@ -815,7 +829,7 @@ function Desk({ user }) {
 
     if (deleteItemsError) {
       console.error('Failed clearing checklist items:', deleteItemsError)
-      return false
+      return { ok: false, errorMessage: deleteItemsError?.message || 'Failed updating checklist items.' }
     }
 
     let insertedItems = []
@@ -827,7 +841,7 @@ function Desk({ user }) {
 
       if (insertItemsError) {
         console.error('Failed saving checklist items:', insertItemsError)
-        return false
+        return { ok: false, errorMessage: insertItemsError?.message || 'Failed saving checklist items.' }
       }
 
       insertedItems = inserted || []
@@ -848,7 +862,7 @@ function Desk({ user }) {
       )
     )
 
-    return true
+    return { ok: true }
   }
 
   async function commitItemEdits(item) {
@@ -857,9 +871,9 @@ function Desk({ user }) {
     setIsSavingEdit(true)
     setEditSaveError('')
 
-    let didSave = false
+    let saveResult = { ok: false }
     try {
-      didSave = await saveItemEdits(item)
+      saveResult = await saveItemEdits(item)
     } catch (error) {
       console.error('Unexpected save error:', error)
       setEditSaveError('Save failed. Please try again.')
@@ -868,8 +882,8 @@ function Desk({ user }) {
       setIsSavingEdit(false)
     }
 
-    if (!didSave) {
-      setEditSaveError('Save failed. Please check your connection and try again.')
+    if (!saveResult.ok) {
+      setEditSaveError(saveResult.errorMessage || 'Save failed. Please check your connection and try again.')
       return
     }
 
