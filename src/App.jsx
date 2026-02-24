@@ -367,7 +367,7 @@ function Desk({ user }) {
                 value={editValue}
                 onChange={e => setEditValue(e.target.value)}
                 autoFocus
-                style={{ width: '100%', minHeight: 60, fontSize: 16, borderRadius: 4, border: '1px solid #ccc', resize: 'vertical' }}
+                style={{ width: '100%', minHeight: 60, fontSize: 16, borderRadius: 4, border: '1px solid #ccc', resize: 'vertical', color: '#222' }}
               />
               <div style={{ marginTop: 8, textAlign: 'right' }}>
                 <button type="submit" style={{ marginRight: 8, padding: '4px 12px', borderRadius: 4, border: 'none', background: '#4285F4', color: '#fff', cursor: 'pointer' }}>Save</button>
@@ -377,7 +377,7 @@ function Desk({ user }) {
           ) : (
             <div
               onClick={() => { setEditingId(note.id); setEditValue(note.content); }}
-              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', cursor: 'pointer', minHeight: 40 }}
+              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', cursor: 'pointer', minHeight: 40, color: '#222' }}
             >
               {note.content}
             </div>
