@@ -429,6 +429,11 @@ function Desk({ user }) {
       return
     }
 
+    const savedDeskId = localStorage.getItem(lastDeskStorageKey)
+    if (savedDeskId && savedDeskId === String(currentDesk.id)) {
+      localStorage.removeItem(lastDeskStorageKey)
+    }
+
     const remainingDesks = desks.filter((desk) => desk.id !== currentDesk.id)
     setDesks(remainingDesks)
 
