@@ -1840,24 +1840,25 @@ function Desk({ user }) {
                 Delete Desk
               </button>
 
-              <button
-                type="button"
-                onClick={openDeskMembersDialog}
-                disabled={!currentDesk || !isCurrentDeskOwner}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '7px 10px',
-                  border: 'none',
-                  borderRadius: 4,
-                  background: '#fff',
-                  color: currentDesk && isCurrentDeskOwner ? '#222' : '#999',
-                  cursor: currentDesk && isCurrentDeskOwner ? 'pointer' : 'not-allowed'
-                }}
-              >
-                Manage Members
-              </button>
+              {currentDesk && isCurrentDeskOwner && (
+                <button
+                  type="button"
+                  onClick={openDeskMembersDialog}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '7px 10px',
+                    border: 'none',
+                    borderRadius: 4,
+                    background: '#fff',
+                    color: '#222',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Manage Members
+                </button>
+              )}
 
               <div style={{ padding: '7px 10px', fontSize: 12, opacity: 0.8 }}>Change Background</div>
               <div style={{ display: 'flex', gap: 4, padding: '0 8px 6px' }}>
