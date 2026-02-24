@@ -700,15 +700,27 @@ function Desk({ user }) {
     const itemKey = getItemKey(item)
 
     if (!isChecklistItem(item)) {
-      const { error } = await supabase
+      let saveError = null
+
+      const { error: noteErrorWithFont } = await supabase
         .from('notes')
         .update({ content: editValue, rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId })
         .eq('id', item.id)
         .eq('desk_id', selectedDeskId)
 
-      if (error) {
-        console.error('Failed to save note:', error)
-        return
+      if (noteErrorWithFont) {
+        const { error: noteErrorWithoutFont } = await supabase
+          .from('notes')
+          .update({ content: editValue, rotation: nextRotation, color: nextColor, desk_id: selectedDeskId })
+          .eq('id', item.id)
+          .eq('desk_id', selectedDeskId)
+
+        saveError = noteErrorWithoutFont
+      }
+
+      if (saveError) {
+        console.error('Failed to save note:', saveError)
+        return false
       }
 
       setNotes((prev) =>
@@ -716,7 +728,7 @@ function Desk({ user }) {
           getItemKey(row) === itemKey ? { ...row, content: editValue, rotation: nextRotation, color: nextColor, font_family: nextFontFamily } : row
         )
       )
-      return
+      return true
     }
 
     const nextItems = checklistEditItems
@@ -727,15 +739,27 @@ function Desk({ user }) {
       }))
       .filter((entry) => entry.text.length > 0)
 
-    const { error: checklistError } = await supabase
+    let checklistSaveError = null
+
+    const { error: checklistErrorWithFont } = await supabase
       .from('checklists')
       .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId })
       .eq('id', item.id)
       .eq('desk_id', selectedDeskId)
 
-    if (checklistError) {
-      console.error('Failed to save checklist:', checklistError)
-      return
+    if (checklistErrorWithFont) {
+      const { error: checklistErrorWithoutFont } = await supabase
+        .from('checklists')
+        .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation, color: nextColor, desk_id: selectedDeskId })
+        .eq('id', item.id)
+        .eq('desk_id', selectedDeskId)
+
+      checklistSaveError = checklistErrorWithoutFont
+    }
+
+    if (checklistSaveError) {
+      console.error('Failed to save checklist:', checklistSaveError)
+      return false
     }
 
     const { error: deleteItemsError } = await supabase
@@ -745,7 +769,7 @@ function Desk({ user }) {
 
     if (deleteItemsError) {
       console.error('Failed clearing checklist items:', deleteItemsError)
-      return
+      return false
     }
 
     let insertedItems = []
@@ -757,7 +781,7 @@ function Desk({ user }) {
 
       if (insertItemsError) {
         console.error('Failed saving checklist items:', insertItemsError)
-        return
+        return false
       }
 
       insertedItems = inserted || []
@@ -777,6 +801,8 @@ function Desk({ user }) {
           : row
       )
     )
+
+    return true
   }
 
   async function toggleChecklistItem(itemKey, itemIndex) {
@@ -1339,7 +1365,9 @@ function Desk({ user }) {
               <form
                 onSubmit={async (e) => {
                   e.preventDefault()
-                  await saveItemEdits(item)
+                  const didSave = await saveItemEdits(item)
+
+                  if (!didSave) return
 
                   setEditingId(null)
                   setEditValue('')
