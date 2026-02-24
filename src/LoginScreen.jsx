@@ -31,6 +31,11 @@ export default function LoginScreen() {
 
   return (
     <div style={{ padding: 40, minHeight: '100vh', textAlign: 'center' }}>
+      <img
+        src="/DoodleDesk%20Logo.png"
+        alt="DoodleDesk logo"
+        style={{ width: 120, height: 'auto', marginBottom: 12 }}
+      />
       <h2>DoodleDesk</h2>
 
       <button

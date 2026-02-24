@@ -83,6 +83,12 @@ function Desk({ user }) {
   })
   const [deskNameError, setDeskNameError] = useState('')
   const [deskNameSaving, setDeskNameSaving] = useState(false)
+  const [deskMembersDialogOpen, setDeskMembersDialogOpen] = useState(false)
+  const [deskMembers, setDeskMembers] = useState([])
+  const [deskMembersLoading, setDeskMembersLoading] = useState(false)
+  const [deskMembersError, setDeskMembersError] = useState('')
+  const [deskMembersMessage, setDeskMembersMessage] = useState('')
+  const [deskMemberActionLoadingId, setDeskMemberActionLoadingId] = useState(null)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [editSaveError, setEditSaveError] = useState('')
   const [backgroundMode, setBackgroundMode] = useState('desk1')
@@ -289,6 +295,10 @@ function Desk({ user }) {
     return desk?.name || desk?.desk_name || 'Untitled desk'
   }
 
+  function isDeskCollaborative(desk) {
+    return Boolean(desk?.is_collaborative)
+  }
+
   async function fetchDesks() {
     const { data: ownedDesks, error: ownedError } = await supabase
       .from('desks')
@@ -371,17 +381,33 @@ function Desk({ user }) {
       ? Array.from(new Set(options.invitedFriendIds.filter((friendId) => friendId && friendId !== user.id)))
       : []
 
-    const { data, error } = await supabase
+    let createdDesk = null
+    let createError = null
+
+    const { data: withFlagData, error: withFlagError } = await supabase
       .from('desks')
-      .insert([{ user_id: user.id, name: trimmedName, background: 'desk1' }])
+      .insert([{ user_id: user.id, name: trimmedName, background: 'desk1', is_collaborative: isCollaborative }])
       .select()
 
-    if (error || !data?.[0]) {
-      console.error('Failed to create desk:', error)
-      return { ok: false, errorMessage: error?.message || 'Failed to create desk.' }
+    if (withFlagError) {
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('desks')
+        .insert([{ user_id: user.id, name: trimmedName, background: 'desk1' }])
+        .select()
+
+      createError = fallbackError
+      createdDesk = fallbackData?.[0]
+      if (createdDesk && isCollaborative) {
+        createdDesk = { ...createdDesk, is_collaborative: true }
+      }
+    } else {
+      createdDesk = withFlagData?.[0]
     }
 
-    const createdDesk = data[0]
+    if (createError || !createdDesk) {
+      console.error('Failed to create desk:', createError)
+      return { ok: false, errorMessage: createError?.message || 'Failed to create desk.' }
+    }
 
     if (isCollaborative) {
       if (invitedFriendIds.length > 0) {
@@ -476,6 +502,121 @@ function Desk({ user }) {
     setDesks((prev) => prev.map((desk) => (desk.id === currentDesk.id ? { ...desk, name: nextName } : desk)))
     setShowDeskMenu(false)
     return { ok: true }
+  }
+
+  async function fetchDeskMembers(deskId) {
+    if (!deskId) {
+      setDeskMembers([])
+      return
+    }
+
+    setDeskMembersLoading(true)
+    setDeskMembersError('')
+
+    try {
+      const { data: membershipRows, error: membershipError } = await supabase
+        .from('desk_members')
+        .select('id, user_id, created_at')
+        .eq('desk_id', deskId)
+        .order('created_at', { ascending: true })
+
+      if (membershipError) throw membershipError
+
+      const memberRows = membershipRows || []
+      if (memberRows.length === 0) {
+        setDeskMembers([])
+        return
+      }
+
+      const memberIds = memberRows.map((row) => row.user_id)
+      const { data: profileRows, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .in('id', memberIds)
+
+      if (profileError) throw profileError
+
+      const emailById = new Map((profileRows || []).map((row) => [row.id, row.email || 'Unknown user']))
+      setDeskMembers(
+        memberRows.map((row) => ({
+          membership_id: row.id,
+          user_id: row.user_id,
+          email: emailById.get(row.user_id) || 'Unknown user'
+        }))
+      )
+    } catch (error) {
+      console.error('Failed to fetch desk members:', error)
+      setDeskMembersError(error?.message || 'Could not load desk members.')
+      setDeskMembers([])
+    } finally {
+      setDeskMembersLoading(false)
+    }
+  }
+
+  async function openDeskMembersDialog() {
+    const desk = desks.find((entry) => entry.id === selectedDeskId)
+    if (!desk || desk.user_id !== user.id) return
+
+    setDeskMembersDialogOpen(true)
+    setDeskMembersMessage('')
+    setDeskMembersError('')
+    setDeskMemberActionLoadingId(null)
+    await fetchDeskMembers(desk.id)
+  }
+
+  function closeDeskMembersDialog() {
+    setDeskMembersDialogOpen(false)
+    setDeskMembersError('')
+    setDeskMembersMessage('')
+    setDeskMemberActionLoadingId(null)
+  }
+
+  async function addDeskMember(friendId) {
+    if (!selectedDeskId || !friendId) return
+
+    setDeskMemberActionLoadingId(`add:${friendId}`)
+    setDeskMembersError('')
+    setDeskMembersMessage('')
+
+    const { error } = await supabase
+      .from('desk_members')
+      .insert([{ desk_id: selectedDeskId, user_id: friendId }], { ignoreDuplicates: true })
+
+    if (error) {
+      console.error('Failed to add desk member:', error)
+      setDeskMembersError(error?.message || 'Could not add member.')
+      setDeskMemberActionLoadingId(null)
+      return
+    }
+
+    setDeskMembersMessage('Member added.')
+    await fetchDeskMembers(selectedDeskId)
+    setDeskMemberActionLoadingId(null)
+  }
+
+  async function removeDeskMember(memberUserId) {
+    if (!selectedDeskId || !memberUserId) return
+
+    setDeskMemberActionLoadingId(`remove:${memberUserId}`)
+    setDeskMembersError('')
+    setDeskMembersMessage('')
+
+    const { error } = await supabase
+      .from('desk_members')
+      .delete()
+      .eq('desk_id', selectedDeskId)
+      .eq('user_id', memberUserId)
+
+    if (error) {
+      console.error('Failed to remove desk member:', error)
+      setDeskMembersError(error?.message || 'Could not remove member.')
+      setDeskMemberActionLoadingId(null)
+      return
+    }
+
+    setDeskMembersMessage('Member removed.')
+    await fetchDeskMembers(selectedDeskId)
+    setDeskMemberActionLoadingId(null)
   }
 
   function openCreateDeskDialog() {
@@ -1544,6 +1685,7 @@ function Desk({ user }) {
   }
 
   const currentDesk = desks.find((desk) => desk.id === selectedDeskId) || null
+  const isCurrentDeskOwner = Boolean(currentDesk && currentDesk.user_id === user.id)
   const pendingFriendRequestCount = incomingFriendRequests.length
   const totalItemsCount = notes.length
   const joinDate = formatDate(user.created_at)
@@ -1622,7 +1764,21 @@ function Desk({ user }) {
                         fontWeight: desk.id === selectedDeskId ? 600 : 400
                       }}
                     >
-                      {getDeskNameValue(desk)}
+                      <span>{getDeskNameValue(desk)}</span>
+                      <span
+                        style={{
+                          marginLeft: 6,
+                          fontSize: 11,
+                          color: '#666',
+                          fontWeight: 500
+                        }}
+                      >
+                        {desk.user_id !== user.id
+                          ? '• Shared'
+                          : isDeskCollaborative(desk)
+                            ? '• Collaborative'
+                            : ''}
+                      </span>
                     </button>
                   ))
                 )}
@@ -1668,7 +1824,7 @@ function Desk({ user }) {
               <button
                 type="button"
                 onClick={deleteCurrentDesk}
-                disabled={!currentDesk}
+                disabled={!currentDesk || !isCurrentDeskOwner}
                 style={{
                   display: 'block',
                   width: '100%',
@@ -1677,11 +1833,30 @@ function Desk({ user }) {
                   border: 'none',
                   borderRadius: 4,
                   background: '#fff',
-                  color: currentDesk ? '#d32f2f' : '#999',
-                  cursor: currentDesk ? 'pointer' : 'not-allowed'
+                  color: currentDesk && isCurrentDeskOwner ? '#d32f2f' : '#999',
+                  cursor: currentDesk && isCurrentDeskOwner ? 'pointer' : 'not-allowed'
                 }}
               >
                 Delete Desk
+              </button>
+
+              <button
+                type="button"
+                onClick={openDeskMembersDialog}
+                disabled={!currentDesk || !isCurrentDeskOwner}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '7px 10px',
+                  border: 'none',
+                  borderRadius: 4,
+                  background: '#fff',
+                  color: currentDesk && isCurrentDeskOwner ? '#222' : '#999',
+                  cursor: currentDesk && isCurrentDeskOwner ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Manage Members
               </button>
 
               <div style={{ padding: '7px 10px', fontSize: 12, opacity: 0.8 }}>Change Background</div>
@@ -2758,6 +2933,148 @@ function Desk({ user }) {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {deskMembersDialogOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1250
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 8,
+              padding: 16,
+              width: 360,
+              boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+              color: '#222',
+              maxHeight: '75vh',
+              overflowY: 'auto'
+            }}
+          >
+            <div style={{ marginBottom: 10, fontWeight: 600 }}>Manage Desk Members</div>
+
+            {deskMembersMessage && (
+              <div style={{ color: 'green', fontSize: 12, marginBottom: 8 }}>{deskMembersMessage}</div>
+            )}
+            {deskMembersError && (
+              <div style={{ color: '#d32f2f', fontSize: 12, marginBottom: 8 }}>{deskMembersError}</div>
+            )}
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Current members</div>
+              {deskMembersLoading ? (
+                <div style={{ fontSize: 12, color: '#777' }}>Loading members...</div>
+              ) : deskMembers.length === 0 ? (
+                <div style={{ fontSize: 12, color: '#777' }}>No members yet</div>
+              ) : (
+                deskMembers.map((member) => {
+                  const isRemoving = deskMemberActionLoadingId === `remove:${member.user_id}`
+                  return (
+                    <div
+                      key={member.user_id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        marginBottom: 6
+                      }}
+                    >
+                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.email}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeDeskMember(member.user_id)}
+                        disabled={isRemoving}
+                        style={{
+                          border: 'none',
+                          borderRadius: 4,
+                          padding: '4px 8px',
+                          background: '#eee',
+                          color: '#333',
+                          fontSize: 12,
+                          cursor: isRemoving ? 'not-allowed' : 'pointer',
+                          opacity: isRemoving ? 0.7 : 1,
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {isRemoving ? 'Removing...' : 'Remove'}
+                      </button>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Add friends</div>
+              {friends.length === 0 ? (
+                <div style={{ fontSize: 12, color: '#777' }}>No friends available</div>
+              ) : (
+                friends.map((friend) => {
+                  const alreadyMember = deskMembers.some((member) => member.user_id === friend.id)
+                  const isAdding = deskMemberActionLoadingId === `add:${friend.id}`
+                  return (
+                    <div
+                      key={friend.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        marginBottom: 6
+                      }}
+                    >
+                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>{friend.email}</span>
+                      <button
+                        type="button"
+                        onClick={() => addDeskMember(friend.id)}
+                        disabled={alreadyMember || isAdding}
+                        style={{
+                          border: 'none',
+                          borderRadius: 4,
+                          padding: '4px 8px',
+                          background: alreadyMember ? '#eee' : '#4285F4',
+                          color: alreadyMember ? '#777' : '#fff',
+                          fontSize: 12,
+                          cursor: alreadyMember || isAdding ? 'not-allowed' : 'pointer',
+                          opacity: isAdding ? 0.7 : 1,
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {alreadyMember ? 'Added' : isAdding ? 'Adding...' : 'Add'}
+                      </button>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <button
+                type="button"
+                onClick={closeDeskMembersDialog}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 4,
+                  border: 'none',
+                  background: '#eee',
+                  color: '#333',
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

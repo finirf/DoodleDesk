@@ -51,6 +51,10 @@ create table if not exists public.desk_members (
 	unique (desk_id, user_id)
 );
 
+-- Optional but recommended: keeps a persistent collaborative marker on desks
+alter table public.desks
+	add column if not exists is_collaborative boolean not null default false;
+
 -- Migration-safe cleanup for older versions that had a role column
 alter table public.desk_members
 	drop column if exists role;
