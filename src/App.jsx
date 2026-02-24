@@ -304,7 +304,15 @@ function Desk({ user }) {
   });
 
   return (
-    <div style={{ padding: 40, minHeight: '100vh', position: 'relative' }}>
+    <div style={{
+      padding: 40,
+      minHeight: '100vh',
+      position: 'relative',
+      backgroundImage: 'url("/desk.jpg")',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat'
+    }}>
       <button
         onClick={handleLogout}
         style={{
