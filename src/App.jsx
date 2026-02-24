@@ -137,7 +137,7 @@ function Desk({ user }) {
     if (backgroundMode === 'desk1') return "url('/brownDesk.png')"
     if (backgroundMode === 'desk2') return "url('/grayDesk.png')"
     if (backgroundMode === 'desk3') return "url('/leavesDesk.jpg')"
-    if (backgroundMode === 'desk4') return "url('/flowersDesk.jpg')"
+    if (backgroundMode === 'desk4') return "url('/flowersDesk.png')"
     return "url('/brownDesk.png')"
   })
   const backgroundImage = backgroundLayers.join(', ')
@@ -1748,7 +1748,7 @@ function Desk({ user }) {
                     fontSize: 12,
                     borderRadius: 4,
                     border: backgroundMode === 'desk4' ? '2px solid #4285F4' : '1px solid #ddd',
-                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/flowersDesk.jpg')",
+                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/flowersDesk.png')",
                     backgroundSize: 'cover, cover',
                     backgroundPosition: 'center, center',
                     backgroundRepeat: 'no-repeat, no-repeat',
