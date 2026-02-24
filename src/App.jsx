@@ -664,6 +664,7 @@ function Desk({ user }) {
               borderRadius: 6,
               boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
               overflow: 'hidden',
+              color: '#222',
               zIndex: 200
             }}
           >
@@ -677,6 +678,7 @@ function Desk({ user }) {
                 padding: '8px 12px',
                 border: 'none',
                 background: '#fff',
+                color: '#222',
                 cursor: 'pointer'
               }}
             >
@@ -692,6 +694,7 @@ function Desk({ user }) {
                 padding: '8px 12px',
                 border: 'none',
                 background: '#fff',
+                color: '#222',
                 cursor: 'pointer'
               }}
             >
@@ -715,7 +718,7 @@ function Desk({ user }) {
               left: item.x,
               top: item.y,
               transform: `rotate(${item.rotation || 0}deg)`,
-              background: '#fffa91',
+              background: isChecklist ? '#fff' : '#fffa91',
               padding: 20,
               width: 200,
               boxShadow: '3px 3px 10px rgba(0,0,0,0.3)',
@@ -785,18 +788,29 @@ function Desk({ user }) {
                           key={`${itemKey}-edit-${index}`}
                           style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}
                         >
-                          <input
-                            type="checkbox"
-                            checked={Boolean(entry.is_checked)}
-                            onChange={(e) => {
-                              const nextChecked = e.target.checked
-                              setChecklistEditItems((prev) =>
-                                prev.map((current, currentIndex) =>
-                                  currentIndex === index ? { ...current, is_checked: nextChecked } : current
-                                )
-                              )
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChecklistEditItems((prev) => prev.filter((_, currentIndex) => currentIndex !== index))
                             }}
-                          />
+                            aria-label="Remove checklist item"
+                            title="Remove item"
+                            style={{
+                              width: 20,
+                              height: 20,
+                              padding: 0,
+                              borderRadius: 4,
+                              border: 'none',
+                              background: '#d32f2f',
+                              color: '#fff',
+                              cursor: 'pointer',
+                              fontSize: 12,
+                              lineHeight: 1,
+                              flexShrink: 0
+                            }}
+                          >
+                            ×
+                          </button>
                           <input
                             value={entry.text}
                             onChange={(e) => {
@@ -817,28 +831,6 @@ function Desk({ user }) {
                               boxSizing: 'border-box'
                             }}
                           />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setChecklistEditItems((prev) => prev.filter((_, currentIndex) => currentIndex !== index))
-                            }}
-                            aria-label="Remove checklist item"
-                            title="Remove item"
-                            style={{
-                              width: 20,
-                              height: 20,
-                              padding: 0,
-                              borderRadius: 4,
-                              border: 'none',
-                              background: '#d32f2f',
-                              color: '#fff',
-                              cursor: 'pointer',
-                              fontSize: 12,
-                              lineHeight: 1
-                            }}
-                          >
-                            ×
-                          </button>
                         </div>
                       ))}
 
