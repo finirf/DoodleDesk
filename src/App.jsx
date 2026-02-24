@@ -276,12 +276,12 @@ function Desk({ user }) {
     <div
       style={{
         position: 'relative',
-        minHeight: '100vh',
+        minHeight: '200vh',
         padding: 20,
-        backgroundImage: "url('/desk.png')",
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat'
+        backgroundImage: "url('/desk.png'), url('/desk2.png')",
+        backgroundSize: '100% 100vh, 100% 100vh',
+        backgroundPosition: 'top center, center 100vh',
+        backgroundRepeat: 'no-repeat, repeat-y'
       }}
     >
       <button
