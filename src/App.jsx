@@ -133,6 +133,7 @@ function Desk({ user }) {
   ]
 
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
+  const lastDeskStorageKey = `doodledesk:lastDesk:${user.id}`
   const backgroundLayers = Array.from({ length: sectionCount }, (_, index) => {
     if (backgroundMode === 'desk1') return "url('/brownDesk.png')"
     if (backgroundMode === 'desk2') return "url('/grayDesk.png')"
@@ -216,6 +217,11 @@ function Desk({ user }) {
 
     fetchDeskItems(selectedDeskId)
   }, [selectedDeskId])
+
+  useEffect(() => {
+    if (!selectedDeskId) return
+    localStorage.setItem(lastDeskStorageKey, String(selectedDeskId))
+  }, [lastDeskStorageKey, selectedDeskId])
 
   useEffect(() => {
     notesRef.current = notes
@@ -345,7 +351,10 @@ function Desk({ user }) {
     }
 
     setSelectedDeskId((prev) => {
-      const nextDesk = loadedDesks.find((desk) => desk.id === prev) || loadedDesks[0]
+      const lastDeskId = localStorage.getItem(lastDeskStorageKey)
+      const nextDesk = loadedDesks.find((desk) => desk.id === prev)
+        || loadedDesks.find((desk) => desk.id === lastDeskId)
+        || loadedDesks[0]
       setBackgroundMode(getDeskBackgroundValue(nextDesk))
       return nextDesk.id
     })
