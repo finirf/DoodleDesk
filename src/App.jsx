@@ -75,6 +75,7 @@ function Desk({ user }) {
   const [deskNameDialog, setDeskNameDialog] = useState({ isOpen: false, mode: 'create', value: '' })
   const [deskNameError, setDeskNameError] = useState('')
   const [deskNameSaving, setDeskNameSaving] = useState(false)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [backgroundMode, setBackgroundMode] = useState('desk1')
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const [draggedId, setDraggedId] = useState(null)
@@ -849,6 +850,24 @@ function Desk({ user }) {
     return true
   }
 
+  async function commitItemEdits(item) {
+    if (isSavingEdit) return
+
+    setIsSavingEdit(true)
+    const didSave = await saveItemEdits(item)
+    setIsSavingEdit(false)
+
+    if (!didSave) return
+
+    setEditingId(null)
+    setEditValue('')
+    setChecklistEditItems([])
+    setNewChecklistItemText('')
+    setShowStyleEditor(false)
+    setEditColor('#fff59d')
+    setEditFontFamily('inherit')
+  }
+
   async function toggleChecklistItem(itemKey, itemIndex) {
     const checklist = notesRef.current.find((row) => getItemKey(row) === itemKey)
     if (!checklist || !isChecklistItem(checklist)) return
@@ -1409,17 +1428,7 @@ function Desk({ user }) {
               <form
                 onSubmit={async (e) => {
                   e.preventDefault()
-                  const didSave = await saveItemEdits(item)
-
-                  if (!didSave) return
-
-                  setEditingId(null)
-                  setEditValue('')
-                  setChecklistEditItems([])
-                  setNewChecklistItemText('')
-                  setShowStyleEditor(false)
-                  setEditColor('#fff59d')
-                  setEditFontFamily('inherit')
+                  await commitItemEdits(item)
                 }}
               >
                 <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
@@ -1694,7 +1703,9 @@ function Desk({ user }) {
                       Style
                     </button>
                     <button
-                      type="submit"
+                      type="button"
+                      onClick={() => commitItemEdits(item)}
+                      disabled={isSavingEdit}
                       style={{
                         padding: '2px 6px',
                         fontSize: 11,
@@ -1702,10 +1713,11 @@ function Desk({ user }) {
                         border: 'none',
                         background: '#4285F4',
                         color: '#fff',
-                        cursor: 'pointer'
+                        cursor: isSavingEdit ? 'not-allowed' : 'pointer',
+                        opacity: isSavingEdit ? 0.7 : 1
                       }}
                     >
-                      Save
+                      {isSavingEdit ? 'Saving...' : 'Save'}
                     </button>
                     <button
                       type="button"
