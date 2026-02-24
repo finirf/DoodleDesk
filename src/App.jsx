@@ -252,6 +252,52 @@ function Desk({ user }) {
     await supabase.auth.signOut();
   }
 
+  // Drag state
+  const [draggedId, setDraggedId] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // Handle drag start
+  function handleDragStart(e, note) {
+    setDraggedId(note.id);
+    setDragOffset({
+      x: e.clientX - note.x,
+      y: e.clientY - note.y
+    });
+  }
+
+  // Handle drag move
+  function handleDrag(e) {
+    if (draggedId === null) return;
+    setNotes((prevNotes) =>
+      prevNotes.map((note) =>
+        note.id === draggedId
+          ? { ...note, x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y }
+          : note
+      )
+    );
+  }
+
+  // Handle drag end
+  async function handleDragEnd(e) {
+    if (draggedId === null) return;
+    const note = notes.find((n) => n.id === draggedId);
+    setDraggedId(null);
+    // Persist new position
+    await supabase.from('notes').update({ x: note.x, y: note.y }).eq('id', note.id);
+    fetchNotes();
+  }
+
+  useEffect(() => {
+    if (draggedId !== null) {
+      window.addEventListener('mousemove', handleDrag);
+      window.addEventListener('mouseup', handleDragEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleDrag);
+        window.removeEventListener('mouseup', handleDragEnd);
+      };
+    }
+  });
+
   return (
     <div style={{ padding: 40, minHeight: '100vh', position: 'relative' }}>
       <button
@@ -287,6 +333,7 @@ function Desk({ user }) {
       {notes.map((note) => (
         <div
           key={note.id}
+          onMouseDown={(e) => handleDragStart(e, note)}
           style={{
             position: 'absolute',
             left: note.x,
@@ -295,7 +342,9 @@ function Desk({ user }) {
             background: '#fffa91',
             padding: 20,
             width: 200,
-            boxShadow: '3px 3px 10px rgba(0,0,0,0.3)'
+            boxShadow: '3px 3px 10px rgba(0,0,0,0.3)',
+            cursor: draggedId === note.id ? 'grabbing' : 'grab',
+            zIndex: draggedId === note.id ? 100 : 1
           }}
         >
           {note.content}
