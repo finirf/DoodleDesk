@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 
 export default function App() {
@@ -214,6 +214,8 @@ function Desk({ user }) {
   const [editValue, setEditValue] = useState('')
   const [draggedId, setDraggedId] = useState(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const draggedIdRef = useRef(null)
+  const dragOffsetRef = useRef({ x: 0, y: 0 })
 
   useEffect(() => {
     fetchNotes()
@@ -237,17 +239,27 @@ function Desk({ user }) {
   }
 
   function handleDragStart(e, note) {
+    if (editingId) return
+
     setDraggedId(note.id)
-    setDragOffset({ x: e.clientX - note.x, y: e.clientY - note.y })
+    draggedIdRef.current = note.id
+
+    const offset = { x: e.clientX - note.x, y: e.clientY - note.y }
+    setDragOffset(offset)
+    dragOffsetRef.current = offset
+
     window.addEventListener('mousemove', handleDragMove)
     window.addEventListener('mouseup', handleDragEnd)
   }
 
   function handleDragMove(e) {
+    const activeDraggedId = draggedIdRef.current
+    if (!activeDraggedId) return
+
     setNotes((prev) =>
       prev.map((note) =>
-        note.id === draggedId
-          ? { ...note, x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y }
+        note.id === activeDraggedId
+          ? { ...note, x: e.clientX - dragOffsetRef.current.x, y: e.clientY - dragOffsetRef.current.y }
           : note
       )
     )
@@ -255,6 +267,7 @@ function Desk({ user }) {
 
   function handleDragEnd() {
     setDraggedId(null)
+    draggedIdRef.current = null
     window.removeEventListener('mousemove', handleDragMove)
     window.removeEventListener('mouseup', handleDragEnd)
   }
