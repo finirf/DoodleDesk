@@ -214,11 +214,41 @@ function Desk({ user }) {
   const [editValue, setEditValue] = useState('')
   const [draggedId, setDraggedId] = useState(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [sectionHeight, setSectionHeight] = useState(() => window.innerHeight || 800)
+  const [canvasHeight, setCanvasHeight] = useState(() => {
+    const initialHeight = window.innerHeight || 800
+    return initialHeight * 2
+  })
   const draggedIdRef = useRef(null)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
 
+  const noteWidth = 200
+  const noteHeight = 120
+  const growThreshold = 180
+
+  const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
+  const backgroundImage = Array.from({ length: sectionCount }, (_, index) =>
+    index % 2 === 0 ? "url('/desk.png')" : "url('/desk2.png')"
+  ).join(', ')
+  const backgroundSize = Array.from({ length: sectionCount }, () => `100% ${sectionHeight}px`).join(', ')
+  const backgroundPosition = Array.from({ length: sectionCount }, (_, index) =>
+    index === 0 ? 'top center' : `center ${index * sectionHeight}px`
+  ).join(', ')
+  const backgroundRepeat = Array.from({ length: sectionCount }, () => 'no-repeat').join(', ')
+
   useEffect(() => {
     fetchNotes()
+  }, [])
+
+  useEffect(() => {
+    function handleResize() {
+      const nextSectionHeight = window.innerHeight || 800
+      setSectionHeight(nextSectionHeight)
+      setCanvasHeight((prev) => Math.max(prev, nextSectionHeight * 2))
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [])
 
   async function fetchNotes() {
@@ -244,7 +274,7 @@ function Desk({ user }) {
     setDraggedId(note.id)
     draggedIdRef.current = note.id
 
-    const offset = { x: e.clientX - note.x, y: e.clientY - note.y }
+    const offset = { x: e.pageX - note.x, y: e.pageY - note.y }
     setDragOffset(offset)
     dragOffsetRef.current = offset
 
@@ -256,10 +286,24 @@ function Desk({ user }) {
     const activeDraggedId = draggedIdRef.current
     if (!activeDraggedId) return
 
+    const nextX = e.pageX - dragOffsetRef.current.x
+    const nextY = e.pageY - dragOffsetRef.current.y
+
+    setCanvasHeight((prev) => {
+      if (nextY + noteHeight + growThreshold <= prev) return prev
+      const requiredHeight = nextY + noteHeight + growThreshold
+      const requiredSections = Math.ceil(requiredHeight / sectionHeight)
+      return Math.max(prev, requiredSections * sectionHeight)
+    })
+
+    const maxX = Math.max(0, window.innerWidth - noteWidth)
+    const boundedX = Math.min(Math.max(0, nextX), maxX)
+    const boundedY = Math.max(0, nextY)
+
     setNotes((prev) =>
       prev.map((note) =>
         note.id === activeDraggedId
-          ? { ...note, x: e.clientX - dragOffsetRef.current.x, y: e.clientY - dragOffsetRef.current.y }
+          ? { ...note, x: boundedX, y: boundedY }
           : note
       )
     )
@@ -276,12 +320,12 @@ function Desk({ user }) {
     <div
       style={{
         position: 'relative',
-        minHeight: '200vh',
+        minHeight: canvasHeight,
         padding: 20,
-        backgroundImage: "url('/desk.png'), url('/desk2.png')",
-        backgroundSize: '100% 100vh, 100% 100vh',
-        backgroundPosition: 'top center, center 100vh',
-        backgroundRepeat: 'no-repeat, repeat-y'
+        backgroundImage,
+        backgroundSize,
+        backgroundPosition,
+        backgroundRepeat
       }}
     >
       <button
