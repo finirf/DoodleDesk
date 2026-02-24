@@ -217,4 +217,313 @@ create policy "owners can delete desks"
 	on public.desks for delete
 	to authenticated
 	using (auth.uid() = user_id);
+
+alter table public.notes enable row level security;
+alter table public.checklists enable row level security;
+alter table public.checklist_items enable row level security;
+
+drop policy if exists "owners and members can read notes" on public.notes;
+create policy "owners and members can read notes"
+	on public.notes for select
+	to authenticated
+	using (
+		exists (
+			select 1
+			from public.desks d
+			where d.id = notes.desk_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
+
+drop policy if exists "owners and members can insert notes" on public.notes;
+create policy "owners and members can insert notes"
+	on public.notes for insert
+	to authenticated
+	with check (
+		exists (
+			select 1
+			from public.desks d
+			where d.id = notes.desk_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
+
+drop policy if exists "owners and members can update notes" on public.notes;
+create policy "owners and members can update notes"
+	on public.notes for update
+	to authenticated
+	using (
+		exists (
+			select 1
+			from public.desks d
+			where d.id = notes.desk_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	)
+	with check (
+		exists (
+			select 1
+			from public.desks d
+			where d.id = notes.desk_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
+
+drop policy if exists "owners and members can delete notes" on public.notes;
+create policy "owners and members can delete notes"
+	on public.notes for delete
+	to authenticated
+	using (
+		exists (
+			select 1
+			from public.desks d
+			where d.id = notes.desk_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
+
+drop policy if exists "owners and members can read checklists" on public.checklists;
+create policy "owners and members can read checklists"
+	on public.checklists for select
+	to authenticated
+	using (
+		exists (
+			select 1
+			from public.desks d
+			where d.id = checklists.desk_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
+
+drop policy if exists "owners and members can insert checklists" on public.checklists;
+create policy "owners and members can insert checklists"
+	on public.checklists for insert
+	to authenticated
+	with check (
+		exists (
+			select 1
+			from public.desks d
+			where d.id = checklists.desk_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
+
+drop policy if exists "owners and members can update checklists" on public.checklists;
+create policy "owners and members can update checklists"
+	on public.checklists for update
+	to authenticated
+	using (
+		exists (
+			select 1
+			from public.desks d
+			where d.id = checklists.desk_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	)
+	with check (
+		exists (
+			select 1
+			from public.desks d
+			where d.id = checklists.desk_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
+
+drop policy if exists "owners and members can delete checklists" on public.checklists;
+create policy "owners and members can delete checklists"
+	on public.checklists for delete
+	to authenticated
+	using (
+		exists (
+			select 1
+			from public.desks d
+			where d.id = checklists.desk_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
+
+drop policy if exists "owners and members can read checklist items" on public.checklist_items;
+create policy "owners and members can read checklist items"
+	on public.checklist_items for select
+	to authenticated
+	using (
+		exists (
+			select 1
+			from public.checklists c
+			join public.desks d on d.id = c.desk_id
+			where c.id = checklist_items.checklist_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
+
+drop policy if exists "owners and members can insert checklist items" on public.checklist_items;
+create policy "owners and members can insert checklist items"
+	on public.checklist_items for insert
+	to authenticated
+	with check (
+		exists (
+			select 1
+			from public.checklists c
+			join public.desks d on d.id = c.desk_id
+			where c.id = checklist_items.checklist_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
+
+drop policy if exists "owners and members can update checklist items" on public.checklist_items;
+create policy "owners and members can update checklist items"
+	on public.checklist_items for update
+	to authenticated
+	using (
+		exists (
+			select 1
+			from public.checklists c
+			join public.desks d on d.id = c.desk_id
+			where c.id = checklist_items.checklist_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	)
+	with check (
+		exists (
+			select 1
+			from public.checklists c
+			join public.desks d on d.id = c.desk_id
+			where c.id = checklist_items.checklist_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
+
+drop policy if exists "owners and members can delete checklist items" on public.checklist_items;
+create policy "owners and members can delete checklist items"
+	on public.checklist_items for delete
+	to authenticated
+	using (
+		exists (
+			select 1
+			from public.checklists c
+			join public.desks d on d.id = c.desk_id
+			where c.id = checklist_items.checklist_id
+				and (
+					d.user_id = auth.uid()
+					or exists (
+						select 1
+						from public.desk_members dm
+						where dm.desk_id = d.id
+							and dm.user_id = auth.uid()
+					)
+				)
+		)
+	);
 ```
