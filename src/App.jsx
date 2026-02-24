@@ -417,9 +417,13 @@ function Desk({ user }) {
                 <button
                   type="button"
                   onMouseDown={(e) => handleRotateMouseDown(e, note.id)}
+                  aria-label="Rotate note"
+                  title="Hold and drag to rotate"
                   style={{
-                    padding: '2px 8px',
-                    fontSize: 11,
+                    width: 24,
+                    height: 24,
+                    fontSize: 16,
+                    lineHeight: 1,
                     borderRadius: 4,
                     border: 'none',
                     background: '#777',
@@ -427,7 +431,7 @@ function Desk({ user }) {
                     cursor: 'pointer'
                   }}
                 >
-                  Hold to Rotate
+                  ↻
                 </button>
               </div>
 
