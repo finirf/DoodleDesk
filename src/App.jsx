@@ -89,4 +89,23 @@ function Desk({ user }) {
   )
 }
 
+function Footer() {
+  return (
+    <footer
+      style={{
+        position: 'fixed',
+        bottom: 10,
+        width: '100%',
+        textAlign: 'center',
+        fontSize: 14,
+        color: '#555'
+      }}
+    >
+      <a href="/privacy" style={{ color: '#555', textDecoration: 'underline' }}>
+        Privacy Policy
+      </a>
+    </footer>
+  )
+}
+
 export default App
