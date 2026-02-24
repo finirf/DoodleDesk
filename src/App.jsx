@@ -131,6 +131,26 @@ function Desk({ user }) {
     await supabase.auth.signOut()
   }
 
+  async function rotateNote(noteId, delta) {
+    const currentNote = notesRef.current.find((note) => note.id === noteId)
+    if (!currentNote) return
+
+    const currentRotation = Number(currentNote.rotation) || 0
+    const nextRotation = ((currentRotation + delta) % 360 + 360) % 360
+
+    setNotes((prev) =>
+      prev.map((note) =>
+        note.id === noteId ? { ...note, rotation: nextRotation } : note
+      )
+    )
+
+    await supabase
+      .from('notes')
+      .update({ rotation: nextRotation })
+      .eq('id', noteId)
+      .eq('user_id', user.id)
+  }
+
   async function deleteNote(noteId) {
     const shouldDelete = window.confirm('Delete this note?')
     if (!shouldDelete) return
@@ -306,11 +326,43 @@ function Desk({ user }) {
               <div style={{ marginTop: 8, textAlign: 'right' }}>
                 <button
                   type="button"
+                  onClick={() => rotateNote(note.id, -15)}
+                  style={{
+                    marginRight: 4,
+                    padding: '2px 6px',
+                    fontSize: 11,
+                    borderRadius: 4,
+                    border: 'none',
+                    background: '#777',
+                    color: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ↺
+                </button>
+                <button
+                  type="button"
+                  onClick={() => rotateNote(note.id, 15)}
+                  style={{
+                    marginRight: 4,
+                    padding: '2px 6px',
+                    fontSize: 11,
+                    borderRadius: 4,
+                    border: 'none',
+                    background: '#777',
+                    color: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ↻
+                </button>
+                <button
+                  type="button"
                   onClick={() => deleteNote(note.id)}
                   style={{
-                    marginRight: 8,
-                    padding: '3px 8px',
-                    fontSize: 12,
+                    marginRight: 4,
+                    padding: '2px 6px',
+                    fontSize: 11,
                     borderRadius: 4,
                     border: 'none',
                     background: '#d32f2f',
@@ -323,9 +375,9 @@ function Desk({ user }) {
                 <button
                   type="submit"
                   style={{
-                    marginRight: 8,
-                    padding: '3px 8px',
-                    fontSize: 12,
+                    marginRight: 4,
+                    padding: '2px 6px',
+                    fontSize: 11,
                     borderRadius: 4,
                     border: 'none',
                     background: '#4285F4',
@@ -342,8 +394,8 @@ function Desk({ user }) {
                     setEditValue('')
                   }}
                   style={{
-                    padding: '3px 8px',
-                    fontSize: 12,
+                    padding: '2px 6px',
+                    fontSize: 11,
                     borderRadius: 4,
                     border: 'none',
                     background: '#eee',
