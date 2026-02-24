@@ -6,11 +6,12 @@ export default function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function loadSession() {
+  async function loadSession() {
+    try {
       // 1. Try to get session from redirect URL (after OAuth login)
       const { data: redirectData, error: redirectError } = await supabase.auth.getSessionFromUrl()
       if (redirectError) console.error('Redirect session error:', redirectError)
-      if (redirectData.session) {
+      if (redirectData?.session) {
         setSession(redirectData.session)
         console.log('Session from redirect:', redirectData.session)
         // Clean up the URL hash (#access_token=...)
@@ -24,19 +25,24 @@ export default function App() {
         setSession(session)
         console.log('Initial session:', session)
       }
+    } catch (err) {
+      console.error('Error loading session:', err)
+    } finally {
+      // Always stop loading regardless of errors
       setLoading(false)
     }
 
-    loadSession()
-
-    // Listen for auth changes (optional, e.g., sign-out)
+    // Listen for auth changes
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       console.log('Auth state changed:', session)
     })
 
     return () => listener.subscription.unsubscribe()
-  }, [])
+  }
+
+  loadSession()
+}, [])
 
   if (loading) {
     return (
