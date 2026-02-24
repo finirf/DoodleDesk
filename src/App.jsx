@@ -692,6 +692,11 @@ function Desk({ user }) {
   async function setCurrentDeskBackground(mode) {
     if (!selectedDeskId) return
 
+    const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
+    if (!currentDesk || currentDesk.user_id !== user.id) {
+      return
+    }
+
     let updateError = null
 
     const { error: backgroundModeError } = await supabase
@@ -1862,12 +1867,15 @@ function Desk({ user }) {
                 </button>
               )}
 
-              <div style={{ padding: '7px 10px', fontSize: 12, opacity: 0.8 }}>Change Background</div>
-              <div style={{ display: 'flex', gap: 4, padding: '0 8px 6px' }}>
+              {currentDesk && isCurrentDeskOwner && (
+                <div style={{ padding: '7px 10px', fontSize: 12, opacity: 0.8 }}>Change Background</div>
+              )}
+              {currentDesk && isCurrentDeskOwner && (
+                <div style={{ display: 'flex', gap: 4, padding: '0 8px 6px' }}>
                 <button
                   type="button"
                   onClick={() => setCurrentDeskBackground('desk1')}
-                  disabled={!currentDesk}
+                  disabled={!currentDesk || !isCurrentDeskOwner}
                   style={{
                     flex: 1,
                     padding: '6px 6px',
@@ -1881,7 +1889,7 @@ function Desk({ user }) {
                     color: '#111',
                     fontWeight: 600,
                     textShadow: '0 1px 1px rgba(255,255,255,0.8)',
-                    cursor: currentDesk ? 'pointer' : 'not-allowed'
+                    cursor: currentDesk && isCurrentDeskOwner ? 'pointer' : 'not-allowed'
                   }}
                 >
                   Brown Desk
@@ -1889,7 +1897,7 @@ function Desk({ user }) {
                 <button
                   type="button"
                   onClick={() => setCurrentDeskBackground('desk2')}
-                  disabled={!currentDesk}
+                  disabled={!currentDesk || !isCurrentDeskOwner}
                   style={{
                     flex: 1,
                     padding: '6px 6px',
@@ -1903,7 +1911,7 @@ function Desk({ user }) {
                     color: '#111',
                     fontWeight: 600,
                     textShadow: '0 1px 1px rgba(255,255,255,0.8)',
-                    cursor: currentDesk ? 'pointer' : 'not-allowed'
+                    cursor: currentDesk && isCurrentDeskOwner ? 'pointer' : 'not-allowed'
                   }}
                 >
                   Gray Desk
@@ -1911,7 +1919,7 @@ function Desk({ user }) {
                 <button
                   type="button"
                   onClick={() => setCurrentDeskBackground('desk3')}
-                  disabled={!currentDesk}
+                  disabled={!currentDesk || !isCurrentDeskOwner}
                   style={{
                     flex: 1,
                     padding: '6px 6px',
@@ -1925,7 +1933,7 @@ function Desk({ user }) {
                     color: '#111',
                     fontWeight: 600,
                     textShadow: '0 1px 1px rgba(255,255,255,0.8)',
-                    cursor: currentDesk ? 'pointer' : 'not-allowed'
+                    cursor: currentDesk && isCurrentDeskOwner ? 'pointer' : 'not-allowed'
                   }}
                 >
                   Leaves Desk
@@ -1933,7 +1941,7 @@ function Desk({ user }) {
                 <button
                   type="button"
                   onClick={() => setCurrentDeskBackground('desk4')}
-                  disabled={!currentDesk}
+                  disabled={!currentDesk || !isCurrentDeskOwner}
                   style={{
                     flex: 1,
                     padding: '6px 6px',
@@ -1947,12 +1955,13 @@ function Desk({ user }) {
                     color: '#111',
                     fontWeight: 600,
                     textShadow: '0 1px 1px rgba(255,255,255,0.8)',
-                    cursor: currentDesk ? 'pointer' : 'not-allowed'
+                    cursor: currentDesk && isCurrentDeskOwner ? 'pointer' : 'not-allowed'
                   }}
                 >
                   Flowers Desk
                 </button>
-              </div>
+                </div>
+              )}
             </div>
           )}
         </div>
