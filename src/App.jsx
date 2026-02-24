@@ -102,6 +102,7 @@ function Desk({ user }) {
   const backgroundLayers = Array.from({ length: sectionCount }, (_, index) => {
     if (backgroundMode === 'desk1') return "url('/brownDesk.png')"
     if (backgroundMode === 'desk2') return "url('/grayDesk.png')"
+    if (backgroundMode === 'desk3') return "url('/leavesDesk.jpg')"
     return index % 2 === 0 ? "url('/brownDesk.png')" : "url('/grayDesk.png')"
   })
   const backgroundImage = backgroundLayers.join(', ')
@@ -1064,7 +1065,7 @@ function Desk({ user }) {
                     cursor: currentDesk ? 'pointer' : 'not-allowed'
                   }}
                 >
-                  Alt
+                  Alternating (Brown/Gray)
                 </button>
                 <button
                   type="button"
@@ -1080,7 +1081,7 @@ function Desk({ user }) {
                     cursor: currentDesk ? 'pointer' : 'not-allowed'
                   }}
                 >
-                  Desk 1
+                  Brown Desk
                 </button>
                 <button
                   type="button"
@@ -1096,7 +1097,23 @@ function Desk({ user }) {
                     cursor: currentDesk ? 'pointer' : 'not-allowed'
                   }}
                 >
-                  Desk 2
+                  Gray Desk
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentDeskBackground('desk3')}
+                  disabled={!currentDesk}
+                  style={{
+                    flex: 1,
+                    padding: '6px 6px',
+                    fontSize: 12,
+                    borderRadius: 4,
+                    border: '1px solid #ddd',
+                    background: backgroundMode === 'desk3' ? '#eef4ff' : '#fff',
+                    cursor: currentDesk ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  Leaves Desk
                 </button>
               </div>
             </div>
