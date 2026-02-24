@@ -279,29 +279,6 @@ function Desk({ user }) {
             zIndex: draggedId === note.id ? 100 : 1
           }}
         >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              deleteNote(note.id)
-            }}
-            style={{
-              position: 'absolute',
-              top: 6,
-              right: 6,
-              padding: '3px 8px',
-              borderRadius: 4,
-              border: 'none',
-              background: '#d32f2f',
-              color: '#fff',
-              cursor: 'pointer',
-              fontSize: 12,
-              zIndex: 2
-            }}
-          >
-            Delete
-          </button>
-
           {editingId === note.id ? (
             <form
               onSubmit={async (e) => {
@@ -327,6 +304,21 @@ function Desk({ user }) {
                 }}
               />
               <div style={{ marginTop: 8, textAlign: 'right' }}>
+                <button
+                  type="button"
+                  onClick={() => deleteNote(note.id)}
+                  style={{
+                    marginRight: 8,
+                    padding: '4px 12px',
+                    borderRadius: 4,
+                    border: 'none',
+                    background: '#d32f2f',
+                    color: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Delete
+                </button>
                 <button
                   type="submit"
                   style={{
