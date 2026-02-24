@@ -100,9 +100,9 @@ function Desk({ user }) {
 
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
   const backgroundLayers = Array.from({ length: sectionCount }, (_, index) => {
-    if (backgroundMode === 'desk1') return "url('/desk.png')"
-    if (backgroundMode === 'desk2') return "url('/desk2.png')"
-    return index % 2 === 0 ? "url('/desk.png')" : "url('/desk2.png')"
+    if (backgroundMode === 'desk1') return "url('/brownDesk.png')"
+    if (backgroundMode === 'desk2') return "url('/grayDesk.png')"
+    return index % 2 === 0 ? "url('/brownDesk.png')" : "url('/grayDesk.png')"
   })
   const backgroundImage = backgroundLayers.join(', ')
   const backgroundSize = Array.from({ length: sectionCount }, () => `100% ${sectionHeight}px`).join(', ')
