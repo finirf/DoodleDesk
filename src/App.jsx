@@ -69,6 +69,7 @@ function Desk({ user }) {
   const [newChecklistItemText, setNewChecklistItemText] = useState('')
   const [showNewNoteMenu, setShowNewNoteMenu] = useState(false)
   const [showDeskMenu, setShowDeskMenu] = useState(false)
+  const [deskNameDialog, setDeskNameDialog] = useState({ isOpen: false, mode: 'create', value: '' })
   const [backgroundMode, setBackgroundMode] = useState('alternating')
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const [draggedId, setDraggedId] = useState(null)
@@ -242,12 +243,9 @@ function Desk({ user }) {
     })
   }
 
-  async function createDesk() {
-    const nextDeskName = window.prompt('Desk name', `Desk ${desks.length + 1}`)
-    if (!nextDeskName) return
-
-    const trimmedName = nextDeskName.trim()
-    if (!trimmedName) return
+  async function createDesk(nextDeskName) {
+    const trimmedName = (nextDeskName || '').trim()
+    if (!trimmedName) return false
 
     const { data, error } = await supabase
       .from('desks')
@@ -256,7 +254,7 @@ function Desk({ user }) {
 
     if (error || !data?.[0]) {
       console.error('Failed to create desk:', error)
-      return
+      return false
     }
 
     const createdDesk = data[0]
@@ -264,17 +262,15 @@ function Desk({ user }) {
     setSelectedDeskId(createdDesk.id)
     setBackgroundMode(getDeskBackgroundValue(createdDesk))
     setShowDeskMenu(false)
+    return true
   }
 
-  async function renameCurrentDesk() {
+  async function renameCurrentDesk(nextNameInput) {
     const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
-    if (!currentDesk) return
+    if (!currentDesk) return false
 
-    const nextNameInput = window.prompt('Rename desk', currentDesk.name || 'Desk')
-    if (!nextNameInput) return
-
-    const nextName = nextNameInput.trim()
-    if (!nextName) return
+    const nextName = (nextNameInput || '').trim()
+    if (!nextName) return false
 
     const { error } = await supabase
       .from('desks')
@@ -284,11 +280,44 @@ function Desk({ user }) {
 
     if (error) {
       console.error('Failed to rename desk:', error)
-      return
+      return false
     }
 
     setDesks((prev) => prev.map((desk) => (desk.id === currentDesk.id ? { ...desk, name: nextName } : desk)))
     setShowDeskMenu(false)
+    return true
+  }
+
+  function openCreateDeskDialog() {
+    setDeskNameDialog({ isOpen: true, mode: 'create', value: `Desk ${desks.length + 1}` })
+    setShowDeskMenu(false)
+  }
+
+  function openRenameDeskDialog() {
+    const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
+    if (!currentDesk) return
+
+    setDeskNameDialog({ isOpen: true, mode: 'rename', value: currentDesk.name || 'Desk' })
+    setShowDeskMenu(false)
+  }
+
+  function closeDeskNameDialog() {
+    setDeskNameDialog({ isOpen: false, mode: 'create', value: '' })
+  }
+
+  async function submitDeskNameDialog(e) {
+    e.preventDefault()
+
+    const nextName = deskNameDialog.value.trim()
+    if (!nextName) return
+
+    const wasSaved = deskNameDialog.mode === 'create'
+      ? await createDesk(nextName)
+      : await renameCurrentDesk(nextName)
+
+    if (wasSaved) {
+      closeDeskNameDialog()
+    }
   }
 
   async function setCurrentDeskBackground(mode) {
@@ -1014,7 +1043,7 @@ function Desk({ user }) {
 
               <button
                 type="button"
-                onClick={createDesk}
+                onClick={openCreateDeskDialog}
                 style={{
                   display: 'block',
                   width: '100%',
@@ -1032,7 +1061,7 @@ function Desk({ user }) {
 
               <button
                 type="button"
-                onClick={renameCurrentDesk}
+                onClick={openRenameDeskDialog}
                 disabled={!currentDesk}
                 style={{
                   display: 'block',
@@ -1585,6 +1614,86 @@ function Desk({ user }) {
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {deskNameDialog.isOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1200
+          }}
+        >
+          <form
+            onSubmit={submitDeskNameDialog}
+            style={{
+              background: '#fff',
+              borderRadius: 8,
+              padding: 16,
+              width: 320,
+              boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+              color: '#222'
+            }}
+          >
+            <div style={{ marginBottom: 10, fontWeight: 600 }}>
+              {deskNameDialog.mode === 'create' ? 'Create New Desk' : 'Rename Desk'}
+            </div>
+
+            <input
+              value={deskNameDialog.value}
+              onChange={(e) => {
+                const nextValue = e.target.value
+                setDeskNameDialog((prev) => ({ ...prev, value: nextValue }))
+              }}
+              autoFocus
+              placeholder="Desk name"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '8px 10px',
+                borderRadius: 6,
+                border: '1px solid #ccc',
+                marginBottom: 12,
+                fontSize: 14
+              }}
+            />
+
+            <div style={{ textAlign: 'right' }}>
+              <button
+                type="button"
+                onClick={closeDeskNameDialog}
+                style={{
+                  marginRight: 8,
+                  padding: '6px 12px',
+                  borderRadius: 4,
+                  border: 'none',
+                  background: '#eee',
+                  color: '#333',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 4,
+                  border: 'none',
+                  background: '#4285F4',
+                  color: '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
