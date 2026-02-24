@@ -72,7 +72,7 @@ function Desk({ user }) {
   const [deskNameDialog, setDeskNameDialog] = useState({ isOpen: false, mode: 'create', value: '' })
   const [deskNameError, setDeskNameError] = useState('')
   const [deskNameSaving, setDeskNameSaving] = useState(false)
-  const [backgroundMode, setBackgroundMode] = useState('alternating')
+  const [backgroundMode, setBackgroundMode] = useState('desk1')
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const [draggedId, setDraggedId] = useState(null)
   const [resizingId, setResizingId] = useState(null)
@@ -106,7 +106,7 @@ function Desk({ user }) {
     if (backgroundMode === 'desk1') return "url('/brownDesk.png')"
     if (backgroundMode === 'desk2') return "url('/grayDesk.png')"
     if (backgroundMode === 'desk3') return "url('/leavesDesk.jpg')"
-    return index % 2 === 0 ? "url('/brownDesk.png')" : "url('/grayDesk.png')"
+    return "url('/brownDesk.png')"
   })
   const backgroundImage = backgroundLayers.join(', ')
   const backgroundSize = Array.from({ length: sectionCount }, () => `100% ${sectionHeight}px`).join(', ')
@@ -214,7 +214,11 @@ function Desk({ user }) {
   }, [showNewNoteMenu, showDeskMenu])
 
   function getDeskBackgroundValue(desk) {
-    return desk?.background_mode || desk?.background || 'alternating'
+    const nextMode = desk?.background_mode || desk?.background
+    if (nextMode === 'desk1' || nextMode === 'desk2' || nextMode === 'desk3') {
+      return nextMode
+    }
+    return 'desk1'
   }
 
   function getDeskNameValue(desk) {
@@ -238,7 +242,7 @@ function Desk({ user }) {
 
     if (loadedDesks.length === 0) {
       setSelectedDeskId(null)
-      setBackgroundMode('alternating')
+      setBackgroundMode('desk1')
       return
     }
 
@@ -257,7 +261,7 @@ function Desk({ user }) {
 
     const { data, error } = await supabase
       .from('desks')
-      .insert([{ user_id: user.id, name: trimmedName, background: 'alternating' }])
+      .insert([{ user_id: user.id, name: trimmedName, background: 'desk1' }])
       .select()
 
     if (error || !data?.[0]) {
@@ -1101,22 +1105,6 @@ function Desk({ user }) {
               <div style={{ display: 'flex', gap: 4, padding: '0 8px 6px' }}>
                 <button
                   type="button"
-                  onClick={() => setCurrentDeskBackground('alternating')}
-                  disabled={!currentDesk}
-                  style={{
-                    flex: 1,
-                    padding: '6px 6px',
-                    fontSize: 12,
-                    borderRadius: 4,
-                    border: '1px solid #ddd',
-                    background: backgroundMode === 'alternating' ? '#eef4ff' : '#fff',
-                    cursor: currentDesk ? 'pointer' : 'not-allowed'
-                  }}
-                >
-                  Alternating (Brown/Gray)
-                </button>
-                <button
-                  type="button"
                   onClick={() => setCurrentDeskBackground('desk1')}
                   disabled={!currentDesk}
                   style={{
@@ -1124,8 +1112,14 @@ function Desk({ user }) {
                     padding: '6px 6px',
                     fontSize: 12,
                     borderRadius: 4,
-                    border: '1px solid #ddd',
-                    background: backgroundMode === 'desk1' ? '#eef4ff' : '#fff',
+                    border: backgroundMode === 'desk1' ? '2px solid #4285F4' : '1px solid #ddd',
+                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/brownDesk.png')",
+                    backgroundSize: 'cover, cover',
+                    backgroundPosition: 'center, center',
+                    backgroundRepeat: 'no-repeat, no-repeat',
+                    color: '#111',
+                    fontWeight: 600,
+                    textShadow: '0 1px 1px rgba(255,255,255,0.8)',
                     cursor: currentDesk ? 'pointer' : 'not-allowed'
                   }}
                 >
@@ -1140,8 +1134,14 @@ function Desk({ user }) {
                     padding: '6px 6px',
                     fontSize: 12,
                     borderRadius: 4,
-                    border: '1px solid #ddd',
-                    background: backgroundMode === 'desk2' ? '#eef4ff' : '#fff',
+                    border: backgroundMode === 'desk2' ? '2px solid #4285F4' : '1px solid #ddd',
+                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/grayDesk.png')",
+                    backgroundSize: 'cover, cover',
+                    backgroundPosition: 'center, center',
+                    backgroundRepeat: 'no-repeat, no-repeat',
+                    color: '#111',
+                    fontWeight: 600,
+                    textShadow: '0 1px 1px rgba(255,255,255,0.8)',
                     cursor: currentDesk ? 'pointer' : 'not-allowed'
                   }}
                 >
@@ -1156,8 +1156,14 @@ function Desk({ user }) {
                     padding: '6px 6px',
                     fontSize: 12,
                     borderRadius: 4,
-                    border: '1px solid #ddd',
-                    background: backgroundMode === 'desk3' ? '#eef4ff' : '#fff',
+                    border: backgroundMode === 'desk3' ? '2px solid #4285F4' : '1px solid #ddd',
+                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/leavesDesk.jpg')",
+                    backgroundSize: 'cover, cover',
+                    backgroundPosition: 'center, center',
+                    backgroundRepeat: 'no-repeat, no-repeat',
+                    color: '#111',
+                    fontWeight: 600,
+                    textShadow: '0 1px 1px rgba(255,255,255,0.8)',
                     cursor: currentDesk ? 'pointer' : 'not-allowed'
                   }}
                 >
