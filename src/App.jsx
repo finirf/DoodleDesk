@@ -79,6 +79,15 @@ function Desk({ user }) {
   const [editSaveError, setEditSaveError] = useState('')
   const [backgroundMode, setBackgroundMode] = useState('desk1')
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
+  const [showFriendsMenu, setShowFriendsMenu] = useState(false)
+  const [friends, setFriends] = useState([])
+  const [incomingFriendRequests, setIncomingFriendRequests] = useState([])
+  const [outgoingFriendRequests, setOutgoingFriendRequests] = useState([])
+  const [friendEmailInput, setFriendEmailInput] = useState('')
+  const [friendMessage, setFriendMessage] = useState('')
+  const [friendError, setFriendError] = useState('')
+  const [friendsLoading, setFriendsLoading] = useState(false)
+  const [friendSubmitting, setFriendSubmitting] = useState(false)
   const [draggedId, setDraggedId] = useState(null)
   const [resizingId, setResizingId] = useState(null)
   const [resizeOverlay, setResizeOverlay] = useState(null)
@@ -103,6 +112,7 @@ function Desk({ user }) {
   })
   const newNoteMenuRef = useRef(null)
   const deskMenuRef = useRef(null)
+  const friendsMenuRef = useRef(null)
 
   const growThreshold = 180
   const FONT_OPTIONS = [
@@ -182,6 +192,10 @@ function Desk({ user }) {
   }, [user.id])
 
   useEffect(() => {
+    fetchFriends()
+  }, [user.id])
+
+  useEffect(() => {
     if (!selectedDeskId) {
       setNotes([])
       return
@@ -226,7 +240,7 @@ function Desk({ user }) {
   }, [pendingDeleteId])
 
   useEffect(() => {
-    if (!showNewNoteMenu && !showDeskMenu) return
+    if (!showNewNoteMenu && !showDeskMenu && !showFriendsMenu) return
 
     function handleClickOutside(e) {
       if (showNewNoteMenu && !newNoteMenuRef.current?.contains(e.target)) {
@@ -235,11 +249,14 @@ function Desk({ user }) {
       if (showDeskMenu && !deskMenuRef.current?.contains(e.target)) {
         setShowDeskMenu(false)
       }
+      if (showFriendsMenu && !friendsMenuRef.current?.contains(e.target)) {
+        setShowFriendsMenu(false)
+      }
     }
 
     window.addEventListener('mousedown', handleClickOutside)
     return () => window.removeEventListener('mousedown', handleClickOutside)
-  }, [showNewNoteMenu, showDeskMenu])
+  }, [showNewNoteMenu, showDeskMenu, showFriendsMenu])
 
   function getDeskBackgroundValue(desk) {
     const nextMode = desk?.background_mode || desk?.background
@@ -552,6 +569,236 @@ function Desk({ user }) {
 
   async function handleLogout() {
     await supabase.auth.signOut()
+  }
+
+  async function ensureCurrentUserProfile() {
+    const email = (user.email || '').trim().toLowerCase()
+    if (!email) return
+
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({ id: user.id, email }, { onConflict: 'id' })
+
+    if (error) {
+      console.error('Failed to ensure profile exists:', error)
+    }
+  }
+
+  async function fetchFriends() {
+    setFriendsLoading(true)
+    setFriendError('')
+
+    try {
+      await ensureCurrentUserProfile()
+
+      const [incomingResult, outgoingResult, acceptedResult] = await Promise.all([
+        supabase
+          .from('friend_requests')
+          .select('id, sender_id, receiver_id, status, created_at')
+          .eq('receiver_id', user.id)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('friend_requests')
+          .select('id, sender_id, receiver_id, status, created_at')
+          .eq('sender_id', user.id)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('friend_requests')
+          .select('id, sender_id, receiver_id, status, created_at')
+          .or(`and(sender_id.eq.${user.id},status.eq.accepted),and(receiver_id.eq.${user.id},status.eq.accepted)`)
+          .order('created_at', { ascending: false })
+      ])
+
+      if (incomingResult.error || outgoingResult.error || acceptedResult.error) {
+        throw incomingResult.error || outgoingResult.error || acceptedResult.error
+      }
+
+      const incomingRows = incomingResult.data || []
+      const outgoingRows = outgoingResult.data || []
+      const acceptedRows = acceptedResult.data || []
+
+      const profileIds = new Set()
+      incomingRows.forEach((row) => profileIds.add(row.sender_id))
+      outgoingRows.forEach((row) => profileIds.add(row.receiver_id))
+      acceptedRows.forEach((row) => {
+        const otherId = row.sender_id === user.id ? row.receiver_id : row.sender_id
+        profileIds.add(otherId)
+      })
+
+      let profileEmailById = new Map()
+      const profileIdList = Array.from(profileIds)
+
+      if (profileIdList.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, email')
+          .in('id', profileIdList)
+
+        if (profilesError) {
+          throw profilesError
+        }
+
+        profileEmailById = new Map((profilesData || []).map((profile) => [profile.id, profile.email || 'Unknown user']))
+      }
+
+      setIncomingFriendRequests(
+        incomingRows.map((row) => ({
+          ...row,
+          email: profileEmailById.get(row.sender_id) || 'Unknown user'
+        }))
+      )
+
+      setOutgoingFriendRequests(
+        outgoingRows.map((row) => ({
+          ...row,
+          email: profileEmailById.get(row.receiver_id) || 'Unknown user'
+        }))
+      )
+
+      setFriends(
+        acceptedRows.map((row) => {
+          const friendId = row.sender_id === user.id ? row.receiver_id : row.sender_id
+          return {
+            id: friendId,
+            email: profileEmailById.get(friendId) || 'Unknown user'
+          }
+        })
+      )
+    } catch (error) {
+      console.error('Failed to fetch friends:', error)
+      setFriendError(error?.message || 'Could not load friends right now.')
+    } finally {
+      setFriendsLoading(false)
+    }
+  }
+
+  async function handleSendFriendRequest(e) {
+    e.preventDefault()
+
+    const targetEmail = friendEmailInput.trim().toLowerCase()
+    if (!targetEmail) {
+      setFriendError('Enter an email address to add a friend.')
+      return
+    }
+
+    if (targetEmail === (user.email || '').trim().toLowerCase()) {
+      setFriendError('You cannot add yourself as a friend.')
+      return
+    }
+
+    setFriendSubmitting(true)
+    setFriendError('')
+    setFriendMessage('')
+
+    try {
+      await ensureCurrentUserProfile()
+
+      const { data: targetProfiles, error: targetError } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .eq('email', targetEmail)
+        .limit(1)
+
+      if (targetError) {
+        throw targetError
+      }
+
+      const targetProfile = targetProfiles?.[0]
+      if (!targetProfile) {
+        setFriendError('No user found with that email yet.')
+        return
+      }
+
+      const otherUserId = targetProfile.id
+
+      const { data: existingRows, error: existingError } = await supabase
+        .from('friend_requests')
+        .select('id, status, sender_id, receiver_id')
+        .or(`and(sender_id.eq.${user.id},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${user.id})`)
+        .limit(1)
+
+      if (existingError) {
+        throw existingError
+      }
+
+      const existingRow = existingRows?.[0]
+      if (existingRow) {
+        if (existingRow.status === 'accepted') {
+          setFriendError('You are already friends with this user.')
+          return
+        }
+
+        if (existingRow.status === 'pending') {
+          if (existingRow.receiver_id === user.id) {
+            setFriendError('This user already sent you a request. Accept it below.')
+          } else {
+            setFriendError('Friend request already sent.')
+          }
+          return
+        }
+      }
+
+      const { error: insertError } = await supabase
+        .from('friend_requests')
+        .insert([{ sender_id: user.id, receiver_id: otherUserId, status: 'pending' }])
+
+      if (insertError) {
+        throw insertError
+      }
+
+      setFriendMessage(`Friend request sent to ${targetEmail}.`)
+      setFriendEmailInput('')
+      await fetchFriends()
+    } catch (error) {
+      console.error('Failed to send friend request:', error)
+      setFriendError(error?.message || 'Could not send friend request.')
+    } finally {
+      setFriendSubmitting(false)
+    }
+  }
+
+  async function respondToFriendRequest(requestId, nextStatus) {
+    setFriendError('')
+    setFriendMessage('')
+
+    const { error } = await supabase
+      .from('friend_requests')
+      .update({ status: nextStatus })
+      .eq('id', requestId)
+      .eq('receiver_id', user.id)
+      .eq('status', 'pending')
+
+    if (error) {
+      console.error('Failed to update friend request:', error)
+      setFriendError(error?.message || 'Could not update request.')
+      return
+    }
+
+    setFriendMessage(nextStatus === 'accepted' ? 'Friend request accepted.' : 'Friend request declined.')
+    await fetchFriends()
+  }
+
+  async function cancelOutgoingFriendRequest(requestId) {
+    setFriendError('')
+    setFriendMessage('')
+
+    const { error } = await supabase
+      .from('friend_requests')
+      .delete()
+      .eq('id', requestId)
+      .eq('sender_id', user.id)
+      .eq('status', 'pending')
+
+    if (error) {
+      console.error('Failed to cancel friend request:', error)
+      setFriendError(error?.message || 'Could not cancel request.')
+      return
+    }
+
+    setFriendMessage('Friend request canceled.')
+    await fetchFriends()
   }
 
   function normalizeRotation(value) {
@@ -1060,6 +1307,7 @@ function Desk({ user }) {
   }
 
   const currentDesk = desks.find((desk) => desk.id === selectedDeskId) || null
+  const pendingFriendRequestCount = incomingFriendRequests.length
 
   return (
     <div
@@ -1083,6 +1331,192 @@ function Desk({ user }) {
           alignItems: 'flex-start'
         }}
       >
+        <div ref={friendsMenuRef} style={{ position: 'relative' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShowFriendsMenu((prev) => !prev)
+              setFriendError('')
+              setFriendMessage('')
+            }}
+            style={{
+              padding: '8px 16px',
+              fontSize: 14,
+              cursor: 'pointer'
+            }}
+          >
+            Friends{pendingFriendRequestCount > 0 ? ` (${pendingFriendRequestCount})` : ''} ▼
+          </button>
+
+          {showFriendsMenu && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: 6,
+                background: '#fff',
+                border: '1px solid #ddd',
+                borderRadius: 6,
+                boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
+                color: '#222',
+                zIndex: 230,
+                width: 320,
+                padding: 10,
+                maxHeight: 460,
+                overflowY: 'auto'
+              }}
+            >
+              <form onSubmit={handleSendFriendRequest} style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                <input
+                  value={friendEmailInput}
+                  onChange={(e) => setFriendEmailInput(e.target.value)}
+                  placeholder="friend@email.com"
+                  style={{
+                    flex: 1,
+                    padding: '7px 8px',
+                    borderRadius: 4,
+                    border: '1px solid #ccc',
+                    fontSize: 13
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={friendSubmitting}
+                  style={{
+                    padding: '7px 10px',
+                    borderRadius: 4,
+                    border: 'none',
+                    background: '#4285F4',
+                    color: '#fff',
+                    cursor: friendSubmitting ? 'not-allowed' : 'pointer',
+                    opacity: friendSubmitting ? 0.75 : 1,
+                    fontSize: 13
+                  }}
+                >
+                  {friendSubmitting ? 'Sending...' : 'Add'}
+                </button>
+              </form>
+
+              <button
+                type="button"
+                onClick={fetchFriends}
+                disabled={friendsLoading}
+                style={{
+                  marginBottom: 10,
+                  padding: '5px 8px',
+                  borderRadius: 4,
+                  border: '1px solid #ccc',
+                  background: '#fff',
+                  color: '#222',
+                  cursor: friendsLoading ? 'not-allowed' : 'pointer',
+                  fontSize: 12
+                }}
+              >
+                {friendsLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+
+              {friendMessage && (
+                <div style={{ marginBottom: 8, color: 'green', fontSize: 12 }}>
+                  {friendMessage}
+                </div>
+              )}
+              {friendError && (
+                <div style={{ marginBottom: 8, color: '#d32f2f', fontSize: 12 }}>
+                  {friendError}
+                </div>
+              )}
+
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Incoming Requests</div>
+                {incomingFriendRequests.length === 0 ? (
+                  <div style={{ fontSize: 12, opacity: 0.75 }}>No incoming requests</div>
+                ) : (
+                  incomingFriendRequests.map((request) => (
+                    <div key={request.id} style={{ marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #f1f1f1' }}>
+                      <div style={{ fontSize: 13, marginBottom: 4 }}>{request.email}</div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => respondToFriendRequest(request.id, 'accepted')}
+                          style={{
+                            border: 'none',
+                            borderRadius: 4,
+                            padding: '4px 8px',
+                            background: '#2e7d32',
+                            color: '#fff',
+                            fontSize: 12,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => respondToFriendRequest(request.id, 'declined')}
+                          style={{
+                            border: 'none',
+                            borderRadius: 4,
+                            padding: '4px 8px',
+                            background: '#d32f2f',
+                            color: '#fff',
+                            fontSize: 12,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Friends</div>
+                {friends.length === 0 ? (
+                  <div style={{ fontSize: 12, opacity: 0.75 }}>No friends yet</div>
+                ) : (
+                  friends.map((friend) => (
+                    <div key={friend.id} style={{ fontSize: 13, marginBottom: 4 }}>
+                      {friend.email}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sent Requests</div>
+                {outgoingFriendRequests.length === 0 ? (
+                  <div style={{ fontSize: 12, opacity: 0.75 }}>No pending sent requests</div>
+                ) : (
+                  outgoingFriendRequests.map((request) => (
+                    <div key={request.id} style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>{request.email}</span>
+                      <button
+                        type="button"
+                        onClick={() => cancelOutgoingFriendRequest(request.id)}
+                        style={{
+                          border: 'none',
+                          borderRadius: 4,
+                          padding: '4px 8px',
+                          background: '#eee',
+                          color: '#333',
+                          fontSize: 12,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div ref={deskMenuRef} style={{ position: 'relative' }}>
           <button
             onClick={() => setShowDeskMenu((prev) => !prev)}
