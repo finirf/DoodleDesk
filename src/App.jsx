@@ -63,6 +63,7 @@ function Desk({ user }) {
   const [notes, setNotes] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [editValue, setEditValue] = useState('')
+  const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const [draggedId, setDraggedId] = useState(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [sectionHeight, setSectionHeight] = useState(() => window.innerHeight || 800)
@@ -106,6 +107,26 @@ function Desk({ user }) {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  useEffect(() => {
+    if (!pendingDeleteId) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') {
+        setPendingDeleteId(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [pendingDeleteId])
 
   async function fetchNotes() {
     const { data, error } = await supabase.from('notes').select('*').eq('user_id', user.id)
@@ -151,23 +172,28 @@ function Desk({ user }) {
       .eq('user_id', user.id)
   }
 
-  async function deleteNote(noteId) {
-    const shouldDelete = window.confirm('Delete this note?')
-    if (!shouldDelete) return
+  function requestDeleteNote(noteId) {
+    setPendingDeleteId(noteId)
+  }
+
+  async function confirmDeleteNote() {
+    if (!pendingDeleteId) return
 
     const { error } = await supabase
       .from('notes')
       .delete()
-      .eq('id', noteId)
+      .eq('id', pendingDeleteId)
       .eq('user_id', user.id)
 
     if (!error) {
-      setNotes((prev) => prev.filter((note) => note.id !== noteId))
-      if (editingId === noteId) {
+      setNotes((prev) => prev.filter((note) => note.id !== pendingDeleteId))
+      if (editingId === pendingDeleteId) {
         setEditingId(null)
         setEditValue('')
       }
     }
+
+    setPendingDeleteId(null)
   }
 
   function handleDragStart(e, note) {
@@ -358,7 +384,7 @@ function Desk({ user }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => deleteNote(note.id)}
+                  onClick={() => requestDeleteNote(note.id)}
                   style={{
                     marginRight: 4,
                     padding: '2px 6px',
@@ -426,6 +452,62 @@ function Desk({ user }) {
           )}
         </div>
       ))}
+
+      {pendingDeleteId && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 8,
+              padding: 16,
+              width: 280,
+              boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+              textAlign: 'center'
+            }}
+          >
+            <div style={{ marginBottom: 12, color: '#222' }}>Delete this note?</div>
+            <button
+              type="button"
+              onClick={confirmDeleteNote}
+              style={{
+                marginRight: 8,
+                padding: '6px 12px',
+                borderRadius: 4,
+                border: 'none',
+                background: '#d32f2f',
+                color: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingDeleteId(null)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 4,
+                border: 'none',
+                background: '#eee',
+                color: '#333',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>
