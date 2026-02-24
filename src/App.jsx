@@ -248,12 +248,29 @@ function Desk({ user }) {
     fetchNotes()
   }
 
+  async function handleLogout() {
+    await supabase.auth.signOut();
+  }
+
   return (
     <div style={{ padding: 40, minHeight: '100vh', position: 'relative' }}>
-      <pre style={{ background: '#eee', padding: 10, borderRadius: 4, marginBottom: 16 }}>
-        Debug: user = {JSON.stringify(user, null, 2)}
-      </pre>
       <button
+        onClick={handleLogout}
+        style={{
+          position: 'absolute',
+          top: 20,
+          right: 20,
+          padding: '8px 16px',
+          fontSize: 14,
+          background: '#eee',
+          border: '1px solid #ccc',
+          borderRadius: 4,
+          cursor: 'pointer',
+          zIndex: 10
+        }}
+      >
+        Logout
+      </button>
         onClick={addNote}
         style={{
           padding: '8px 16px',
