@@ -35,6 +35,14 @@ create table if not exists public.friend_requests (
 	constraint friend_requests_sender_receiver_not_same check (sender_id <> receiver_id)
 );
 
+create table if not exists public.user_stats (
+	user_id uuid primary key references public.profiles(id) on delete cascade,
+	desks_created integer not null default 0,
+	desks_deleted integer not null default 0,
+	created_at timestamptz not null default now(),
+	updated_at timestamptz not null default now()
+);
+
 create unique index if not exists friend_requests_pair_unique
 	on public.friend_requests (
 		least(sender_id::text, receiver_id::text),
@@ -43,6 +51,7 @@ create unique index if not exists friend_requests_pair_unique
 
 alter table public.profiles enable row level security;
 alter table public.friend_requests enable row level security;
+alter table public.user_stats enable row level security;
 
 drop policy if exists "profiles selectable by signed-in users" on public.profiles;
 create policy "profiles selectable by signed-in users"
@@ -87,4 +96,23 @@ create policy "users can delete outgoing pending requests"
 	on public.friend_requests for delete
 	to authenticated
 	using (auth.uid() = sender_id and status = 'pending');
+
+drop policy if exists "users can read own stats" on public.user_stats;
+create policy "users can read own stats"
+	on public.user_stats for select
+	to authenticated
+	using (auth.uid() = user_id);
+
+drop policy if exists "users can insert own stats" on public.user_stats;
+create policy "users can insert own stats"
+	on public.user_stats for insert
+	to authenticated
+	with check (auth.uid() = user_id);
+
+drop policy if exists "users can update own stats" on public.user_stats;
+create policy "users can update own stats"
+	on public.user_stats for update
+	to authenticated
+	using (auth.uid() = user_id)
+	with check (auth.uid() = user_id);
 ```

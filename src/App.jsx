@@ -72,6 +72,8 @@ function Desk({ user }) {
   const [newChecklistItemText, setNewChecklistItemText] = useState('')
   const [showNewNoteMenu, setShowNewNoteMenu] = useState(false)
   const [showDeskMenu, setShowDeskMenu] = useState(false)
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [profileTab, setProfileTab] = useState('profile')
   const [deskNameDialog, setDeskNameDialog] = useState({ isOpen: false, mode: 'create', value: '' })
   const [deskNameError, setDeskNameError] = useState('')
   const [deskNameSaving, setDeskNameSaving] = useState(false)
@@ -79,7 +81,6 @@ function Desk({ user }) {
   const [editSaveError, setEditSaveError] = useState('')
   const [backgroundMode, setBackgroundMode] = useState('desk1')
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
-  const [showFriendsMenu, setShowFriendsMenu] = useState(false)
   const [friends, setFriends] = useState([])
   const [incomingFriendRequests, setIncomingFriendRequests] = useState([])
   const [outgoingFriendRequests, setOutgoingFriendRequests] = useState([])
@@ -88,6 +89,8 @@ function Desk({ user }) {
   const [friendError, setFriendError] = useState('')
   const [friendsLoading, setFriendsLoading] = useState(false)
   const [friendSubmitting, setFriendSubmitting] = useState(false)
+  const [profileStats, setProfileStats] = useState({ desks_created: 0, desks_deleted: 0 })
+  const [profileStatsLoading, setProfileStatsLoading] = useState(false)
   const [draggedId, setDraggedId] = useState(null)
   const [resizingId, setResizingId] = useState(null)
   const [resizeOverlay, setResizeOverlay] = useState(null)
@@ -112,7 +115,7 @@ function Desk({ user }) {
   })
   const newNoteMenuRef = useRef(null)
   const deskMenuRef = useRef(null)
-  const friendsMenuRef = useRef(null)
+  const profileMenuRef = useRef(null)
 
   const growThreshold = 180
   const FONT_OPTIONS = [
@@ -196,6 +199,10 @@ function Desk({ user }) {
   }, [user.id])
 
   useEffect(() => {
+    fetchUserStats()
+  }, [user.id])
+
+  useEffect(() => {
     if (!selectedDeskId) {
       setNotes([])
       return
@@ -240,7 +247,7 @@ function Desk({ user }) {
   }, [pendingDeleteId])
 
   useEffect(() => {
-    if (!showNewNoteMenu && !showDeskMenu && !showFriendsMenu) return
+    if (!showNewNoteMenu && !showDeskMenu && !showProfileMenu) return
 
     function handleClickOutside(e) {
       if (showNewNoteMenu && !newNoteMenuRef.current?.contains(e.target)) {
@@ -249,14 +256,14 @@ function Desk({ user }) {
       if (showDeskMenu && !deskMenuRef.current?.contains(e.target)) {
         setShowDeskMenu(false)
       }
-      if (showFriendsMenu && !friendsMenuRef.current?.contains(e.target)) {
-        setShowFriendsMenu(false)
+      if (showProfileMenu && !profileMenuRef.current?.contains(e.target)) {
+        setShowProfileMenu(false)
       }
     }
 
     window.addEventListener('mousedown', handleClickOutside)
     return () => window.removeEventListener('mousedown', handleClickOutside)
-  }, [showNewNoteMenu, showDeskMenu, showFriendsMenu])
+  }, [showNewNoteMenu, showDeskMenu, showProfileMenu])
 
   function getDeskBackgroundValue(desk) {
     const nextMode = desk?.background_mode || desk?.background
@@ -319,7 +326,43 @@ function Desk({ user }) {
     setSelectedDeskId(createdDesk.id)
     setBackgroundMode(getDeskBackgroundValue(createdDesk))
     setShowDeskMenu(false)
+    await incrementUserStat('desks_created', 1)
     return { ok: true }
+  }
+
+  async function deleteCurrentDesk() {
+    const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
+    if (!currentDesk) return
+
+    const shouldDelete = window.confirm(`Delete "${getDeskNameValue(currentDesk)}"? This cannot be undone.`)
+    if (!shouldDelete) return
+
+    const { error } = await supabase
+      .from('desks')
+      .delete()
+      .eq('id', currentDesk.id)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error('Failed to delete desk:', error)
+      return
+    }
+
+    const remainingDesks = desks.filter((desk) => desk.id !== currentDesk.id)
+    setDesks(remainingDesks)
+
+    if (remainingDesks.length === 0) {
+      setSelectedDeskId(null)
+      setBackgroundMode('desk1')
+      setNotes([])
+    } else {
+      const nextDesk = remainingDesks[0]
+      setSelectedDeskId(nextDesk.id)
+      setBackgroundMode(getDeskBackgroundValue(nextDesk))
+    }
+
+    setShowDeskMenu(false)
+    await incrementUserStat('desks_deleted', 1)
   }
 
   async function renameCurrentDesk(nextNameInput) {
@@ -582,6 +625,90 @@ function Desk({ user }) {
     if (error) {
       console.error('Failed to ensure profile exists:', error)
     }
+  }
+
+  async function ensureUserStats() {
+    const { error } = await supabase
+      .from('user_stats')
+      .upsert({ user_id: user.id }, { onConflict: 'user_id' })
+
+    if (error) {
+      console.error('Failed to ensure user stats row:', error)
+    }
+  }
+
+  async function fetchUserStats() {
+    setProfileStatsLoading(true)
+    try {
+      await ensureUserStats()
+      const { data, error } = await supabase
+        .from('user_stats')
+        .select('desks_created, desks_deleted')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (error) {
+        throw error
+      }
+
+      setProfileStats({
+        desks_created: Number(data?.desks_created) || 0,
+        desks_deleted: Number(data?.desks_deleted) || 0
+      })
+    } catch (error) {
+      console.error('Failed to fetch user stats:', error)
+      setProfileStats({ desks_created: 0, desks_deleted: 0 })
+    } finally {
+      setProfileStatsLoading(false)
+    }
+  }
+
+  async function incrementUserStat(statColumn, amount = 1) {
+    if (statColumn !== 'desks_created' && statColumn !== 'desks_deleted') return
+
+    try {
+      await ensureUserStats()
+
+      const { data, error } = await supabase
+        .from('user_stats')
+        .select('desks_created, desks_deleted')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (error) {
+        throw error
+      }
+
+      const currentCreated = Number(data?.desks_created) || 0
+      const currentDeleted = Number(data?.desks_deleted) || 0
+      const nextValues = statColumn === 'desks_created'
+        ? { desks_created: currentCreated + amount, desks_deleted: currentDeleted }
+        : { desks_created: currentCreated, desks_deleted: currentDeleted + amount }
+
+      const { error: updateError } = await supabase
+        .from('user_stats')
+        .update(nextValues)
+        .eq('user_id', user.id)
+
+      if (updateError) {
+        throw updateError
+      }
+
+      setProfileStats(nextValues)
+    } catch (error) {
+      console.error('Failed to update user stats:', error)
+    }
+  }
+
+  function formatDate(dateLike) {
+    if (!dateLike) return 'Unknown'
+    const date = new Date(dateLike)
+    if (Number.isNaN(date.getTime())) return 'Unknown'
+    return date.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
   }
 
   async function fetchFriends() {
@@ -1308,6 +1435,8 @@ function Desk({ user }) {
 
   const currentDesk = desks.find((desk) => desk.id === selectedDeskId) || null
   const pendingFriendRequestCount = incomingFriendRequests.length
+  const totalItemsCount = notes.length
+  const joinDate = formatDate(user.created_at)
 
   return (
     <div
@@ -1331,192 +1460,6 @@ function Desk({ user }) {
           alignItems: 'flex-start'
         }}
       >
-        <div ref={friendsMenuRef} style={{ position: 'relative' }}>
-          <button
-            type="button"
-            onClick={() => {
-              setShowFriendsMenu((prev) => !prev)
-              setFriendError('')
-              setFriendMessage('')
-            }}
-            style={{
-              padding: '8px 16px',
-              fontSize: 14,
-              cursor: 'pointer'
-            }}
-          >
-            Friends{pendingFriendRequestCount > 0 ? ` (${pendingFriendRequestCount})` : ''} ▼
-          </button>
-
-          {showFriendsMenu && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '100%',
-                right: 0,
-                marginTop: 6,
-                background: '#fff',
-                border: '1px solid #ddd',
-                borderRadius: 6,
-                boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
-                color: '#222',
-                zIndex: 230,
-                width: 320,
-                padding: 10,
-                maxHeight: 460,
-                overflowY: 'auto'
-              }}
-            >
-              <form onSubmit={handleSendFriendRequest} style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                <input
-                  value={friendEmailInput}
-                  onChange={(e) => setFriendEmailInput(e.target.value)}
-                  placeholder="friend@email.com"
-                  style={{
-                    flex: 1,
-                    padding: '7px 8px',
-                    borderRadius: 4,
-                    border: '1px solid #ccc',
-                    fontSize: 13
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={friendSubmitting}
-                  style={{
-                    padding: '7px 10px',
-                    borderRadius: 4,
-                    border: 'none',
-                    background: '#4285F4',
-                    color: '#fff',
-                    cursor: friendSubmitting ? 'not-allowed' : 'pointer',
-                    opacity: friendSubmitting ? 0.75 : 1,
-                    fontSize: 13
-                  }}
-                >
-                  {friendSubmitting ? 'Sending...' : 'Add'}
-                </button>
-              </form>
-
-              <button
-                type="button"
-                onClick={fetchFriends}
-                disabled={friendsLoading}
-                style={{
-                  marginBottom: 10,
-                  padding: '5px 8px',
-                  borderRadius: 4,
-                  border: '1px solid #ccc',
-                  background: '#fff',
-                  color: '#222',
-                  cursor: friendsLoading ? 'not-allowed' : 'pointer',
-                  fontSize: 12
-                }}
-              >
-                {friendsLoading ? 'Refreshing...' : 'Refresh'}
-              </button>
-
-              {friendMessage && (
-                <div style={{ marginBottom: 8, color: 'green', fontSize: 12 }}>
-                  {friendMessage}
-                </div>
-              )}
-              {friendError && (
-                <div style={{ marginBottom: 8, color: '#d32f2f', fontSize: 12 }}>
-                  {friendError}
-                </div>
-              )}
-
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Incoming Requests</div>
-                {incomingFriendRequests.length === 0 ? (
-                  <div style={{ fontSize: 12, opacity: 0.75 }}>No incoming requests</div>
-                ) : (
-                  incomingFriendRequests.map((request) => (
-                    <div key={request.id} style={{ marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #f1f1f1' }}>
-                      <div style={{ fontSize: 13, marginBottom: 4 }}>{request.email}</div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          type="button"
-                          onClick={() => respondToFriendRequest(request.id, 'accepted')}
-                          style={{
-                            border: 'none',
-                            borderRadius: 4,
-                            padding: '4px 8px',
-                            background: '#2e7d32',
-                            color: '#fff',
-                            fontSize: 12,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Accept
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => respondToFriendRequest(request.id, 'declined')}
-                          style={{
-                            border: 'none',
-                            borderRadius: 4,
-                            padding: '4px 8px',
-                            background: '#d32f2f',
-                            color: '#fff',
-                            fontSize: 12,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Friends</div>
-                {friends.length === 0 ? (
-                  <div style={{ fontSize: 12, opacity: 0.75 }}>No friends yet</div>
-                ) : (
-                  friends.map((friend) => (
-                    <div key={friend.id} style={{ fontSize: 13, marginBottom: 4 }}>
-                      {friend.email}
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div>
-                <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sent Requests</div>
-                {outgoingFriendRequests.length === 0 ? (
-                  <div style={{ fontSize: 12, opacity: 0.75 }}>No pending sent requests</div>
-                ) : (
-                  outgoingFriendRequests.map((request) => (
-                    <div key={request.id} style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>{request.email}</span>
-                      <button
-                        type="button"
-                        onClick={() => cancelOutgoingFriendRequest(request.id)}
-                        style={{
-                          border: 'none',
-                          borderRadius: 4,
-                          padding: '4px 8px',
-                          background: '#eee',
-                          color: '#333',
-                          fontSize: 12,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
         <div ref={deskMenuRef} style={{ position: 'relative' }}>
           <button
             onClick={() => setShowDeskMenu((prev) => !prev)}
@@ -1610,6 +1553,25 @@ function Desk({ user }) {
                 }}
               >
                 Rename Desk
+              </button>
+
+              <button
+                type="button"
+                onClick={deleteCurrentDesk}
+                disabled={!currentDesk}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '7px 10px',
+                  border: 'none',
+                  borderRadius: 4,
+                  background: '#fff',
+                  color: currentDesk ? '#d32f2f' : '#999',
+                  cursor: currentDesk ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Delete Desk
               </button>
 
               <div style={{ padding: '7px 10px', fontSize: 12, opacity: 0.8 }}>Change Background</div>
@@ -1707,16 +1669,279 @@ function Desk({ user }) {
           )}
         </div>
 
-        <button
-          onClick={handleLogout}
-          style={{
-            padding: '8px 16px',
-            fontSize: 14,
-            cursor: 'pointer'
-          }}
-        >
-          Logout
-        </button>
+        <div ref={profileMenuRef} style={{ position: 'relative' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShowProfileMenu((prev) => !prev)
+              setFriendError('')
+              setFriendMessage('')
+            }}
+            style={{
+              padding: '8px 16px',
+              fontSize: 14,
+              cursor: 'pointer'
+            }}
+          >
+            Profile{pendingFriendRequestCount > 0 ? ` (${pendingFriendRequestCount})` : ''} ▼
+          </button>
+
+          {showProfileMenu && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: 6,
+                background: '#fff',
+                border: '1px solid #ddd',
+                borderRadius: 6,
+                boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
+                color: '#222',
+                zIndex: 230,
+                width: 340,
+                padding: 10,
+                maxHeight: 500,
+                overflowY: 'auto'
+              }}
+            >
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setProfileTab('profile')}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    borderRadius: 4,
+                    padding: '7px 8px',
+                    background: profileTab === 'profile' ? '#4285F4' : '#eee',
+                    color: profileTab === 'profile' ? '#fff' : '#333',
+                    fontSize: 13,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProfileTab('friends')}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    borderRadius: 4,
+                    padding: '7px 8px',
+                    background: profileTab === 'friends' ? '#4285F4' : '#eee',
+                    color: profileTab === 'friends' ? '#fff' : '#333',
+                    fontSize: 13,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Friends{pendingFriendRequestCount > 0 ? ` (${pendingFriendRequestCount})` : ''}
+                </button>
+              </div>
+
+              {profileTab === 'profile' ? (
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 14 }}>{user.email || 'Unknown user'}</div>
+                  <div style={{ fontSize: 13, marginBottom: 4 }}>Join date: {joinDate}</div>
+                  <div style={{ fontSize: 13, marginBottom: 4 }}>Desks currently active: {desks.length}</div>
+                  <div style={{ fontSize: 13, marginBottom: 4 }}>Items on current desk: {totalItemsCount}</div>
+                  <div style={{ fontSize: 13, marginBottom: 4 }}>
+                    Desks created: {profileStatsLoading ? '...' : profileStats.desks_created}
+                  </div>
+                  <div style={{ fontSize: 13, marginBottom: 10 }}>
+                    Desks deleted: {profileStatsLoading ? '...' : profileStats.desks_deleted}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={fetchUserStats}
+                    disabled={profileStatsLoading}
+                    style={{
+                      padding: '5px 8px',
+                      borderRadius: 4,
+                      border: '1px solid #ccc',
+                      background: '#fff',
+                      color: '#222',
+                      cursor: profileStatsLoading ? 'not-allowed' : 'pointer',
+                      fontSize: 12
+                    }}
+                  >
+                    {profileStatsLoading ? 'Refreshing...' : 'Refresh stats'}
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <form onSubmit={handleSendFriendRequest} style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                    <input
+                      value={friendEmailInput}
+                      onChange={(e) => setFriendEmailInput(e.target.value)}
+                      placeholder="friend@email.com"
+                      style={{
+                        flex: 1,
+                        padding: '7px 8px',
+                        borderRadius: 4,
+                        border: '1px solid #ccc',
+                        fontSize: 13
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={friendSubmitting}
+                      style={{
+                        padding: '7px 10px',
+                        borderRadius: 4,
+                        border: 'none',
+                        background: '#4285F4',
+                        color: '#fff',
+                        cursor: friendSubmitting ? 'not-allowed' : 'pointer',
+                        opacity: friendSubmitting ? 0.75 : 1,
+                        fontSize: 13
+                      }}
+                    >
+                      {friendSubmitting ? 'Sending...' : 'Add'}
+                    </button>
+                  </form>
+
+                  <button
+                    type="button"
+                    onClick={fetchFriends}
+                    disabled={friendsLoading}
+                    style={{
+                      marginBottom: 10,
+                      padding: '5px 8px',
+                      borderRadius: 4,
+                      border: '1px solid #ccc',
+                      background: '#fff',
+                      color: '#222',
+                      cursor: friendsLoading ? 'not-allowed' : 'pointer',
+                      fontSize: 12
+                    }}
+                  >
+                    {friendsLoading ? 'Refreshing...' : 'Refresh'}
+                  </button>
+
+                  {friendMessage && (
+                    <div style={{ marginBottom: 8, color: 'green', fontSize: 12 }}>
+                      {friendMessage}
+                    </div>
+                  )}
+                  {friendError && (
+                    <div style={{ marginBottom: 8, color: '#d32f2f', fontSize: 12 }}>
+                      {friendError}
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Incoming Requests</div>
+                    {incomingFriendRequests.length === 0 ? (
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>No incoming requests</div>
+                    ) : (
+                      incomingFriendRequests.map((request) => (
+                        <div key={request.id} style={{ marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #f1f1f1' }}>
+                          <div style={{ fontSize: 13, marginBottom: 4 }}>{request.email}</div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              type="button"
+                              onClick={() => respondToFriendRequest(request.id, 'accepted')}
+                              style={{
+                                border: 'none',
+                                borderRadius: 4,
+                                padding: '4px 8px',
+                                background: '#2e7d32',
+                                color: '#fff',
+                                fontSize: 12,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => respondToFriendRequest(request.id, 'declined')}
+                              style={{
+                                border: 'none',
+                                borderRadius: 4,
+                                padding: '4px 8px',
+                                background: '#d32f2f',
+                                color: '#fff',
+                                fontSize: 12,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Friends</div>
+                    {friends.length === 0 ? (
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>No friends yet</div>
+                    ) : (
+                      friends.map((friend) => (
+                        <div key={friend.id} style={{ fontSize: 13, marginBottom: 4 }}>
+                          {friend.email}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div>
+                    <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>Sent Requests</div>
+                    {outgoingFriendRequests.length === 0 ? (
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>No pending sent requests</div>
+                    ) : (
+                      outgoingFriendRequests.map((request) => (
+                        <div key={request.id} style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>{request.email}</span>
+                          <button
+                            type="button"
+                            onClick={() => cancelOutgoingFriendRequest(request.id)}
+                            style={{
+                              border: 'none',
+                              borderRadius: 4,
+                              padding: '4px 8px',
+                              background: '#eee',
+                              color: '#333',
+                              fontSize: 12,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ borderTop: '1px solid #eee', marginTop: 12, paddingTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '7px 2px',
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#d32f2f',
+                    fontSize: 13,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div ref={newNoteMenuRef} style={{ position: 'relative', display: 'inline-block', marginBottom: 20 }}>
