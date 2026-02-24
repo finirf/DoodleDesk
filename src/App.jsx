@@ -232,6 +232,10 @@ function Desk({ user }) {
     if (!error) setNotes((prev) => [...prev, ...data])
   }
 
+  async function handleLogout() {
+    await supabase.auth.signOut()
+  }
+
   function handleDragStart(e, note) {
     setDraggedId(note.id)
     setDragOffset({ x: e.clientX - note.x, y: e.clientY - note.y })
@@ -267,6 +271,20 @@ function Desk({ user }) {
         backgroundRepeat: 'no-repeat'
       }}
     >
+      <button
+        onClick={handleLogout}
+        style={{
+          position: 'absolute',
+          top: 20,
+          right: 20,
+          padding: '8px 16px',
+          fontSize: 14,
+          cursor: 'pointer'
+        }}
+      >
+        Logout
+      </button>
+
       <button
         onClick={addNote}
         style={{ padding: '8px 16px', fontSize: 14, marginBottom: 20, cursor: 'pointer' }}
