@@ -159,6 +159,26 @@ function Desk({ user }) {
     return ((value % 360) + 360) % 360
   }
 
+  function toStoredRotation(value) {
+    return Math.round(normalizeRotation(value))
+  }
+
+  async function persistRotation(noteId, rotationValue) {
+    const storedRotation = toStoredRotation(rotationValue)
+    const { error } = await supabase
+      .from('notes')
+      .update({ rotation: storedRotation })
+      .eq('id', noteId)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error('Failed to save note rotation:', error)
+      return null
+    }
+
+    return storedRotation
+  }
+
   function getPointerAngleFromCenter(pageX, pageY) {
     return (Math.atan2(pageY - rotationCenterRef.current.y, pageX - rotationCenterRef.current.x) * 180) / Math.PI
   }
@@ -227,11 +247,14 @@ function Desk({ user }) {
       nextRotation = Number(noteToPersist.rotation) || 0
     }
 
-    await supabase
-      .from('notes')
-      .update({ rotation: nextRotation })
-      .eq('id', activeRotatingId)
-      .eq('user_id', user.id)
+    const savedRotation = await persistRotation(activeRotatingId, nextRotation)
+    if (savedRotation !== null) {
+      setNotes((prev) =>
+        prev.map((note) =>
+          note.id === activeRotatingId ? { ...note, rotation: savedRotation } : note
+        )
+      )
+    }
   }
 
   function requestDeleteNote(noteId) {
@@ -393,7 +416,7 @@ function Desk({ user }) {
               onSubmit={async (e) => {
                 e.preventDefault()
                 const noteToSave = notesRef.current.find((item) => item.id === note.id)
-                const nextRotation = Number(noteToSave?.rotation) || 0
+                const nextRotation = toStoredRotation(Number(noteToSave?.rotation) || 0)
 
                 const { error } = await supabase
                   .from('notes')
