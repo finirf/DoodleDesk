@@ -490,24 +490,36 @@ function Desk({ user }) {
   async function addStickyNote() {
     if (!selectedDeskId) return
 
-    let result = await supabase
-      .from('notes')
-      .insert([{ desk_id: selectedDeskId, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
-      .select()
+    const payloadCandidates = [
+      { desk_id: selectedDeskId, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 200, height: 120 },
+      { desk_id: selectedDeskId, content: 'New note', color: '#fff59d', x: 100, y: 100, rotation: 0, width: 200, height: 120 },
+      { desk_id: selectedDeskId, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0 },
+      { desk_id: selectedDeskId, content: 'New note', color: '#fff59d', x: 100, y: 100, rotation: 0 },
+      { desk_id: selectedDeskId, content: 'New note', x: 100, y: 100, rotation: 0 }
+    ]
 
-    if (result.error) {
-      result = await supabase
+    let createdNote = null
+    let lastError = null
+
+    for (const payload of payloadCandidates) {
+      const { data, error } = await supabase
         .from('notes')
-        .insert([{ desk_id: selectedDeskId, content: 'New note', color: '#fff59d', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
+        .insert([payload])
         .select()
+
+      if (!error && data?.[0]) {
+        createdNote = data[0]
+        break
+      }
+
+      lastError = error
     }
 
-    const { data, error } = result
-
-    if (!error && data?.[0]) {
-      setNotes((prev) => [...prev, { ...data[0], item_type: 'note' }])
+    if (createdNote) {
+      setNotes((prev) => [...prev, { ...createdNote, item_type: 'note' }])
+      await fetchDeskItems(selectedDeskId)
     } else {
-      console.error('Failed to create note:', error)
+      console.error('Failed to create note:', lastError)
     }
 
     setShowNewNoteMenu(false)
@@ -516,27 +528,37 @@ function Desk({ user }) {
   async function addChecklistNote() {
     if (!selectedDeskId) return
 
-    let checklistResult = await supabase
-      .from('checklists')
-      .insert([{ desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
-      .select()
+    const payloadCandidates = [
+      { desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 220, height: 160 },
+      { desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', x: 100, y: 100, rotation: 0, width: 220, height: 160 },
+      { desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0 },
+      { desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', x: 100, y: 100, rotation: 0 },
+      { desk_id: selectedDeskId, title: 'Checklist', x: 100, y: 100, rotation: 0 }
+    ]
 
-    if (checklistResult.error) {
-      checklistResult = await supabase
+    let createdChecklist = null
+    let lastError = null
+
+    for (const payload of payloadCandidates) {
+      const { data, error } = await supabase
         .from('checklists')
-        .insert([{ desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
+        .insert([payload])
         .select()
+
+      if (!error && data?.[0]) {
+        createdChecklist = data[0]
+        break
+      }
+
+      lastError = error
     }
 
-    const { data: checklistData, error: checklistError } = checklistResult
-
-    if (checklistError || !checklistData?.[0]) {
-      console.error('Failed to create checklist:', checklistError)
+    if (!createdChecklist) {
+      console.error('Failed to create checklist:', lastError)
       setShowNewNoteMenu(false)
       return
     }
 
-    const createdChecklist = checklistData[0]
     const { data: itemData, error: itemError } = await supabase
       .from('checklist_items')
       .insert([{ checklist_id: createdChecklist.id, text: 'New item', is_checked: false, sort_order: 0 }])
@@ -554,6 +576,8 @@ function Desk({ user }) {
         items: itemData || []
       }
     ])
+
+    await fetchDeskItems(selectedDeskId)
 
     setShowNewNoteMenu(false)
   }
