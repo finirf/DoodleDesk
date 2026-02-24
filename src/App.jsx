@@ -257,8 +257,15 @@ function Desk({ user }) {
   }, [])
 
   async function fetchNotes() {
-    const { data, error } = await supabase.from('notes').select('*')
-    if (!error) setNotes(data)
+    const { data, error } = await supabase.from('notes').select('*').eq('user_id', user.id)
+    if (!error && data) {
+      setNotes(data)
+
+      const maxNoteY = data.reduce((maxY, note) => Math.max(maxY, Number(note.y) || 0), 0)
+      const requiredHeight = maxNoteY + noteHeight + growThreshold
+      const requiredSections = Math.max(2, Math.ceil(requiredHeight / sectionHeight))
+      setCanvasHeight((prev) => Math.max(prev, requiredSections * sectionHeight))
+    }
   }
 
   async function addNote() {
@@ -314,7 +321,7 @@ function Desk({ user }) {
     )
   }
 
-  async function handleDragEnd() {
+  async function handleDragEnd(e) {
     const activeDraggedId = draggedIdRef.current
 
     setDraggedId(null)
@@ -324,12 +331,31 @@ function Desk({ user }) {
 
     if (!activeDraggedId) return
 
-    const noteToPersist = notesRef.current.find((note) => note.id === activeDraggedId)
-    if (!noteToPersist) return
+    let nextPosition = null
+
+    if (e) {
+      const nextX = e.pageX - dragOffsetRef.current.x
+      const nextY = e.pageY - dragOffsetRef.current.y
+      const maxX = Math.max(0, window.innerWidth - noteWidth)
+      nextPosition = {
+        x: Math.min(Math.max(0, nextX), maxX),
+        y: Math.max(0, nextY)
+      }
+
+      setNotes((prev) =>
+        prev.map((note) =>
+          note.id === activeDraggedId ? { ...note, x: nextPosition.x, y: nextPosition.y } : note
+        )
+      )
+    } else {
+      const noteToPersist = notesRef.current.find((note) => note.id === activeDraggedId)
+      if (!noteToPersist) return
+      nextPosition = { x: noteToPersist.x, y: noteToPersist.y }
+    }
 
     await supabase
       .from('notes')
-      .update({ x: noteToPersist.x, y: noteToPersist.y })
+      .update({ x: nextPosition.x, y: nextPosition.y })
       .eq('id', activeDraggedId)
   }
 
