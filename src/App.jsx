@@ -256,7 +256,17 @@ function Desk({ user }) {
   }
 
   return (
-    <div style={{ position: 'relative', minHeight: '100vh', padding: 20 }}>
+    <div
+      style={{
+        position: 'relative',
+        minHeight: '100vh',
+        padding: 20,
+        backgroundImage: "url('/desk.png')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat'
+      }}
+    >
       <button
         onClick={addNote}
         style={{ padding: '8px 16px', fontSize: 14, marginBottom: 20, cursor: 'pointer' }}
