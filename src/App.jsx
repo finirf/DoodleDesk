@@ -375,19 +375,33 @@ function Desk({ user }) {
     const createdDesk = data[0]
 
     if (isCollaborative) {
-      const memberRows = [
-        { desk_id: createdDesk.id, user_id: user.id, role: 'owner' },
-        ...invitedFriendIds.map((friendId) => ({ desk_id: createdDesk.id, user_id: friendId, role: 'editor' }))
-      ]
-
-      const { error: memberInsertError } = await supabase
+      const { error: ownerMemberInsertError } = await supabase
         .from('desk_members')
-        .upsert(memberRows, { onConflict: 'desk_id,user_id' })
+        .upsert([{ desk_id: createdDesk.id, user_id: user.id, role: 'owner' }], { onConflict: 'desk_id,user_id' })
 
-      if (memberInsertError) {
-        console.error('Failed to add collaborators:', memberInsertError)
+      if (ownerMemberInsertError) {
+        console.error('Failed to add desk owner membership:', ownerMemberInsertError)
         await supabase.from('desks').delete().eq('id', createdDesk.id).eq('user_id', user.id)
-        return { ok: false, errorMessage: memberInsertError?.message || 'Failed to invite collaborators.' }
+        return { ok: false, errorMessage: ownerMemberInsertError?.message || 'Failed to create collaborative desk.' }
+      }
+
+      if (invitedFriendIds.length > 0) {
+        const invitedRows = invitedFriendIds.map((friendId) => ({
+          desk_id: createdDesk.id,
+          user_id: friendId,
+          role: 'editor'
+        }))
+
+        const { error: invitedMemberInsertError } = await supabase
+          .from('desk_members')
+          .upsert(invitedRows, { onConflict: 'desk_id,user_id' })
+
+        if (invitedMemberInsertError) {
+          console.error('Failed to add collaborators:', invitedMemberInsertError)
+          await supabase.from('desk_members').delete().eq('desk_id', createdDesk.id)
+          await supabase.from('desks').delete().eq('id', createdDesk.id).eq('user_id', user.id)
+          return { ok: false, errorMessage: invitedMemberInsertError?.message || 'Failed to invite collaborators.' }
+        }
       }
     }
 
