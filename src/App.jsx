@@ -74,6 +74,9 @@ function Desk({ user }) {
   const draggedIdRef = useRef(null)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
   const notesRef = useRef([])
+  const rotatingNoteIdRef = useRef(null)
+  const rotationOffsetRef = useRef(0)
+  const rotationCenterRef = useRef({ x: 0, y: 0 })
 
   const noteWidth = 200
   const noteHeight = 120
@@ -152,23 +155,82 @@ function Desk({ user }) {
     await supabase.auth.signOut()
   }
 
-  async function rotateNote(noteId, delta) {
+  function normalizeRotation(value) {
+    return ((value % 360) + 360) % 360
+  }
+
+  function getPointerAngleFromCenter(pageX, pageY) {
+    return (Math.atan2(pageY - rotationCenterRef.current.y, pageX - rotationCenterRef.current.x) * 180) / Math.PI
+  }
+
+  function handleRotateMouseDown(e, noteId) {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const noteElement = e.currentTarget.closest('[data-note-id]')
+    if (!noteElement) return
+
+    const rect = noteElement.getBoundingClientRect()
+    const centerX = rect.left + window.scrollX + rect.width / 2
+    const centerY = rect.top + window.scrollY + rect.height / 2
+    rotationCenterRef.current = { x: centerX, y: centerY }
+
     const currentNote = notesRef.current.find((note) => note.id === noteId)
     if (!currentNote) return
 
     const currentRotation = Number(currentNote.rotation) || 0
-    const nextRotation = ((currentRotation + delta) % 360 + 360) % 360
+    const pointerAngle = getPointerAngleFromCenter(e.pageX, e.pageY)
+    rotationOffsetRef.current = currentRotation - pointerAngle
+    rotatingNoteIdRef.current = noteId
+
+    window.addEventListener('mousemove', handleRotateMouseMove)
+    window.addEventListener('mouseup', handleRotateMouseUp)
+  }
+
+  function handleRotateMouseMove(e) {
+    const activeRotatingId = rotatingNoteIdRef.current
+    if (!activeRotatingId) return
+
+    const pointerAngle = getPointerAngleFromCenter(e.pageX, e.pageY)
+    const nextRotation = normalizeRotation(pointerAngle + rotationOffsetRef.current)
 
     setNotes((prev) =>
       prev.map((note) =>
-        note.id === noteId ? { ...note, rotation: nextRotation } : note
+        note.id === activeRotatingId ? { ...note, rotation: nextRotation } : note
       )
     )
+  }
+
+  async function handleRotateMouseUp(e) {
+    const activeRotatingId = rotatingNoteIdRef.current
+
+    rotatingNoteIdRef.current = null
+    window.removeEventListener('mousemove', handleRotateMouseMove)
+    window.removeEventListener('mouseup', handleRotateMouseUp)
+
+    if (!activeRotatingId) return
+
+    let nextRotation = null
+
+    if (e) {
+      const pointerAngle = getPointerAngleFromCenter(e.pageX, e.pageY)
+      nextRotation = normalizeRotation(pointerAngle + rotationOffsetRef.current)
+
+      setNotes((prev) =>
+        prev.map((note) =>
+          note.id === activeRotatingId ? { ...note, rotation: nextRotation } : note
+        )
+      )
+    } else {
+      const noteToPersist = notesRef.current.find((note) => note.id === activeRotatingId)
+      if (!noteToPersist) return
+      nextRotation = Number(noteToPersist.rotation) || 0
+    }
 
     await supabase
       .from('notes')
       .update({ rotation: nextRotation })
-      .eq('id', noteId)
+      .eq('id', activeRotatingId)
       .eq('user_id', user.id)
   }
 
@@ -311,6 +373,7 @@ function Desk({ user }) {
       {notes.map((note) => (
         <div
           key={note.id}
+          data-note-id={note.id}
           onMouseDown={editingId ? undefined : (e) => handleDragStart(e, note)}
           style={{
             position: 'absolute',
@@ -335,6 +398,24 @@ function Desk({ user }) {
                 fetchNotes()
               }}
             >
+              <div style={{ marginBottom: 8, textAlign: 'center' }}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => handleRotateMouseDown(e, note.id)}
+                  style={{
+                    padding: '2px 8px',
+                    fontSize: 11,
+                    borderRadius: 4,
+                    border: 'none',
+                    background: '#777',
+                    color: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Hold to Rotate
+                </button>
+              </div>
+
               <textarea
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
@@ -350,38 +431,6 @@ function Desk({ user }) {
                 }}
               />
               <div style={{ marginTop: 8, textAlign: 'right' }}>
-                <button
-                  type="button"
-                  onClick={() => rotateNote(note.id, -15)}
-                  style={{
-                    marginRight: 4,
-                    padding: '2px 6px',
-                    fontSize: 11,
-                    borderRadius: 4,
-                    border: 'none',
-                    background: '#777',
-                    color: '#fff',
-                    cursor: 'pointer'
-                  }}
-                >
-                  ↺
-                </button>
-                <button
-                  type="button"
-                  onClick={() => rotateNote(note.id, 15)}
-                  style={{
-                    marginRight: 4,
-                    padding: '2px 6px',
-                    fontSize: 11,
-                    borderRadius: 4,
-                    border: 'none',
-                    background: '#777',
-                    color: '#fff',
-                    cursor: 'pointer'
-                  }}
-                >
-                  ↻
-                </button>
                 <button
                   type="button"
                   onClick={() => requestDeleteNote(note.id)}
