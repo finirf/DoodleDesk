@@ -445,6 +445,10 @@ function Desk({ user }) {
                   style={{
                     width: 24,
                     height: 24,
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     fontSize: 16,
                     lineHeight: 1,
                     borderRadius: 4,
