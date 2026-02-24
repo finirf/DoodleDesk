@@ -28,12 +28,21 @@ export default function App() {
       <div style={{ padding: 40, minHeight: '100vh', textAlign: 'center' }}>
         <h2>DoodleDesk</h2>
         <p>Loading...</p>
+        <pre>Debug: loading session...</pre>
       </div>
     )
   }
 
+  // Debug output for session
   if (!session || !session.user) {
-    return <LoginScreen />
+    return (
+      <div style={{ padding: 40, minHeight: '100vh', textAlign: 'center' }}>
+        <h2>DoodleDesk</h2>
+        <LoginScreen />
+        <pre>Debug: session = {JSON.stringify(session, null, 2)}</pre>
+        <pre>Debug: session.user = {session && session.user ? JSON.stringify(session.user, null, 2) : 'undefined'}</pre>
+      </div>
+    )
   }
 
   // ...existing code...
