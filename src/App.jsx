@@ -251,25 +251,18 @@ function Desk({ user }) {
 
   async function createDesk(nextDeskName) {
     const trimmedName = (nextDeskName || '').trim()
-    if (!trimmedName) return false
-
-    let result = await supabase
-      .from('desks')
-      .insert([{ user_id: user.id, name: trimmedName, background_mode: 'alternating' }])
-      .select()
-
-    if (result.error) {
-      result = await supabase
-        .from('desks')
-        .insert([{ user_id: user.id, desk_name: trimmedName, background: 'alternating' }])
-        .select()
+    if (!trimmedName) {
+      return { ok: false, errorMessage: 'Please enter a desk name.' }
     }
 
-    const { data, error } = result
+    const { data, error } = await supabase
+      .from('desks')
+      .insert([{ user_id: user.id, name: trimmedName, background: 'alternating' }])
+      .select()
 
     if (error || !data?.[0]) {
       console.error('Failed to create desk:', error)
-      return false
+      return { ok: false, errorMessage: error?.message || 'Failed to create desk.' }
     }
 
     const createdDesk = data[0]
@@ -277,40 +270,34 @@ function Desk({ user }) {
     setSelectedDeskId(createdDesk.id)
     setBackgroundMode(getDeskBackgroundValue(createdDesk))
     setShowDeskMenu(false)
-    return true
+    return { ok: true }
   }
 
   async function renameCurrentDesk(nextNameInput) {
     const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
-    if (!currentDesk) return false
+    if (!currentDesk) {
+      return { ok: false, errorMessage: 'No desk selected.' }
+    }
 
     const nextName = (nextNameInput || '').trim()
-    if (!nextName) return false
+    if (!nextName) {
+      return { ok: false, errorMessage: 'Please enter a desk name.' }
+    }
 
-    let updateResult = await supabase
+    const { error } = await supabase
       .from('desks')
       .update({ name: nextName })
       .eq('id', currentDesk.id)
       .eq('user_id', user.id)
 
-    if (updateResult.error) {
-      updateResult = await supabase
-        .from('desks')
-        .update({ desk_name: nextName })
-        .eq('id', currentDesk.id)
-        .eq('user_id', user.id)
-    }
-
-    const { error } = updateResult
-
     if (error) {
       console.error('Failed to rename desk:', error)
-      return false
+      return { ok: false, errorMessage: error?.message || 'Failed to rename desk.' }
     }
 
-    setDesks((prev) => prev.map((desk) => (desk.id === currentDesk.id ? { ...desk, name: nextName, desk_name: nextName } : desk)))
+    setDesks((prev) => prev.map((desk) => (desk.id === currentDesk.id ? { ...desk, name: nextName } : desk)))
     setShowDeskMenu(false)
-    return true
+    return { ok: true }
   }
 
   function openCreateDeskDialog() {
@@ -346,17 +333,17 @@ function Desk({ user }) {
     setDeskNameSaving(true)
     setDeskNameError('')
 
-    const wasSaved = deskNameDialog.mode === 'create'
+    const saveResult = deskNameDialog.mode === 'create'
       ? await createDesk(nextName)
       : await renameCurrentDesk(nextName)
 
-    if (wasSaved) {
+    if (saveResult.ok) {
       closeDeskNameDialog()
       return
     }
 
     setDeskNameSaving(false)
-    setDeskNameError('Could not save desk name. Check desk table columns and try again.')
+    setDeskNameError(saveResult.errorMessage || 'Could not save desk name. Check desk table columns and try again.')
   }
 
   async function setCurrentDeskBackground(mode) {
@@ -416,8 +403,8 @@ function Desk({ user }) {
     }
 
     const [{ data: notesData, error: notesError }, { data: checklistsData, error: checklistsError }] = await Promise.all([
-      supabase.from('notes').select('*').eq('user_id', user.id).eq('desk_id', deskId),
-      supabase.from('checklists').select('*').eq('user_id', user.id).eq('desk_id', deskId)
+      supabase.from('notes').select('*').eq('desk_id', deskId),
+      supabase.from('checklists').select('*').eq('desk_id', deskId)
     ])
 
     if (notesError) {
@@ -475,7 +462,7 @@ function Desk({ user }) {
 
     const { data, error } = await supabase
       .from('notes')
-      .insert([{ user_id: user.id, desk_id: selectedDeskId, content: 'New note', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
+      .insert([{ desk_id: selectedDeskId, content: 'New note', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
       .select()
 
     if (!error && data?.[0]) {
@@ -490,7 +477,7 @@ function Desk({ user }) {
 
     const { data: checklistData, error: checklistError } = await supabase
       .from('checklists')
-      .insert([{ user_id: user.id, desk_id: selectedDeskId, title: 'Checklist', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
+      .insert([{ desk_id: selectedDeskId, title: 'Checklist', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
       .select()
 
     if (checklistError || !checklistData?.[0]) {
@@ -543,7 +530,6 @@ function Desk({ user }) {
       .from(table)
       .update({ rotation: storedRotation, desk_id: selectedDeskId })
       .eq('id', item.id)
-      .eq('user_id', user.id)
       .eq('desk_id', selectedDeskId)
 
     if (error) {
@@ -563,7 +549,6 @@ function Desk({ user }) {
       .from(table)
       .update({ x, y, desk_id: selectedDeskId })
       .eq('id', item.id)
-      .eq('user_id', user.id)
       .eq('desk_id', selectedDeskId)
   }
 
@@ -576,7 +561,6 @@ function Desk({ user }) {
       .from(table)
       .update({ width, height, desk_id: selectedDeskId })
       .eq('id', item.id)
-      .eq('user_id', user.id)
       .eq('desk_id', selectedDeskId)
 
     if (error) {
@@ -687,7 +671,6 @@ function Desk({ user }) {
         .from('notes')
         .update({ content: editValue, rotation: nextRotation, desk_id: selectedDeskId })
         .eq('id', item.id)
-        .eq('user_id', user.id)
         .eq('desk_id', selectedDeskId)
 
       if (error) {
@@ -715,7 +698,6 @@ function Desk({ user }) {
       .from('checklists')
       .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation, desk_id: selectedDeskId })
       .eq('id', item.id)
-      .eq('user_id', user.id)
       .eq('desk_id', selectedDeskId)
 
     if (checklistError) {
@@ -890,7 +872,6 @@ function Desk({ user }) {
         .from('checklists')
         .delete()
         .eq('id', item.id)
-        .eq('user_id', user.id)
         .eq('desk_id', selectedDeskId)
       error = checklistError
     } else {
@@ -898,7 +879,6 @@ function Desk({ user }) {
         .from('notes')
         .delete()
         .eq('id', item.id)
-        .eq('user_id', user.id)
         .eq('desk_id', selectedDeskId)
       error = noteError
     }
