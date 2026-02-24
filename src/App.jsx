@@ -252,9 +252,14 @@ function Desk({ user }) {
     await supabase.auth.signOut();
   }
 
+
   // Drag state
   const [draggedId, setDraggedId] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // Edit state
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState('');
 
   // Handle drag start
   function handleDragStart(e, note) {
@@ -330,10 +335,11 @@ function Desk({ user }) {
         New Note
       </button>
 
+
       {notes.map((note) => (
         <div
           key={note.id}
-          onMouseDown={(e) => handleDragStart(e, note)}
+          onMouseDown={editingId ? undefined : (e) => handleDragStart(e, note)}
           style={{
             position: 'absolute',
             left: note.x,
@@ -343,11 +349,39 @@ function Desk({ user }) {
             padding: 20,
             width: 200,
             boxShadow: '3px 3px 10px rgba(0,0,0,0.3)',
-            cursor: draggedId === note.id ? 'grabbing' : 'grab',
+            cursor: editingId ? 'text' : draggedId === note.id ? 'grabbing' : 'grab',
             zIndex: draggedId === note.id ? 100 : 1
           }}
         >
-          {note.content}
+          {editingId === note.id ? (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                await supabase.from('notes').update({ content: editValue }).eq('id', note.id);
+                setEditingId(null);
+                setEditValue('');
+                fetchNotes();
+              }}
+            >
+              <textarea
+                value={editValue}
+                onChange={e => setEditValue(e.target.value)}
+                autoFocus
+                style={{ width: '100%', minHeight: 60, fontSize: 16, borderRadius: 4, border: '1px solid #ccc', resize: 'vertical' }}
+              />
+              <div style={{ marginTop: 8, textAlign: 'right' }}>
+                <button type="submit" style={{ marginRight: 8, padding: '4px 12px', borderRadius: 4, border: 'none', background: '#4285F4', color: '#fff', cursor: 'pointer' }}>Save</button>
+                <button type="button" onClick={() => { setEditingId(null); setEditValue(''); }} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', background: '#eee', color: '#333', cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </form>
+          ) : (
+            <div
+              onClick={() => { setEditingId(note.id); setEditValue(note.content); }}
+              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', cursor: 'pointer', minHeight: 40 }}
+            >
+              {note.content}
+            </div>
+          )}
         </div>
       ))}
 
