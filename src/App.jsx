@@ -309,7 +309,8 @@ function Desk({ user }) {
                   onClick={() => deleteNote(note.id)}
                   style={{
                     marginRight: 8,
-                    padding: '4px 12px',
+                    padding: '3px 8px',
+                    fontSize: 12,
                     borderRadius: 4,
                     border: 'none',
                     background: '#d32f2f',
@@ -323,7 +324,8 @@ function Desk({ user }) {
                   type="submit"
                   style={{
                     marginRight: 8,
-                    padding: '4px 12px',
+                    padding: '3px 8px',
+                    fontSize: 12,
                     borderRadius: 4,
                     border: 'none',
                     background: '#4285F4',
@@ -340,7 +342,8 @@ function Desk({ user }) {
                     setEditValue('')
                   }}
                   style={{
-                    padding: '4px 12px',
+                    padding: '3px 8px',
+                    fontSize: 12,
                     borderRadius: 4,
                     border: 'none',
                     background: '#eee',
