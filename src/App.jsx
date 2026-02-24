@@ -76,6 +76,7 @@ function Desk({ user }) {
   const [deskNameError, setDeskNameError] = useState('')
   const [deskNameSaving, setDeskNameSaving] = useState(false)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const [editSaveError, setEditSaveError] = useState('')
   const [backgroundMode, setBackgroundMode] = useState('desk1')
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const [draggedId, setDraggedId] = useState(null)
@@ -854,10 +855,23 @@ function Desk({ user }) {
     if (isSavingEdit) return
 
     setIsSavingEdit(true)
-    const didSave = await saveItemEdits(item)
-    setIsSavingEdit(false)
+    setEditSaveError('')
 
-    if (!didSave) return
+    let didSave = false
+    try {
+      didSave = await saveItemEdits(item)
+    } catch (error) {
+      console.error('Unexpected save error:', error)
+      setEditSaveError('Save failed. Please try again.')
+      return
+    } finally {
+      setIsSavingEdit(false)
+    }
+
+    if (!didSave) {
+      setEditSaveError('Save failed. Please check your connection and try again.')
+      return
+    }
 
     setEditingId(null)
     setEditValue('')
@@ -866,6 +880,7 @@ function Desk({ user }) {
     setShowStyleEditor(false)
     setEditColor('#fff59d')
     setEditFontFamily('inherit')
+    setEditSaveError('')
   }
 
   async function toggleChecklistItem(itemKey, itemIndex) {
@@ -1485,7 +1500,10 @@ function Desk({ user }) {
                   <>
                     <input
                       value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
+                      onChange={(e) => {
+                        if (editSaveError) setEditSaveError('')
+                        setEditValue(e.target.value)
+                      }}
                       placeholder="Checklist title"
                       style={{
                         width: '100%',
@@ -1534,6 +1552,7 @@ function Desk({ user }) {
                             value={entry.text}
                             onChange={(e) => {
                               const nextText = e.target.value
+                              if (editSaveError) setEditSaveError('')
                               setChecklistEditItems((prev) =>
                                 prev.map((current, currentIndex) =>
                                   currentIndex === index ? { ...current, text: nextText } : current
@@ -1558,7 +1577,10 @@ function Desk({ user }) {
                       <div style={{ display: 'flex', gap: 6 }}>
                         <input
                           value={newChecklistItemText}
-                          onChange={(e) => setNewChecklistItemText(e.target.value)}
+                          onChange={(e) => {
+                            if (editSaveError) setEditSaveError('')
+                            setNewChecklistItemText(e.target.value)
+                          }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault()
@@ -1600,7 +1622,10 @@ function Desk({ user }) {
                 ) : (
                   <textarea
                     value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
+                    onChange={(e) => {
+                      if (editSaveError) setEditSaveError('')
+                      setEditValue(e.target.value)
+                    }}
                     autoFocus
                     style={{
                       width: '100%',
@@ -1637,7 +1662,10 @@ function Desk({ user }) {
                       <input
                         type="color"
                         value={editColor}
-                        onChange={(e) => setEditColor(e.target.value)}
+                        onChange={(e) => {
+                          if (editSaveError) setEditSaveError('')
+                          setEditColor(e.target.value)
+                        }}
                         style={{ width: 28, height: 24, border: 'none', padding: 0, background: 'transparent', cursor: 'pointer' }}
                       />
                     </label>
@@ -1646,7 +1674,10 @@ function Desk({ user }) {
                       Font
                       <select
                         value={editFontFamily}
-                        onChange={(e) => setEditFontFamily(e.target.value)}
+                        onChange={(e) => {
+                          if (editSaveError) setEditSaveError('')
+                          setEditFontFamily(e.target.value)
+                        }}
                         style={{
                           flex: 1,
                           minWidth: 110,
@@ -1722,6 +1753,8 @@ function Desk({ user }) {
                     <button
                       type="button"
                       onClick={() => {
+                        setIsSavingEdit(false)
+                        setEditSaveError('')
                         setEditingId(null)
                         setEditValue('')
                         setChecklistEditItems([])
@@ -1744,10 +1777,18 @@ function Desk({ user }) {
                     </button>
                   </div>
                 </div>
+
+                {editSaveError && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#d32f2f', textAlign: 'right' }}>
+                    {editSaveError}
+                  </div>
+                )}
               </form>
             ) : (
               <div
                 onClick={() => {
+                  setIsSavingEdit(false)
+                  setEditSaveError('')
                   setEditingId(itemKey)
                   setShowStyleEditor(false)
                   setEditColor(getItemColor(item))
