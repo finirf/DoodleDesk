@@ -35,7 +35,8 @@ function App() {
     )
   }
 
-  if (!session) {
+  // Show debug info for session and user
+  if (!session || !session.user) {
     return (
       <div style={{ padding: 40, minHeight: '100vh', position: 'relative' }}>
         <h2>DoodleDesk</h2>
@@ -56,7 +57,8 @@ function App() {
         >
           Login with Google
         </button>
-        <pre>Debug: session is {JSON.stringify(session)}</pre>
+        <pre>Debug: session is {JSON.stringify(session, null, 2)}</pre>
+        <pre>Debug: session.user is {session && session.user ? JSON.stringify(session.user, null, 2) : 'undefined'}</pre>
         <Footer />
       </div>
     )
