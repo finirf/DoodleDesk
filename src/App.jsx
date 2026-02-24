@@ -65,6 +65,9 @@ function Desk({ user }) {
   const [notes, setNotes] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [editValue, setEditValue] = useState('')
+  const [editColor, setEditColor] = useState('#fff59d')
+  const [editFontFamily, setEditFontFamily] = useState('inherit')
+  const [showStyleEditor, setShowStyleEditor] = useState(false)
   const [checklistEditItems, setChecklistEditItems] = useState([])
   const [newChecklistItemText, setNewChecklistItemText] = useState('')
   const [showNewNoteMenu, setShowNewNoteMenu] = useState(false)
@@ -100,12 +103,20 @@ function Desk({ user }) {
   const deskMenuRef = useRef(null)
 
   const growThreshold = 180
+  const FONT_OPTIONS = [
+    { label: 'System', value: 'inherit' },
+    { label: 'Arial', value: 'Arial, sans-serif' },
+    { label: 'Georgia', value: 'Georgia, serif' },
+    { label: 'Courier New', value: '"Courier New", monospace' },
+    { label: 'Trebuchet MS', value: '"Trebuchet MS", sans-serif' }
+  ]
 
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
   const backgroundLayers = Array.from({ length: sectionCount }, (_, index) => {
     if (backgroundMode === 'desk1') return "url('/brownDesk.png')"
     if (backgroundMode === 'desk2') return "url('/grayDesk.png')"
     if (backgroundMode === 'desk3') return "url('/leavesDesk.jpg')"
+    if (backgroundMode === 'desk4') return "url('/flowersDesk.jpg')"
     return "url('/brownDesk.png')"
   })
   const backgroundImage = backgroundLayers.join(', ')
@@ -121,6 +132,21 @@ function Desk({ user }) {
 
   function isChecklistItem(item) {
     return item.item_type === 'checklist'
+  }
+
+  function getDefaultItemColor(itemType) {
+    return itemType === 'checklist' ? '#ffffff' : '#fff59d'
+  }
+
+  function getItemColor(item) {
+    const fallback = getDefaultItemColor(item?.item_type)
+    const color = typeof item?.color === 'string' ? item.color.trim() : ''
+    return color || fallback
+  }
+
+  function getItemFontFamily(item) {
+    const value = typeof item?.font_family === 'string' ? item.font_family.trim() : ''
+    return value || 'inherit'
   }
 
   function getItemWidth(item) {
@@ -215,7 +241,7 @@ function Desk({ user }) {
 
   function getDeskBackgroundValue(desk) {
     const nextMode = desk?.background_mode || desk?.background
-    if (nextMode === 'desk1' || nextMode === 'desk2' || nextMode === 'desk3') {
+    if (nextMode === 'desk1' || nextMode === 'desk2' || nextMode === 'desk3' || nextMode === 'desk4') {
       return nextMode
     }
     return 'desk1'
@@ -466,7 +492,7 @@ function Desk({ user }) {
 
     const { data, error } = await supabase
       .from('notes')
-      .insert([{ desk_id: selectedDeskId, content: 'New note', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
+      .insert([{ desk_id: selectedDeskId, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
       .select()
 
     if (!error && data?.[0]) {
@@ -481,7 +507,7 @@ function Desk({ user }) {
 
     const { data: checklistData, error: checklistError } = await supabase
       .from('checklists')
-      .insert([{ desk_id: selectedDeskId, title: 'Checklist', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
+      .insert([{ desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
       .select()
 
     if (checklistError || !checklistData?.[0]) {
@@ -669,11 +695,14 @@ function Desk({ user }) {
 
   async function saveItemEdits(item) {
     const nextRotation = toStoredRotation(Number(item.rotation) || 0)
+    const nextColor = (editColor || getItemColor(item)).trim() || getDefaultItemColor(item.item_type)
+    const nextFontFamily = (editFontFamily || 'inherit').trim() || 'inherit'
+    const itemKey = getItemKey(item)
 
     if (!isChecklistItem(item)) {
       const { error } = await supabase
         .from('notes')
-        .update({ content: editValue, rotation: nextRotation, desk_id: selectedDeskId })
+        .update({ content: editValue, rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId })
         .eq('id', item.id)
         .eq('desk_id', selectedDeskId)
 
@@ -684,7 +713,7 @@ function Desk({ user }) {
 
       setNotes((prev) =>
         prev.map((row) =>
-          getItemKey(row) === getItemKey(item) ? { ...row, content: editValue, rotation: nextRotation } : row
+          getItemKey(row) === itemKey ? { ...row, content: editValue, rotation: nextRotation, color: nextColor, font_family: nextFontFamily } : row
         )
       )
       return
@@ -700,7 +729,7 @@ function Desk({ user }) {
 
     const { error: checklistError } = await supabase
       .from('checklists')
-      .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation, desk_id: selectedDeskId })
+      .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId })
       .eq('id', item.id)
       .eq('desk_id', selectedDeskId)
 
@@ -736,11 +765,13 @@ function Desk({ user }) {
 
     setNotes((prev) =>
       prev.map((row) =>
-        getItemKey(row) === getItemKey(item)
+        getItemKey(row) === itemKey
           ? {
               ...row,
               title: editValue.trim() || 'Checklist',
               rotation: nextRotation,
+              color: nextColor,
+              font_family: nextFontFamily,
               items: insertedItems
             }
           : row
@@ -1169,6 +1200,28 @@ function Desk({ user }) {
                 >
                   Leaves Desk
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentDeskBackground('desk4')}
+                  disabled={!currentDesk}
+                  style={{
+                    flex: 1,
+                    padding: '6px 6px',
+                    fontSize: 12,
+                    borderRadius: 4,
+                    border: backgroundMode === 'desk4' ? '2px solid #4285F4' : '1px solid #ddd',
+                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/flowersDesk.jpg')",
+                    backgroundSize: 'cover, cover',
+                    backgroundPosition: 'center, center',
+                    backgroundRepeat: 'no-repeat, no-repeat',
+                    color: '#111',
+                    fontWeight: 600,
+                    textShadow: '0 1px 1px rgba(255,255,255,0.8)',
+                    cursor: currentDesk ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  Flowers Desk
+                </button>
               </div>
             </div>
           )}
@@ -1272,11 +1325,12 @@ function Desk({ user }) {
               left: item.x,
               top: item.y,
               transform: `rotate(${item.rotation || 0}deg)`,
-              background: isChecklist ? '#fff' : '#fffa91',
+              background: editingId === itemKey ? editColor : getItemColor(item),
               padding: 20,
               width: getItemWidth(item),
               minHeight: getItemHeight(item),
               boxShadow: '3px 3px 10px rgba(0,0,0,0.3)',
+              fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
               cursor: editingId ? 'text' : draggedId === itemKey ? 'grabbing' : 'grab',
               zIndex: draggedId === itemKey ? 100 : 1
             }}
@@ -1291,6 +1345,9 @@ function Desk({ user }) {
                   setEditValue('')
                   setChecklistEditItems([])
                   setNewChecklistItemText('')
+                  setShowStyleEditor(false)
+                  setEditColor('#fff59d')
+                  setEditFontFamily('inherit')
                 }}
               >
                 <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
@@ -1358,6 +1415,7 @@ function Desk({ user }) {
                         background: '#eaf4ff',
                         color: '#222',
                         padding: '6px 8px',
+                        fontFamily: editFontFamily,
                         boxSizing: 'border-box'
                       }}
                     />
@@ -1409,6 +1467,7 @@ function Desk({ user }) {
                               background: '#eaf4ff',
                               color: '#222',
                               padding: '4px 6px',
+                              fontFamily: editFontFamily,
                               boxSizing: 'border-box'
                             }}
                           />
@@ -1435,6 +1494,7 @@ function Desk({ user }) {
                             background: '#eaf4ff',
                             color: '#222',
                             padding: '4px 6px',
+                            fontFamily: editFontFamily,
                             boxSizing: 'border-box'
                           }}
                         />
@@ -1470,12 +1530,64 @@ function Desk({ user }) {
                       background: '#eaf4ff',
                       resize: 'vertical',
                       color: '#222',
+                      fontFamily: editFontFamily,
                       boxSizing: 'border-box'
                     }}
                   />
                 )}
 
-                <div style={{ marginTop: 8, textAlign: 'right' }}>
+                {showStyleEditor && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      marginBottom: 8,
+                      padding: 8,
+                      borderRadius: 6,
+                      background: 'rgba(255,255,255,0.7)',
+                      border: '1px solid rgba(0,0,0,0.15)',
+                      display: 'flex',
+                      gap: 8,
+                      alignItems: 'center'
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#222' }}>
+                      Color
+                      <input
+                        type="color"
+                        value={editColor}
+                        onChange={(e) => setEditColor(e.target.value)}
+                        style={{ width: 28, height: 24, border: 'none', padding: 0, background: 'transparent', cursor: 'pointer' }}
+                      />
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#222', flex: 1 }}>
+                      Font
+                      <select
+                        value={editFontFamily}
+                        onChange={(e) => setEditFontFamily(e.target.value)}
+                        style={{
+                          flex: 1,
+                          minWidth: 110,
+                          borderRadius: 4,
+                          border: '1px solid #bbb',
+                          background: '#fff',
+                          color: '#222',
+                          padding: '3px 6px',
+                          fontSize: 12
+                        }}
+                      >
+                        {FONT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                )}
+
+                <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <button
                     type="button"
                     onClick={() => requestDeleteNote(itemKey)}
@@ -1492,47 +1604,70 @@ function Desk({ user }) {
                   >
                     Delete
                   </button>
-                  <button
-                    type="submit"
-                    style={{
-                      marginRight: 4,
-                      padding: '2px 6px',
-                      fontSize: 11,
-                      borderRadius: 4,
-                      border: 'none',
-                      background: '#4285F4',
-                      color: '#fff',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingId(null)
-                      setEditValue('')
-                      setChecklistEditItems([])
-                      setNewChecklistItemText('')
-                    }}
-                    style={{
-                      padding: '2px 6px',
-                      fontSize: 11,
-                      borderRadius: 4,
-                      border: 'none',
-                      background: '#eee',
-                      color: '#333',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Cancel
-                  </button>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowStyleEditor((prev) => !prev)}
+                      style={{
+                        padding: '2px 6px',
+                        fontSize: 11,
+                        borderRadius: 4,
+                        border: 'none',
+                        background: showStyleEditor ? '#222' : '#666',
+                        color: '#fff',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Style
+                    </button>
+                    <button
+                      type="submit"
+                      style={{
+                        padding: '2px 6px',
+                        fontSize: 11,
+                        borderRadius: 4,
+                        border: 'none',
+                        background: '#4285F4',
+                        color: '#fff',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingId(null)
+                        setEditValue('')
+                        setChecklistEditItems([])
+                        setNewChecklistItemText('')
+                        setShowStyleEditor(false)
+                        setEditColor('#fff59d')
+                        setEditFontFamily('inherit')
+                      }}
+                      style={{
+                        padding: '2px 6px',
+                        fontSize: 11,
+                        borderRadius: 4,
+                        border: 'none',
+                        background: '#eee',
+                        color: '#333',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               </form>
             ) : (
               <div
                 onClick={() => {
                   setEditingId(itemKey)
+                  setShowStyleEditor(false)
+                  setEditColor(getItemColor(item))
+                  setEditFontFamily(getItemFontFamily(item))
                   if (isChecklist) {
                     setEditValue(item.title || 'Checklist')
                     setChecklistEditItems((item.items || []).map((entry) => ({
@@ -1551,7 +1686,8 @@ function Desk({ user }) {
                   wordBreak: 'break-word',
                   cursor: 'pointer',
                   minHeight: 40,
-                  color: '#222'
+                  color: '#222',
+                  fontFamily: getItemFontFamily(item)
                 }}
               >
                 {isChecklist ? (
