@@ -5,10 +5,12 @@ function App() {
   const [session, setSession] = useState(null)
 
   useEffect(() => {
+    // Get initial session
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
     })
 
+    // Listen to auth state changes
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session)
@@ -20,15 +22,27 @@ function App() {
 
   if (!session) {
     return (
-      <div style={{ padding: 40 }}>
+      <div style={{ padding: 40, minHeight: '100vh', position: 'relative' }}>
         <h2>DoodleDesk</h2>
         <button
           onClick={() =>
             supabase.auth.signInWithOAuth({ provider: 'google' })
           }
+          style={{
+            padding: '10px 20px',
+            fontSize: 16,
+            cursor: 'pointer',
+            background: '#4285F4',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 4,
+            marginTop: 20
+          }}
         >
           Login with Google
         </button>
+
+        <Footer />
       </div>
     )
   }
@@ -44,10 +58,7 @@ function Desk({ user }) {
   }, [])
 
   async function fetchNotes() {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-
+    const { data, error } = await supabase.from('notes').select('*')
     if (!error) setNotes(data)
   }
 
@@ -65,8 +76,18 @@ function Desk({ user }) {
   }
 
   return (
-    <div style={{ padding: 40 }}>
-      <button onClick={addNote}>New Note</button>
+    <div style={{ padding: 40, minHeight: '100vh', position: 'relative' }}>
+      <button
+        onClick={addNote}
+        style={{
+          padding: '8px 16px',
+          fontSize: 14,
+          marginBottom: 20,
+          cursor: 'pointer'
+        }}
+      >
+        New Note
+      </button>
 
       {notes.map(note => (
         <div
@@ -85,6 +106,8 @@ function Desk({ user }) {
           {note.content}
         </div>
       ))}
+
+      <Footer />
     </div>
   )
 }
@@ -101,7 +124,10 @@ function Footer() {
         color: '#555'
       }}
     >
-      <a href="/privacy" style={{ color: '#555', textDecoration: 'underline' }}>
+      <a
+        href="/privacy"
+        style={{ color: '#555', textDecoration: 'underline' }}
+      >
         Privacy Policy
       </a>
     </footer>
