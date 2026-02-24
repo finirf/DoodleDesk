@@ -183,6 +183,10 @@ function LoginScreen() {
 
 function Desk({ user }) {
   const [notes, setNotes] = useState([])
+  // Debug output
+  useEffect(() => {
+    console.log('Desk user prop:', user)
+  }, [user])
 
   useEffect(() => {
     fetchNotes()
@@ -208,6 +212,9 @@ function Desk({ user }) {
 
   return (
     <div style={{ padding: 40, minHeight: '100vh', position: 'relative' }}>
+      <pre style={{ background: '#eee', padding: 10, borderRadius: 4, marginBottom: 16 }}>
+        Debug: user = {JSON.stringify(user, null, 2)}
+      </pre>
       <button
         onClick={addNote}
         style={{
