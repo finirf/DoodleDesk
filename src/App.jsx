@@ -3,22 +3,34 @@ import { supabase } from './supabase'
 
 function App() {
   const [session, setSession] = useState(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
+      setLoading(false)
     })
 
     // Listen to auth state changes
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session)
+        setLoading(false)
       }
     )
 
     return () => listener.subscription.unsubscribe()
   }, [])
+
+  if (loading) {
+    return (
+      <div style={{ padding: 40, minHeight: '100vh', position: 'relative' }}>
+        <h2>DoodleDesk</h2>
+        <p>Loading...</p>
+      </div>
+    )
+  }
 
   if (!session) {
     return (
