@@ -221,6 +221,7 @@ function Desk({ user }) {
   })
   const draggedIdRef = useRef(null)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
+  const notesRef = useRef([])
 
   const noteWidth = 200
   const noteHeight = 120
@@ -239,6 +240,10 @@ function Desk({ user }) {
   useEffect(() => {
     fetchNotes()
   }, [])
+
+  useEffect(() => {
+    notesRef.current = notes
+  }, [notes])
 
   useEffect(() => {
     function handleResize() {
@@ -309,11 +314,23 @@ function Desk({ user }) {
     )
   }
 
-  function handleDragEnd() {
+  async function handleDragEnd() {
+    const activeDraggedId = draggedIdRef.current
+
     setDraggedId(null)
     draggedIdRef.current = null
     window.removeEventListener('mousemove', handleDragMove)
     window.removeEventListener('mouseup', handleDragEnd)
+
+    if (!activeDraggedId) return
+
+    const noteToPersist = notesRef.current.find((note) => note.id === activeDraggedId)
+    if (!noteToPersist) return
+
+    await supabase
+      .from('notes')
+      .update({ x: noteToPersist.x, y: noteToPersist.y })
+      .eq('id', activeDraggedId)
   }
 
   return (
