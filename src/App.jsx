@@ -10,6 +10,7 @@ function App() {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setLoading(false)
+      console.log('Initial session:', data.session)
     })
 
     // Listen to auth state changes
@@ -17,6 +18,7 @@ function App() {
       (_event, session) => {
         setSession(session)
         setLoading(false)
+        console.log('Auth state changed:', session)
       }
     )
 
@@ -28,6 +30,7 @@ function App() {
       <div style={{ padding: 40, minHeight: '100vh', position: 'relative' }}>
         <h2>DoodleDesk</h2>
         <p>Loading...</p>
+        <pre>Debug: loading session...</pre>
       </div>
     )
   }
@@ -53,7 +56,7 @@ function App() {
         >
           Login with Google
         </button>
-
+        <pre>Debug: session is {JSON.stringify(session)}</pre>
         <Footer />
       </div>
     )
