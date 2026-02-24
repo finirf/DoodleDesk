@@ -308,7 +308,7 @@ function Desk({ user }) {
       padding: 40,
       minHeight: '100vh',
       position: 'relative',
-      backgroundImage: 'url("/desk.jpg")',
+      backgroundImage: 'url("/desk.png")',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat'
