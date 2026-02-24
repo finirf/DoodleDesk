@@ -1802,43 +1802,45 @@ function Desk({ user }) {
                 + New Desk
               </button>
 
-              <button
-                type="button"
-                onClick={openRenameDeskDialog}
-                disabled={!currentDesk}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '7px 10px',
-                  border: 'none',
-                  borderRadius: 4,
-                  background: '#fff',
-                  color: currentDesk ? '#222' : '#999',
-                  cursor: currentDesk ? 'pointer' : 'not-allowed'
-                }}
-              >
-                Rename Desk
-              </button>
+              {currentDesk && isCurrentDeskOwner && (
+                <button
+                  type="button"
+                  onClick={openRenameDeskDialog}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '7px 10px',
+                    border: 'none',
+                    borderRadius: 4,
+                    background: '#fff',
+                    color: '#222',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Rename Desk
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={deleteCurrentDesk}
-                disabled={!currentDesk || !isCurrentDeskOwner}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '7px 10px',
-                  border: 'none',
-                  borderRadius: 4,
-                  background: '#fff',
-                  color: currentDesk && isCurrentDeskOwner ? '#d32f2f' : '#999',
-                  cursor: currentDesk && isCurrentDeskOwner ? 'pointer' : 'not-allowed'
-                }}
-              >
-                Delete Desk
-              </button>
+              {currentDesk && isCurrentDeskOwner && (
+                <button
+                  type="button"
+                  onClick={deleteCurrentDesk}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '7px 10px',
+                    border: 'none',
+                    borderRadius: 4,
+                    background: '#fff',
+                    color: '#d32f2f',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Delete Desk
+                </button>
+              )}
 
               {currentDesk && isCurrentDeskOwner && (
                 <button
