@@ -392,10 +392,25 @@ function Desk({ user }) {
             <form
               onSubmit={async (e) => {
                 e.preventDefault()
-                await supabase.from('notes').update({ content: editValue }).eq('id', note.id)
+                const noteToSave = notesRef.current.find((item) => item.id === note.id)
+                const nextRotation = Number(noteToSave?.rotation) || 0
+
+                const { error } = await supabase
+                  .from('notes')
+                  .update({ content: editValue, rotation: nextRotation })
+                  .eq('id', note.id)
+                  .eq('user_id', user.id)
+
+                if (!error) {
+                  setNotes((prev) =>
+                    prev.map((item) =>
+                      item.id === note.id ? { ...item, content: editValue, rotation: nextRotation } : item
+                    )
+                  )
+                }
+
                 setEditingId(null)
                 setEditValue('')
-                fetchNotes()
               }}
             >
               <div style={{ marginBottom: 8, textAlign: 'center' }}>
