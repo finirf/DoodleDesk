@@ -271,6 +271,8 @@ function Desk({ user }) {
       >
         Logout
       </button>
+
+      <button
         onClick={addNote}
         style={{
           padding: '8px 16px',
