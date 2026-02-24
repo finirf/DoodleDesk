@@ -1,49 +1,51 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 
-function App() {
+export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
+    // Get session on mount
+    async function loadSession() {
+      const { data: { session } } = await supabase.auth.getSession()
+      setSession(session)
       setLoading(false)
-      console.log('Initial session:', data.session)
-    })
+      console.log('Initial session:', session)
+    }
+    loadSession()
 
-    // Listen to auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session)
-        setLoading(false)
-        console.log('Auth state changed:', session)
-      }
-    )
+    // Listen for auth changes (sign-in/out)
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      console.log('Auth state changed:', session)
+    })
 
     return () => listener.subscription.unsubscribe()
   }, [])
 
   if (loading) {
     return (
-      <div style={{ padding: 40, minHeight: '100vh', position: 'relative' }}>
+      <div style={{ padding: 40, minHeight: '100vh', textAlign: 'center' }}>
         <h2>DoodleDesk</h2>
         <p>Loading...</p>
-        <pre>Debug: loading session...</pre>
       </div>
     )
   }
 
-  // Show debug info for session and user
   if (!session || !session.user) {
     return (
-      <div style={{ padding: 40, minHeight: '100vh', position: 'relative' }}>
+      <div style={{ padding: 40, minHeight: '100vh', textAlign: 'center' }}>
         <h2>DoodleDesk</h2>
         <button
-          onClick={() =>
-            supabase.auth.signInWithOAuth({ provider: 'google' })
-          }
+          onClick={async () => {
+            const { data, error } = await supabase.auth.signInWithOAuth({
+              provider: 'google', 
+              options: { redirectTo: window.location.origin } // optional
+            })
+            if (error) console.error('Login error:', error)
+            else setSession(data.session)
+          }}
           style={{
             padding: '10px 20px',
             fontSize: 16,
@@ -150,5 +152,3 @@ function Footer() {
     </footer>
   )
 }
-
-export default App
