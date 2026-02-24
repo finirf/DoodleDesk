@@ -63,7 +63,8 @@ function Desk({ user }) {
   const [notes, setNotes] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [editValue, setEditValue] = useState('')
-  const [checklistLinesValue, setChecklistLinesValue] = useState('')
+  const [checklistEditItems, setChecklistEditItems] = useState([])
+  const [newChecklistItemText, setNewChecklistItemText] = useState('')
   const [showNewNoteMenu, setShowNewNoteMenu] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const [draggedId, setDraggedId] = useState(null)
@@ -103,21 +104,12 @@ function Desk({ user }) {
     return item.item_type === 'checklist'
   }
 
-  function checklistToLines(items) {
-    return items.map((item) => `${item.is_checked ? '[x]' : '[ ]'} ${item.text}`).join('\n')
-  }
+  function addChecklistEditItem() {
+    const text = newChecklistItemText.trim()
+    if (!text) return
 
-  function linesToChecklistItems(lines) {
-    return lines
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map((line, index) => {
-        const checked = /^\[(x|X)\]\s*/.test(line)
-        const text = line.replace(/^\[(x|X| )\]\s*/, '').trim()
-        return { text, is_checked: checked, sort_order: index }
-      })
-      .filter((item) => item.text.length > 0)
+    setChecklistEditItems((prev) => [...prev, { text, is_checked: false }])
+    setNewChecklistItemText('')
   }
 
   useEffect(() => {
@@ -339,7 +331,13 @@ function Desk({ user }) {
       return
     }
 
-    const nextItems = linesToChecklistItems(checklistLinesValue)
+    const nextItems = checklistEditItems
+      .map((entry, index) => ({
+        text: (entry.text || '').trim(),
+        is_checked: Boolean(entry.is_checked),
+        sort_order: index
+      }))
+      .filter((entry) => entry.text.length > 0)
 
     const { error: checklistError } = await supabase
       .from('checklists')
@@ -535,7 +533,8 @@ function Desk({ user }) {
       if (editingId === pendingDeleteId) {
         setEditingId(null)
         setEditValue('')
-        setChecklistLinesValue('')
+        setChecklistEditItems([])
+        setNewChecklistItemText('')
       }
     }
 
@@ -732,7 +731,8 @@ function Desk({ user }) {
 
                   setEditingId(null)
                   setEditValue('')
-                  setChecklistLinesValue('')
+                  setChecklistEditItems([])
+                  setNewChecklistItemText('')
                 }}
               >
                 <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
@@ -778,22 +778,109 @@ function Desk({ user }) {
                         boxSizing: 'border-box'
                       }}
                     />
-                    <textarea
-                      value={checklistLinesValue}
-                      onChange={(e) => setChecklistLinesValue(e.target.value)}
-                      autoFocus
-                      placeholder={'[ ] Item one\n[x] Completed item'}
-                      style={{
-                        width: '100%',
-                        minHeight: 70,
-                        fontSize: 13,
-                        borderRadius: 4,
-                        border: '1px solid #ccc',
-                        resize: 'vertical',
-                        color: '#222',
-                        boxSizing: 'border-box'
-                      }}
-                    />
+
+                    <div style={{ marginBottom: 8 }}>
+                      {checklistEditItems.map((entry, index) => (
+                        <div
+                          key={`${itemKey}-edit-${index}`}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={Boolean(entry.is_checked)}
+                            onChange={(e) => {
+                              const nextChecked = e.target.checked
+                              setChecklistEditItems((prev) =>
+                                prev.map((current, currentIndex) =>
+                                  currentIndex === index ? { ...current, is_checked: nextChecked } : current
+                                )
+                              )
+                            }}
+                          />
+                          <input
+                            value={entry.text}
+                            onChange={(e) => {
+                              const nextText = e.target.value
+                              setChecklistEditItems((prev) =>
+                                prev.map((current, currentIndex) =>
+                                  currentIndex === index ? { ...current, text: nextText } : current
+                                )
+                              )
+                            }}
+                            style={{
+                              flex: 1,
+                              fontSize: 13,
+                              borderRadius: 4,
+                              border: '1px solid #ccc',
+                              color: '#222',
+                              padding: '4px 6px',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChecklistEditItems((prev) => prev.filter((_, currentIndex) => currentIndex !== index))
+                            }}
+                            aria-label="Remove checklist item"
+                            title="Remove item"
+                            style={{
+                              width: 20,
+                              height: 20,
+                              padding: 0,
+                              borderRadius: 4,
+                              border: 'none',
+                              background: '#d32f2f',
+                              color: '#fff',
+                              cursor: 'pointer',
+                              fontSize: 12,
+                              lineHeight: 1
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input
+                          value={newChecklistItemText}
+                          onChange={(e) => setNewChecklistItemText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              addChecklistEditItem()
+                            }
+                          }}
+                          autoFocus
+                          placeholder="New item"
+                          style={{
+                            flex: 1,
+                            fontSize: 13,
+                            borderRadius: 4,
+                            border: '1px solid #ccc',
+                            color: '#222',
+                            padding: '4px 6px',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={addChecklistEditItem}
+                          style={{
+                            padding: '2px 8px',
+                            fontSize: 11,
+                            borderRadius: 4,
+                            border: 'none',
+                            background: '#666',
+                            color: '#fff',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
                   </>
                 ) : (
                   <textarea
@@ -850,7 +937,8 @@ function Desk({ user }) {
                     onClick={() => {
                       setEditingId(null)
                       setEditValue('')
-                      setChecklistLinesValue('')
+                      setChecklistEditItems([])
+                      setNewChecklistItemText('')
                     }}
                     style={{
                       padding: '2px 6px',
@@ -872,10 +960,15 @@ function Desk({ user }) {
                   setEditingId(itemKey)
                   if (isChecklist) {
                     setEditValue(item.title || 'Checklist')
-                    setChecklistLinesValue(checklistToLines(item.items || []))
+                    setChecklistEditItems((item.items || []).map((entry) => ({
+                      text: entry.text || '',
+                      is_checked: Boolean(entry.is_checked)
+                    })))
+                    setNewChecklistItemText('')
                   } else {
                     setEditValue(item.content || '')
-                    setChecklistLinesValue('')
+                    setChecklistEditItems([])
+                    setNewChecklistItemText('')
                   }
                 }}
                 style={{
