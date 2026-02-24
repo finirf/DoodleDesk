@@ -6,21 +6,40 @@ export default function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error) console.error('Get session error:', error)
-      setSession(data.session)
-      setLoading(false)
-      console.log('Initial session:', data.session)
-    })
+    async function loadSession() {
+      try {
+        // 1️⃣ Check if coming back from OAuth redirect
+        const { data: redirectData, error: redirectError } = await supabase.auth.getSessionFromUrl()
+        if (redirectError) console.error('Redirect session error:', redirectError)
+        if (redirectData?.session) {
+          setSession(redirectData.session)
+          console.log('Session from redirect:', redirectData.session)
+          // Clean URL hash (#access_token=...)
+          if (window.location.hash) {
+            window.history.replaceState({}, document.title, window.location.pathname)
+          }
+        } else {
+          // 2️⃣ Fallback: get session from storage for returning users
+          const { data: { session }, error } = await supabase.auth.getSession()
+          if (error) console.error('Get session error:', error)
+          setSession(session)
+          console.log('Initial session:', session)
+        }
+      } catch (err) {
+        console.error('Error loading session:', err)
+      } finally {
+        setLoading(false)
+      }
 
-    // Listen for auth changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      console.log('Auth state changed:', session)
-    })
+      // Listen for auth changes (sign-in/sign-out)
+      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+        setSession(session)
+        console.log('Auth state changed:', session)
+      })
+      return () => listener.subscription.unsubscribe()
+    }
 
-    return () => listener.subscription.unsubscribe()
+    loadSession()
   }, [])
 
   if (loading) {
@@ -28,55 +47,51 @@ export default function App() {
       <div style={{ padding: 40, minHeight: '100vh', textAlign: 'center' }}>
         <h2>DoodleDesk</h2>
         <p>Loading...</p>
-        <pre>Debug: loading session...</pre>
       </div>
     )
   }
 
-  // Debug output for session
+  // If no session or user, show login/signup screen
   if (!session || !session.user) {
-    return (
-      <div style={{ padding: 40, minHeight: '100vh', textAlign: 'center' }}>
-        <h2>DoodleDesk</h2>
-        <LoginScreen />
-        <pre>Debug: session = {JSON.stringify(session, null, 2)}</pre>
-        <pre>Debug: session.user = {session && session.user ? JSON.stringify(session.user, null, 2) : 'undefined'}</pre>
-      </div>
-    )
+    return <LoginScreen />
   }
 
-  // ...existing code...
-
+  // Otherwise show the Desk
+  return <Desk user={session.user} />
 }
 
 function LoginScreen() {
-  const [mode, setMode] = useState('login'); // 'login' or 'signup'
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState('login') // 'login' or 'signup'
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [loading, setLoading] = useState(false)
 
   async function handleEmailAuth(e) {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-    setLoading(true);
-    if (mode === 'login') {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setError(error.message);
-      else setSuccess('Logged in!');
-    } else {
-      const { error } = await supabase.auth.signUp({ email, password });
-      if (error) setError(error.message);
-      else setSuccess('Check your email to confirm your account!');
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+    setLoading(true)
+    try {
+      if (mode === 'login') {
+        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error) setError(error.message)
+        else setSuccess('Logged in!')
+      } else {
+        const { error } = await supabase.auth.signUp({ email, password })
+        if (error) setError(error.message)
+        else setSuccess('Check your email to confirm your account!')
+      }
+    } finally {
+      setLoading(false)
     }
-    setLoading(false);
   }
 
   return (
     <div style={{ padding: 40, minHeight: '100vh', textAlign: 'center' }}>
       <h2>DoodleDesk</h2>
+
       <button
         onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })}
         style={{
@@ -93,21 +108,33 @@ function LoginScreen() {
       >
         Login with Google
       </button>
-      <div style={{ margin: '30px auto', maxWidth: 320, textAlign: 'left', border: '1px solid #eee', borderRadius: 8, padding: 24 }}>
+
+      <div
+        style={{
+          margin: '30px auto',
+          maxWidth: 320,
+          textAlign: 'left',
+          border: '1px solid #eee',
+          borderRadius: 8,
+          padding: 24
+        }}
+      >
         <form onSubmit={handleEmailAuth}>
-          <label htmlFor="email" style={{ fontWeight: 600 }}>{mode === 'login' ? 'Login' : 'Sign up'} with email:</label>
+          <label htmlFor="email" style={{ fontWeight: 600 }}>
+            {mode === 'login' ? 'Login' : 'Sign up'} with email:
+          </label>
           <input
             id="email"
             type="email"
             value={email}
-            onChange={e => setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
             placeholder="you@email.com"
             required
             style={{
               display: 'block',
               width: '100%',
               padding: '10px',
-              margin: '10px 0 10px 0',
+              margin: '10px 0',
               fontSize: 16,
               borderRadius: 4,
               border: '1px solid #ccc'
@@ -117,14 +144,14 @@ function LoginScreen() {
             id="password"
             type="password"
             value={password}
-            onChange={e => setPassword(e.target.value)}
+            onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
             required
             style={{
               display: 'block',
               width: '100%',
               padding: '10px',
-              margin: '10px 0 10px 0',
+              margin: '10px 0',
               fontSize: 16,
               borderRadius: 4,
               border: '1px solid #ccc'
@@ -148,33 +175,56 @@ function LoginScreen() {
             {mode === 'login' ? 'Login' : 'Sign Up'}
           </button>
         </form>
+
         <div style={{ marginTop: 10, textAlign: 'center' }}>
           {mode === 'login' ? (
             <>
-              <span>Don't have an account?{' '}</span>
-              <button type="button" onClick={() => setMode('signup')} style={{ color: '#4285F4', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Sign up</button>
+              <span>Don't have an account? </span>
+              <button
+                type="button"
+                onClick={() => setMode('signup')}
+                style={{
+                  color: '#4285F4',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0
+                }}
+              >
+                Sign up
+              </button>
             </>
           ) : (
             <>
-              <span>Already have an account?{' '}</span>
-              <button type="button" onClick={() => setMode('login')} style={{ color: '#4285F4', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Login</button>
+              <span>Already have an account? </span>
+              <button
+                type="button"
+                onClick={() => setMode('login')}
+                style={{
+                  color: '#4285F4',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0
+                }}
+              >
+                Login
+              </button>
             </>
           )}
         </div>
+
         {success && <div style={{ color: 'green', marginTop: 8 }}>{success}</div>}
         {error && <div style={{ color: 'red', marginTop: 8 }}>{error}</div>}
       </div>
     </div>
-  );
+  )
 }
-// ...existing code...
 
 function Desk({ user }) {
   const [notes, setNotes] = useState([])
-  // Debug output
-  useEffect(() => {
-    console.log('Desk user prop:', user)
-  }, [user])
 
   useEffect(() => {
     fetchNotes()
@@ -215,7 +265,7 @@ function Desk({ user }) {
         New Note
       </button>
 
-      {notes.map(note => (
+      {notes.map((note) => (
         <div
           key={note.id}
           style={{
@@ -250,10 +300,7 @@ function Footer() {
         color: '#555'
       }}
     >
-      <a
-        href="/privacy.html"
-        style={{ color: '#555', textDecoration: 'underline' }}
-      >
+      <a href="/privacy.html" style={{ color: '#555', textDecoration: 'underline' }}>
         Privacy Policy
       </a>
     </footer>
