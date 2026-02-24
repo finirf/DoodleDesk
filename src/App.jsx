@@ -378,8 +378,7 @@ function Desk({ user }) {
       if (invitedFriendIds.length > 0) {
         const invitedRows = invitedFriendIds.map((friendId) => ({
           desk_id: createdDesk.id,
-          user_id: friendId,
-          role: 'editor'
+          user_id: friendId
         }))
 
         const { error: invitedMemberInsertError } = await supabase
