@@ -776,6 +776,7 @@ function Desk({ user }) {
                         fontSize: 14,
                         borderRadius: 4,
                         border: '1px solid #ccc',
+                        background: '#eaf4ff',
                         color: '#222',
                         padding: '6px 8px',
                         boxSizing: 'border-box'
@@ -826,6 +827,7 @@ function Desk({ user }) {
                               fontSize: 13,
                               borderRadius: 4,
                               border: '1px solid #ccc',
+                              background: '#eaf4ff',
                               color: '#222',
                               padding: '4px 6px',
                               boxSizing: 'border-box'
@@ -851,6 +853,7 @@ function Desk({ user }) {
                             fontSize: 13,
                             borderRadius: 4,
                             border: '1px solid #ccc',
+                            background: '#eaf4ff',
                             color: '#222',
                             padding: '4px 6px',
                             boxSizing: 'border-box'
@@ -885,6 +888,7 @@ function Desk({ user }) {
                       fontSize: 16,
                       borderRadius: 4,
                       border: '1px solid #ccc',
+                      background: '#eaf4ff',
                       resize: 'vertical',
                       color: '#222',
                       boxSizing: 'border-box'
