@@ -137,13 +137,11 @@ create policy "owners can insert desk memberships"
 	on public.desk_members for insert
 	to authenticated
 	with check (
-		(auth.uid() = user_id and role = 'owner')
-		or exists (
+		exists (
 			select 1
-			from public.desk_members owner_member
-			where owner_member.desk_id = desk_members.desk_id
-				and owner_member.user_id = auth.uid()
-				and owner_member.role = 'owner'
+			from public.desks d
+			where d.id = desk_members.desk_id
+				and d.user_id = auth.uid()
 		)
 	);
 
@@ -154,19 +152,17 @@ create policy "owners can update desk memberships"
 	using (
 		exists (
 			select 1
-			from public.desk_members owner_member
-			where owner_member.desk_id = desk_members.desk_id
-				and owner_member.user_id = auth.uid()
-				and owner_member.role = 'owner'
+			from public.desks d
+			where d.id = desk_members.desk_id
+				and d.user_id = auth.uid()
 		)
 	)
 	with check (
 		exists (
 			select 1
-			from public.desk_members owner_member
-			where owner_member.desk_id = desk_members.desk_id
-				and owner_member.user_id = auth.uid()
-				and owner_member.role = 'owner'
+			from public.desks d
+			where d.id = desk_members.desk_id
+				and d.user_id = auth.uid()
 		)
 	);
 
@@ -177,10 +173,9 @@ create policy "owners can delete desk memberships"
 	using (
 		exists (
 			select 1
-			from public.desk_members owner_member
-			where owner_member.desk_id = desk_members.desk_id
-				and owner_member.user_id = auth.uid()
-				and owner_member.role = 'owner'
+			from public.desks d
+			where d.id = desk_members.desk_id
+				and d.user_id = auth.uid()
 		)
 	);
 

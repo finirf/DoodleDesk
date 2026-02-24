@@ -375,16 +375,6 @@ function Desk({ user }) {
     const createdDesk = data[0]
 
     if (isCollaborative) {
-      const { error: ownerMemberInsertError } = await supabase
-        .from('desk_members')
-        .upsert([{ desk_id: createdDesk.id, user_id: user.id, role: 'owner' }], { onConflict: 'desk_id,user_id' })
-
-      if (ownerMemberInsertError) {
-        console.error('Failed to add desk owner membership:', ownerMemberInsertError)
-        await supabase.from('desks').delete().eq('id', createdDesk.id).eq('user_id', user.id)
-        return { ok: false, errorMessage: ownerMemberInsertError?.message || 'Failed to create collaborative desk.' }
-      }
-
       if (invitedFriendIds.length > 0) {
         const invitedRows = invitedFriendIds.map((friendId) => ({
           desk_id: createdDesk.id,
@@ -394,7 +384,7 @@ function Desk({ user }) {
 
         const { error: invitedMemberInsertError } = await supabase
           .from('desk_members')
-          .upsert(invitedRows, { onConflict: 'desk_id,user_id' })
+          .insert(invitedRows, { ignoreDuplicates: true })
 
         if (invitedMemberInsertError) {
           console.error('Failed to add collaborators:', invitedMemberInsertError)
