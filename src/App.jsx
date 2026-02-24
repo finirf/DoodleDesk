@@ -125,7 +125,7 @@ function Footer() {
       }}
     >
       <a
-        href="/privacy"
+        href="/privacy.html"
         style={{ color: '#555', textDecoration: 'underline' }}
       >
         Privacy Policy
