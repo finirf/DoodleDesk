@@ -6,16 +6,30 @@ export default function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Get session on mount
     async function loadSession() {
-      const { data: { session } } = await supabase.auth.getSession()
-      setSession(session)
+      // 1. Try to get session from redirect URL (after OAuth login)
+      const { data: redirectData, error: redirectError } = await supabase.auth.getSessionFromUrl()
+      if (redirectError) console.error('Redirect session error:', redirectError)
+      if (redirectData.session) {
+        setSession(redirectData.session)
+        console.log('Session from redirect:', redirectData.session)
+        // Clean up the URL hash (#access_token=...)
+        if (window.location.hash) {
+          window.history.replaceState({}, document.title, window.location.pathname)
+        }
+      } else {
+        // 2. Normal session retrieval (returning user or refresh)
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (error) console.error('Get session error:', error)
+        setSession(session)
+        console.log('Initial session:', session)
+      }
       setLoading(false)
-      console.log('Initial session:', session)
     }
+
     loadSession()
 
-    // Listen for auth changes (sign-in/out)
+    // Listen for auth changes (optional, e.g., sign-out)
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       console.log('Auth state changed:', session)
@@ -38,14 +52,7 @@ export default function App() {
       <div style={{ padding: 40, minHeight: '100vh', textAlign: 'center' }}>
         <h2>DoodleDesk</h2>
         <button
-          onClick={async () => {
-            const { data, error } = await supabase.auth.signInWithOAuth({
-              provider: 'google', 
-              options: { redirectTo: window.location.origin } // optional
-            })
-            if (error) console.error('Login error:', error)
-            else setSession(data.session)
-          }}
+          onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })}
           style={{
             padding: '10px 20px',
             fontSize: 16,
@@ -59,8 +66,13 @@ export default function App() {
         >
           Login with Google
         </button>
+
         <pre>Debug: session is {JSON.stringify(session, null, 2)}</pre>
-        <pre>Debug: session.user is {session && session.user ? JSON.stringify(session.user, null, 2) : 'undefined'}</pre>
+        <pre>
+          Debug: session.user is{' '}
+          {session && session.user ? JSON.stringify(session.user, null, 2) : 'undefined'}
+        </pre>
+
         <Footer />
       </div>
     )
