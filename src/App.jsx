@@ -60,14 +60,20 @@ export default function App() {
 
 // ------------------- Desk -------------------
 function Desk({ user }) {
+  const [desks, setDesks] = useState([])
+  const [selectedDeskId, setSelectedDeskId] = useState(null)
   const [notes, setNotes] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [editValue, setEditValue] = useState('')
   const [checklistEditItems, setChecklistEditItems] = useState([])
   const [newChecklistItemText, setNewChecklistItemText] = useState('')
   const [showNewNoteMenu, setShowNewNoteMenu] = useState(false)
+  const [showDeskMenu, setShowDeskMenu] = useState(false)
+  const [backgroundMode, setBackgroundMode] = useState('alternating')
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const [draggedId, setDraggedId] = useState(null)
+  const [resizingId, setResizingId] = useState(null)
+  const [resizeOverlay, setResizeOverlay] = useState(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [sectionHeight, setSectionHeight] = useState(() => window.innerHeight || 800)
   const [canvasHeight, setCanvasHeight] = useState(() => {
@@ -80,16 +86,25 @@ function Desk({ user }) {
   const rotatingNoteIdRef = useRef(null)
   const rotationOffsetRef = useRef(0)
   const rotationCenterRef = useRef({ x: 0, y: 0 })
+  const resizeStartRef = useRef({
+    itemKey: null,
+    startPageX: 0,
+    startPageY: 0,
+    startWidth: 200,
+    startHeight: 120
+  })
   const newNoteMenuRef = useRef(null)
+  const deskMenuRef = useRef(null)
 
-  const noteWidth = 200
-  const noteHeight = 120
   const growThreshold = 180
 
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
-  const backgroundImage = Array.from({ length: sectionCount }, (_, index) =>
-    index % 2 === 0 ? "url('/desk.png')" : "url('/desk2.png')"
-  ).join(', ')
+  const backgroundLayers = Array.from({ length: sectionCount }, (_, index) => {
+    if (backgroundMode === 'desk1') return "url('/desk.png')"
+    if (backgroundMode === 'desk2') return "url('/desk2.png')"
+    return index % 2 === 0 ? "url('/desk.png')" : "url('/desk2.png')"
+  })
+  const backgroundImage = backgroundLayers.join(', ')
   const backgroundSize = Array.from({ length: sectionCount }, () => `100% ${sectionHeight}px`).join(', ')
   const backgroundPosition = Array.from({ length: sectionCount }, (_, index) =>
     index === 0 ? 'top center' : `center ${index * sectionHeight}px`
@@ -104,6 +119,24 @@ function Desk({ user }) {
     return item.item_type === 'checklist'
   }
 
+  function getItemWidth(item) {
+    const value = Number(item?.width)
+    return Number.isFinite(value) && value > 0 ? value : 200
+  }
+
+  function getItemHeight(item) {
+    const value = Number(item?.height)
+    return Number.isFinite(value) && value > 0 ? value : 120
+  }
+
+  function clampScale(value) {
+    return Math.min(2.5, Math.max(0.5, value))
+  }
+
+  function clampDimension(value, min, max) {
+    return Math.min(max, Math.max(min, value))
+  }
+
   function addChecklistEditItem() {
     const text = newChecklistItemText.trim()
     if (!text) return
@@ -113,8 +146,17 @@ function Desk({ user }) {
   }
 
   useEffect(() => {
-    fetchDeskItems()
-  }, [])
+    fetchDesks()
+  }, [user.id])
+
+  useEffect(() => {
+    if (!selectedDeskId) {
+      setNotes([])
+      return
+    }
+
+    fetchDeskItems(selectedDeskId)
+  }, [selectedDeskId])
 
   useEffect(() => {
     notesRef.current = notes
@@ -152,22 +194,161 @@ function Desk({ user }) {
   }, [pendingDeleteId])
 
   useEffect(() => {
-    if (!showNewNoteMenu) return
+    if (!showNewNoteMenu && !showDeskMenu) return
 
     function handleClickOutside(e) {
-      if (!newNoteMenuRef.current?.contains(e.target)) {
+      if (showNewNoteMenu && !newNoteMenuRef.current?.contains(e.target)) {
         setShowNewNoteMenu(false)
+      }
+      if (showDeskMenu && !deskMenuRef.current?.contains(e.target)) {
+        setShowDeskMenu(false)
       }
     }
 
     window.addEventListener('mousedown', handleClickOutside)
     return () => window.removeEventListener('mousedown', handleClickOutside)
-  }, [showNewNoteMenu])
+  }, [showNewNoteMenu, showDeskMenu])
 
-  async function fetchDeskItems() {
+  function getDeskBackgroundValue(desk) {
+    return desk?.background_mode || desk?.background || 'alternating'
+  }
+
+  async function fetchDesks() {
+    const { data, error } = await supabase
+      .from('desks')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      console.error('Failed to fetch desks:', error)
+      return
+    }
+
+    const loadedDesks = data || []
+    setDesks(loadedDesks)
+
+    if (loadedDesks.length === 0) {
+      setSelectedDeskId(null)
+      setBackgroundMode('alternating')
+      return
+    }
+
+    setSelectedDeskId((prev) => {
+      const nextDesk = loadedDesks.find((desk) => desk.id === prev) || loadedDesks[0]
+      setBackgroundMode(getDeskBackgroundValue(nextDesk))
+      return nextDesk.id
+    })
+  }
+
+  async function createDesk() {
+    const nextDeskName = window.prompt('Desk name', `Desk ${desks.length + 1}`)
+    if (!nextDeskName) return
+
+    const trimmedName = nextDeskName.trim()
+    if (!trimmedName) return
+
+    const { data, error } = await supabase
+      .from('desks')
+      .insert([{ user_id: user.id, name: trimmedName, background_mode: 'alternating' }])
+      .select()
+
+    if (error || !data?.[0]) {
+      console.error('Failed to create desk:', error)
+      return
+    }
+
+    const createdDesk = data[0]
+    setDesks((prev) => [...prev, createdDesk])
+    setSelectedDeskId(createdDesk.id)
+    setBackgroundMode(getDeskBackgroundValue(createdDesk))
+    setShowDeskMenu(false)
+  }
+
+  async function renameCurrentDesk() {
+    const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
+    if (!currentDesk) return
+
+    const nextNameInput = window.prompt('Rename desk', currentDesk.name || 'Desk')
+    if (!nextNameInput) return
+
+    const nextName = nextNameInput.trim()
+    if (!nextName) return
+
+    const { error } = await supabase
+      .from('desks')
+      .update({ name: nextName })
+      .eq('id', currentDesk.id)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error('Failed to rename desk:', error)
+      return
+    }
+
+    setDesks((prev) => prev.map((desk) => (desk.id === currentDesk.id ? { ...desk, name: nextName } : desk)))
+    setShowDeskMenu(false)
+  }
+
+  async function setCurrentDeskBackground(mode) {
+    if (!selectedDeskId) return
+
+    let updateError = null
+
+    const { error: backgroundModeError } = await supabase
+      .from('desks')
+      .update({ background_mode: mode })
+      .eq('id', selectedDeskId)
+      .eq('user_id', user.id)
+
+    if (backgroundModeError) {
+      const { error: backgroundError } = await supabase
+        .from('desks')
+        .update({ background: mode })
+        .eq('id', selectedDeskId)
+        .eq('user_id', user.id)
+      updateError = backgroundError
+    }
+
+    if (updateError) {
+      console.error('Failed to update desk background:', updateError)
+      return
+    }
+
+    setBackgroundMode(mode)
+    setDesks((prev) =>
+      prev.map((desk) =>
+        desk.id === selectedDeskId ? { ...desk, background_mode: mode, background: mode } : desk
+      )
+    )
+    setShowDeskMenu(false)
+  }
+
+  function handleSelectDesk(desk) {
+    if (!desk || desk.id === selectedDeskId) {
+      setShowDeskMenu(false)
+      return
+    }
+
+    setSelectedDeskId(desk.id)
+    setBackgroundMode(getDeskBackgroundValue(desk))
+    setEditingId(null)
+    setEditValue('')
+    setChecklistEditItems([])
+    setNewChecklistItemText('')
+    setPendingDeleteId(null)
+    setShowDeskMenu(false)
+  }
+
+  async function fetchDeskItems(deskId) {
+    if (!deskId) {
+      setNotes([])
+      return
+    }
+
     const [{ data: notesData, error: notesError }, { data: checklistsData, error: checklistsError }] = await Promise.all([
-      supabase.from('notes').select('*').eq('user_id', user.id),
-      supabase.from('checklists').select('*').eq('user_id', user.id)
+      supabase.from('notes').select('*').eq('user_id', user.id).eq('desk_id', deskId),
+      supabase.from('checklists').select('*').eq('user_id', user.id).eq('desk_id', deskId)
     ])
 
     if (notesError) {
@@ -211,16 +392,21 @@ function Desk({ user }) {
     const combined = [...mappedNotes, ...mappedChecklists]
     setNotes(combined)
 
-    const maxNoteY = combined.reduce((maxY, item) => Math.max(maxY, Number(item.y) || 0), 0)
-    const requiredHeight = maxNoteY + noteHeight + growThreshold
+    const maxNoteBottom = combined.reduce((maxY, item) => {
+      const itemBottom = (Number(item.y) || 0) + getItemHeight(item)
+      return Math.max(maxY, itemBottom)
+    }, 0)
+    const requiredHeight = maxNoteBottom + growThreshold
     const requiredSections = Math.max(2, Math.ceil(requiredHeight / sectionHeight))
     setCanvasHeight((prev) => Math.max(prev, requiredSections * sectionHeight))
   }
 
   async function addStickyNote() {
+    if (!selectedDeskId) return
+
     const { data, error } = await supabase
       .from('notes')
-      .insert([{ user_id: user.id, content: 'New note', x: 100, y: 100, rotation: 0 }])
+      .insert([{ user_id: user.id, desk_id: selectedDeskId, content: 'New note', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
       .select()
 
     if (!error && data?.[0]) {
@@ -231,9 +417,11 @@ function Desk({ user }) {
   }
 
   async function addChecklistNote() {
+    if (!selectedDeskId) return
+
     const { data: checklistData, error: checklistError } = await supabase
       .from('checklists')
-      .insert([{ user_id: user.id, title: 'Checklist', x: 100, y: 100, rotation: 0 }])
+      .insert([{ user_id: user.id, desk_id: selectedDeskId, title: 'Checklist', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
       .select()
 
     if (checklistError || !checklistData?.[0]) {
@@ -284,9 +472,10 @@ function Desk({ user }) {
     const table = isChecklistItem(item) ? 'checklists' : 'notes'
     const { error } = await supabase
       .from(table)
-      .update({ rotation: storedRotation })
+      .update({ rotation: storedRotation, desk_id: selectedDeskId })
       .eq('id', item.id)
       .eq('user_id', user.id)
+      .eq('desk_id', selectedDeskId)
 
     if (error) {
       console.error('Failed to save item rotation:', error)
@@ -303,9 +492,122 @@ function Desk({ user }) {
     const table = isChecklistItem(item) ? 'checklists' : 'notes'
     await supabase
       .from(table)
-      .update({ x, y })
+      .update({ x, y, desk_id: selectedDeskId })
       .eq('id', item.id)
       .eq('user_id', user.id)
+      .eq('desk_id', selectedDeskId)
+  }
+
+  async function persistItemSize(itemKey, width, height) {
+    const item = notesRef.current.find((row) => getItemKey(row) === itemKey)
+    if (!item) return
+
+    const table = isChecklistItem(item) ? 'checklists' : 'notes'
+    const { error } = await supabase
+      .from(table)
+      .update({ width, height, desk_id: selectedDeskId })
+      .eq('id', item.id)
+      .eq('user_id', user.id)
+      .eq('desk_id', selectedDeskId)
+
+    if (error) {
+      console.error('Failed to save item size:', error)
+    }
+  }
+
+  function handleResizeMouseDown(e, item) {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const itemKey = getItemKey(item)
+    const startWidth = getItemWidth(item)
+    const startHeight = getItemHeight(item)
+
+    resizeStartRef.current = {
+      itemKey,
+      startPageX: e.pageX,
+      startPageY: e.pageY,
+      startWidth,
+      startHeight
+    }
+
+    setResizingId(itemKey)
+    setResizeOverlay({
+      x: e.clientX,
+      y: e.clientY,
+      scale: 1,
+      ratioLocked: false,
+      width: startWidth,
+      height: startHeight
+    })
+
+    window.addEventListener('mousemove', handleResizeMouseMove)
+    window.addEventListener('mouseup', handleResizeMouseUp)
+  }
+
+  function handleResizeMouseMove(e) {
+    const activeItemKey = resizeStartRef.current.itemKey
+    if (!activeItemKey) return
+
+    const deltaX = e.pageX - resizeStartRef.current.startPageX
+    const deltaY = e.pageY - resizeStartRef.current.startPageY
+    const isRatioLocked = e.shiftKey
+
+    let nextWidth = 0
+    let nextHeight = 0
+    let scale = 1
+
+    if (isRatioLocked) {
+      const normalizedDelta = (deltaX + deltaY) / 220
+      scale = clampScale(1 + normalizedDelta)
+      nextWidth = Math.round(resizeStartRef.current.startWidth * scale)
+      nextHeight = Math.round(resizeStartRef.current.startHeight * scale)
+    } else {
+      nextWidth = Math.round(resizeStartRef.current.startWidth + deltaX)
+      nextHeight = Math.round(resizeStartRef.current.startHeight + deltaY)
+      nextWidth = clampDimension(nextWidth, 120, 700)
+      nextHeight = clampDimension(nextHeight, 100, 700)
+
+      const widthScale = nextWidth / resizeStartRef.current.startWidth
+      const heightScale = nextHeight / resizeStartRef.current.startHeight
+      scale = (widthScale + heightScale) / 2
+    }
+
+    setNotes((prev) =>
+      prev.map((item) =>
+        getItemKey(item) === activeItemKey ? { ...item, width: nextWidth, height: nextHeight } : item
+      )
+    )
+
+    setResizeOverlay({
+      x: e.clientX,
+      y: e.clientY,
+      scale,
+      ratioLocked: isRatioLocked,
+      width: nextWidth,
+      height: nextHeight
+    })
+  }
+
+  async function handleResizeMouseUp() {
+    const activeItemKey = resizeStartRef.current.itemKey
+
+    window.removeEventListener('mousemove', handleResizeMouseMove)
+    window.removeEventListener('mouseup', handleResizeMouseUp)
+
+    setResizingId(null)
+    setResizeOverlay(null)
+
+    if (!activeItemKey) return
+
+    const resizedItem = notesRef.current.find((item) => getItemKey(item) === activeItemKey)
+    if (!resizedItem) {
+      resizeStartRef.current.itemKey = null
+      return
+    }
+
+    await persistItemSize(activeItemKey, getItemWidth(resizedItem), getItemHeight(resizedItem))
+    resizeStartRef.current.itemKey = null
   }
 
   async function saveItemEdits(item) {
@@ -314,9 +616,10 @@ function Desk({ user }) {
     if (!isChecklistItem(item)) {
       const { error } = await supabase
         .from('notes')
-        .update({ content: editValue, rotation: nextRotation })
+        .update({ content: editValue, rotation: nextRotation, desk_id: selectedDeskId })
         .eq('id', item.id)
         .eq('user_id', user.id)
+        .eq('desk_id', selectedDeskId)
 
       if (error) {
         console.error('Failed to save note:', error)
@@ -341,9 +644,10 @@ function Desk({ user }) {
 
     const { error: checklistError } = await supabase
       .from('checklists')
-      .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation })
+      .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation, desk_id: selectedDeskId })
       .eq('id', item.id)
       .eq('user_id', user.id)
+      .eq('desk_id', selectedDeskId)
 
     if (checklistError) {
       console.error('Failed to save checklist:', checklistError)
@@ -418,7 +722,7 @@ function Desk({ user }) {
 
     if (error) {
       console.error('Failed to toggle checklist item:', error)
-      await fetchDeskItems()
+      await fetchDeskItems(selectedDeskId)
     }
   }
 
@@ -518,6 +822,7 @@ function Desk({ user }) {
         .delete()
         .eq('id', item.id)
         .eq('user_id', user.id)
+        .eq('desk_id', selectedDeskId)
       error = checklistError
     } else {
       const { error: noteError } = await supabase
@@ -525,6 +830,7 @@ function Desk({ user }) {
         .delete()
         .eq('id', item.id)
         .eq('user_id', user.id)
+        .eq('desk_id', selectedDeskId)
       error = noteError
     }
 
@@ -560,17 +866,21 @@ function Desk({ user }) {
     const activeDraggedId = draggedIdRef.current
     if (!activeDraggedId) return
 
+    const activeItem = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
+    const activeItemWidth = getItemWidth(activeItem)
+    const activeItemHeight = getItemHeight(activeItem)
+
     const nextX = e.pageX - dragOffsetRef.current.x
     const nextY = e.pageY - dragOffsetRef.current.y
 
     setCanvasHeight((prev) => {
-      if (nextY + noteHeight + growThreshold <= prev) return prev
-      const requiredHeight = nextY + noteHeight + growThreshold
+      if (nextY + activeItemHeight + growThreshold <= prev) return prev
+      const requiredHeight = nextY + activeItemHeight + growThreshold
       const requiredSections = Math.ceil(requiredHeight / sectionHeight)
       return Math.max(prev, requiredSections * sectionHeight)
     })
 
-    const maxX = Math.max(0, window.innerWidth - noteWidth)
+    const maxX = Math.max(0, window.innerWidth - activeItemWidth)
     const boundedX = Math.min(Math.max(0, nextX), maxX)
     const boundedY = Math.max(0, nextY)
 
@@ -598,7 +908,8 @@ function Desk({ user }) {
     if (e) {
       const nextX = e.pageX - dragOffsetRef.current.x
       const nextY = e.pageY - dragOffsetRef.current.y
-      const maxX = Math.max(0, window.innerWidth - noteWidth)
+      const activeItem = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
+      const maxX = Math.max(0, window.innerWidth - getItemWidth(activeItem))
       nextPosition = {
         x: Math.min(Math.max(0, nextX), maxX),
         y: Math.max(0, nextY)
@@ -618,6 +929,8 @@ function Desk({ user }) {
     await persistItemPosition(activeDraggedId, nextPosition.x, nextPosition.y)
   }
 
+  const currentDesk = desks.find((desk) => desk.id === selectedDeskId) || null
+
   return (
     <div
       style={{
@@ -630,24 +943,188 @@ function Desk({ user }) {
         backgroundRepeat
       }}
     >
-      <button
-        onClick={handleLogout}
+      <div
         style={{
           position: 'absolute',
           top: 20,
           right: 20,
-          padding: '8px 16px',
-          fontSize: 14,
-          cursor: 'pointer'
+          display: 'flex',
+          gap: 8,
+          alignItems: 'flex-start'
         }}
       >
-        Logout
-      </button>
+        <div ref={deskMenuRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowDeskMenu((prev) => !prev)}
+            style={{
+              padding: '8px 16px',
+              fontSize: 14,
+              cursor: 'pointer'
+            }}
+          >
+            {currentDesk?.name || 'Select Desk'} ▼
+          </button>
+
+          {showDeskMenu && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: 6,
+                background: '#fff',
+                border: '1px solid #ddd',
+                borderRadius: 6,
+                boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
+                color: '#222',
+                zIndex: 220,
+                minWidth: 200,
+                padding: 6
+              }}
+            >
+              <div style={{ maxHeight: 180, overflowY: 'auto', borderBottom: '1px solid #eee', marginBottom: 6 }}>
+                {desks.length === 0 ? (
+                  <div style={{ padding: '8px 10px', fontSize: 13, opacity: 0.75 }}>No desks yet</div>
+                ) : (
+                  desks.map((desk) => (
+                    <button
+                      key={desk.id}
+                      type="button"
+                      onClick={() => handleSelectDesk(desk)}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '8px 10px',
+                        border: 'none',
+                        borderRadius: 4,
+                        marginBottom: 2,
+                        background: desk.id === selectedDeskId ? '#eef4ff' : '#fff',
+                        color: '#222',
+                        cursor: 'pointer',
+                        fontWeight: desk.id === selectedDeskId ? 600 : 400
+                      }}
+                    >
+                      {desk.name || 'Untitled desk'}
+                    </button>
+                  ))
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={createDesk}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '7px 10px',
+                  border: 'none',
+                  borderRadius: 4,
+                  background: '#fff',
+                  color: '#222',
+                  cursor: 'pointer'
+                }}
+              >
+                + New Desk
+              </button>
+
+              <button
+                type="button"
+                onClick={renameCurrentDesk}
+                disabled={!currentDesk}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '7px 10px',
+                  border: 'none',
+                  borderRadius: 4,
+                  background: '#fff',
+                  color: currentDesk ? '#222' : '#999',
+                  cursor: currentDesk ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Rename Desk
+              </button>
+
+              <div style={{ padding: '7px 10px', fontSize: 12, opacity: 0.8 }}>Change Background</div>
+              <div style={{ display: 'flex', gap: 4, padding: '0 8px 6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setCurrentDeskBackground('alternating')}
+                  disabled={!currentDesk}
+                  style={{
+                    flex: 1,
+                    padding: '6px 6px',
+                    fontSize: 12,
+                    borderRadius: 4,
+                    border: '1px solid #ddd',
+                    background: backgroundMode === 'alternating' ? '#eef4ff' : '#fff',
+                    cursor: currentDesk ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  Alt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentDeskBackground('desk1')}
+                  disabled={!currentDesk}
+                  style={{
+                    flex: 1,
+                    padding: '6px 6px',
+                    fontSize: 12,
+                    borderRadius: 4,
+                    border: '1px solid #ddd',
+                    background: backgroundMode === 'desk1' ? '#eef4ff' : '#fff',
+                    cursor: currentDesk ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  Desk 1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentDeskBackground('desk2')}
+                  disabled={!currentDesk}
+                  style={{
+                    flex: 1,
+                    padding: '6px 6px',
+                    fontSize: 12,
+                    borderRadius: 4,
+                    border: '1px solid #ddd',
+                    background: backgroundMode === 'desk2' ? '#eef4ff' : '#fff',
+                    cursor: currentDesk ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  Desk 2
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={handleLogout}
+          style={{
+            padding: '8px 16px',
+            fontSize: 14,
+            cursor: 'pointer'
+          }}
+        >
+          Logout
+        </button>
+      </div>
 
       <div ref={newNoteMenuRef} style={{ position: 'relative', display: 'inline-block', marginBottom: 20 }}>
         <button
           onClick={() => setShowNewNoteMenu((prev) => !prev)}
-          style={{ padding: '8px 16px', fontSize: 14, cursor: 'pointer' }}
+          disabled={!selectedDeskId}
+          style={{
+            padding: '8px 16px',
+            fontSize: 14,
+            cursor: selectedDeskId ? 'pointer' : 'not-allowed',
+            opacity: selectedDeskId ? 1 : 0.6
+          }}
         >
           New Note ▼
         </button>
@@ -704,6 +1181,12 @@ function Desk({ user }) {
         )}
       </div>
 
+      {!selectedDeskId && (
+        <div style={{ color: '#222', background: 'rgba(255,255,255,0.75)', display: 'inline-block', padding: '6px 10px', borderRadius: 6 }}>
+          Create a desk from the top-right menu to get started.
+        </div>
+      )}
+
       {notes.map((item) => {
         const itemKey = getItemKey(item)
         const isChecklist = isChecklistItem(item)
@@ -720,7 +1203,8 @@ function Desk({ user }) {
               transform: `rotate(${item.rotation || 0}deg)`,
               background: isChecklist ? '#fff' : '#fffa91',
               padding: 20,
-              width: 200,
+              width: getItemWidth(item),
+              minHeight: getItemHeight(item),
               boxShadow: '3px 3px 10px rgba(0,0,0,0.3)',
               cursor: editingId ? 'text' : draggedId === itemKey ? 'grabbing' : 'grab',
               zIndex: draggedId === itemKey ? 100 : 1
@@ -761,6 +1245,30 @@ function Desk({ user }) {
                     }}
                   >
                     ↻
+                  </button>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => handleResizeMouseDown(e, item)}
+                    aria-label="Resize note"
+                    title="Hold and move cursor to resize"
+                    style={{
+                      width: 24,
+                      height: 24,
+                      marginLeft: 6,
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 14,
+                      lineHeight: 1,
+                      borderRadius: 4,
+                      border: 'none',
+                      background: resizingId === itemKey ? '#4285F4' : '#777',
+                      color: '#fff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ↔
                   </button>
                 </div>
 
@@ -1060,6 +1568,40 @@ function Desk({ user }) {
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {resizeOverlay && (
+        <div
+          style={{
+            position: 'fixed',
+            left: resizeOverlay.x + 14,
+            top: resizeOverlay.y + 14,
+            background: 'rgba(20, 20, 20, 0.9)',
+            color: '#fff',
+            borderRadius: 8,
+            padding: '8px 10px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            zIndex: 1500,
+            pointerEvents: 'none',
+            minWidth: 170
+          }}
+        >
+          <span style={{ fontSize: 14 }}>↔</span>
+          <input
+            type="range"
+            min={50}
+            max={250}
+            value={Math.round(resizeOverlay.scale * 100)}
+            readOnly
+            style={{ width: 90 }}
+          />
+          <span style={{ fontSize: 11 }}>
+            {resizeOverlay.width}×{resizeOverlay.height}
+            {resizeOverlay.ratioLocked ? ' • lock' : ''}
+          </span>
         </div>
       )}
 
