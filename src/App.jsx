@@ -492,36 +492,19 @@ function Desk({ user }) {
   async function addStickyNote() {
     if (!selectedDeskId) return
 
-    const payloadCandidates = [
-      { desk_id: selectedDeskId, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 200, height: 120 },
-      { desk_id: selectedDeskId, content: 'New note', color: '#fff59d', x: 100, y: 100, rotation: 0, width: 200, height: 120 },
-      { desk_id: selectedDeskId, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0 },
-      { desk_id: selectedDeskId, content: 'New note', color: '#fff59d', x: 100, y: 100, rotation: 0 },
-      { desk_id: selectedDeskId, content: 'New note', x: 100, y: 100, rotation: 0 }
-    ]
+    const { data, error } = await supabase
+      .from('notes')
+      .insert([{ desk_id: selectedDeskId, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
+      .select()
 
-    let createdNote = null
-    let lastError = null
-
-    for (const payload of payloadCandidates) {
-      const { data, error } = await supabase
-        .from('notes')
-        .insert([payload])
-        .select()
-
-      if (!error && data?.[0]) {
-        createdNote = data[0]
-        break
-      }
-
-      lastError = error
-    }
+    const createdNote = data?.[0]
 
     if (createdNote) {
       setNotes((prev) => [...prev, { ...createdNote, item_type: 'note' }])
       await fetchDeskItems(selectedDeskId)
     } else {
-      console.error('Failed to create note:', lastError)
+      console.error('Failed to create note:', error)
+      setEditSaveError(error?.message || 'Failed to create note.')
     }
 
     setShowNewNoteMenu(false)
@@ -530,33 +513,16 @@ function Desk({ user }) {
   async function addChecklistNote() {
     if (!selectedDeskId) return
 
-    const payloadCandidates = [
-      { desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 220, height: 160 },
-      { desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', x: 100, y: 100, rotation: 0, width: 220, height: 160 },
-      { desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0 },
-      { desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', x: 100, y: 100, rotation: 0 },
-      { desk_id: selectedDeskId, title: 'Checklist', x: 100, y: 100, rotation: 0 }
-    ]
+    const { data, error } = await supabase
+      .from('checklists')
+      .insert([{ desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
+      .select()
 
-    let createdChecklist = null
-    let lastError = null
-
-    for (const payload of payloadCandidates) {
-      const { data, error } = await supabase
-        .from('checklists')
-        .insert([payload])
-        .select()
-
-      if (!error && data?.[0]) {
-        createdChecklist = data[0]
-        break
-      }
-
-      lastError = error
-    }
+    const createdChecklist = data?.[0]
 
     if (!createdChecklist) {
-      console.error('Failed to create checklist:', lastError)
+      console.error('Failed to create checklist:', error)
+      setEditSaveError(error?.message || 'Failed to create checklist.')
       setShowNewNoteMenu(false)
       return
     }
@@ -746,32 +712,13 @@ function Desk({ user }) {
     const itemKey = getItemKey(item)
 
     if (!isChecklistItem(item)) {
-      const notePayloads = [
-        { content: editValue, rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId },
-        { content: editValue, rotation: nextRotation, color: nextColor, desk_id: selectedDeskId },
-        { content: editValue, rotation: nextRotation, desk_id: selectedDeskId },
-        { content: editValue, rotation: nextRotation }
-      ]
+      const { error: saveError } = await supabase
+        .from('notes')
+        .update({ content: editValue, rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId })
+        .eq('id', item.id)
+        .eq('desk_id', selectedDeskId)
 
-      let saveError = null
-      let saved = false
-
-      for (const payload of notePayloads) {
-        const { error } = await supabase
-          .from('notes')
-          .update(payload)
-          .eq('id', item.id)
-          .eq('desk_id', selectedDeskId)
-
-        if (!error) {
-          saved = true
-          break
-        }
-
-        saveError = error
-      }
-
-      if (!saved) {
+      if (saveError) {
         console.error('Failed to save note:', saveError)
         return { ok: false, errorMessage: saveError?.message || 'Failed to save note.' }
       }
@@ -792,32 +739,13 @@ function Desk({ user }) {
       }))
       .filter((entry) => entry.text.length > 0)
 
-    const checklistPayloads = [
-      { title: editValue.trim() || 'Checklist', rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId },
-      { title: editValue.trim() || 'Checklist', rotation: nextRotation, color: nextColor, desk_id: selectedDeskId },
-      { title: editValue.trim() || 'Checklist', rotation: nextRotation, desk_id: selectedDeskId },
-      { title: editValue.trim() || 'Checklist', rotation: nextRotation }
-    ]
+    const { error: checklistSaveError } = await supabase
+      .from('checklists')
+      .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId })
+      .eq('id', item.id)
+      .eq('desk_id', selectedDeskId)
 
-    let checklistSaveError = null
-    let checklistSaved = false
-
-    for (const payload of checklistPayloads) {
-      const { error } = await supabase
-        .from('checklists')
-        .update(payload)
-        .eq('id', item.id)
-        .eq('desk_id', selectedDeskId)
-
-      if (!error) {
-        checklistSaved = true
-        break
-      }
-
-      checklistSaveError = error
-    }
-
-    if (!checklistSaved) {
+    if (checklistSaveError) {
       console.error('Failed to save checklist:', checklistSaveError)
       return { ok: false, errorMessage: checklistSaveError?.message || 'Failed to save checklist.' }
     }
