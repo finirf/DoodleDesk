@@ -70,6 +70,8 @@ function Desk({ user }) {
   const [showNewNoteMenu, setShowNewNoteMenu] = useState(false)
   const [showDeskMenu, setShowDeskMenu] = useState(false)
   const [deskNameDialog, setDeskNameDialog] = useState({ isOpen: false, mode: 'create', value: '' })
+  const [deskNameError, setDeskNameError] = useState('')
+  const [deskNameSaving, setDeskNameSaving] = useState(false)
   const [backgroundMode, setBackgroundMode] = useState('alternating')
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const [draggedId, setDraggedId] = useState(null)
@@ -215,6 +217,10 @@ function Desk({ user }) {
     return desk?.background_mode || desk?.background || 'alternating'
   }
 
+  function getDeskNameValue(desk) {
+    return desk?.name || desk?.desk_name || 'Untitled desk'
+  }
+
   async function fetchDesks() {
     const { data, error } = await supabase
       .from('desks')
@@ -247,10 +253,19 @@ function Desk({ user }) {
     const trimmedName = (nextDeskName || '').trim()
     if (!trimmedName) return false
 
-    const { data, error } = await supabase
+    let result = await supabase
       .from('desks')
       .insert([{ user_id: user.id, name: trimmedName, background_mode: 'alternating' }])
       .select()
+
+    if (result.error) {
+      result = await supabase
+        .from('desks')
+        .insert([{ user_id: user.id, desk_name: trimmedName, background: 'alternating' }])
+        .select()
+    }
+
+    const { data, error } = result
 
     if (error || !data?.[0]) {
       console.error('Failed to create desk:', error)
@@ -272,23 +287,34 @@ function Desk({ user }) {
     const nextName = (nextNameInput || '').trim()
     if (!nextName) return false
 
-    const { error } = await supabase
+    let updateResult = await supabase
       .from('desks')
       .update({ name: nextName })
       .eq('id', currentDesk.id)
       .eq('user_id', user.id)
+
+    if (updateResult.error) {
+      updateResult = await supabase
+        .from('desks')
+        .update({ desk_name: nextName })
+        .eq('id', currentDesk.id)
+        .eq('user_id', user.id)
+    }
+
+    const { error } = updateResult
 
     if (error) {
       console.error('Failed to rename desk:', error)
       return false
     }
 
-    setDesks((prev) => prev.map((desk) => (desk.id === currentDesk.id ? { ...desk, name: nextName } : desk)))
+    setDesks((prev) => prev.map((desk) => (desk.id === currentDesk.id ? { ...desk, name: nextName, desk_name: nextName } : desk)))
     setShowDeskMenu(false)
     return true
   }
 
   function openCreateDeskDialog() {
+    setDeskNameError('')
     setDeskNameDialog({ isOpen: true, mode: 'create', value: `Desk ${desks.length + 1}` })
     setShowDeskMenu(false)
   }
@@ -297,11 +323,14 @@ function Desk({ user }) {
     const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
     if (!currentDesk) return
 
-    setDeskNameDialog({ isOpen: true, mode: 'rename', value: currentDesk.name || 'Desk' })
+    setDeskNameError('')
+    setDeskNameDialog({ isOpen: true, mode: 'rename', value: getDeskNameValue(currentDesk) || 'Desk' })
     setShowDeskMenu(false)
   }
 
   function closeDeskNameDialog() {
+    setDeskNameError('')
+    setDeskNameSaving(false)
     setDeskNameDialog({ isOpen: false, mode: 'create', value: '' })
   }
 
@@ -309,7 +338,13 @@ function Desk({ user }) {
     e.preventDefault()
 
     const nextName = deskNameDialog.value.trim()
-    if (!nextName) return
+    if (!nextName) {
+      setDeskNameError('Please enter a desk name.')
+      return
+    }
+
+    setDeskNameSaving(true)
+    setDeskNameError('')
 
     const wasSaved = deskNameDialog.mode === 'create'
       ? await createDesk(nextName)
@@ -317,7 +352,11 @@ function Desk({ user }) {
 
     if (wasSaved) {
       closeDeskNameDialog()
+      return
     }
+
+    setDeskNameSaving(false)
+    setDeskNameError('Could not save desk name. Check desk table columns and try again.')
   }
 
   async function setCurrentDeskBackground(mode) {
@@ -992,7 +1031,7 @@ function Desk({ user }) {
               cursor: 'pointer'
             }}
           >
-            {currentDesk?.name || 'Select Desk'} ▼
+            {currentDesk ? getDeskNameValue(currentDesk) : 'Select Desk'} ▼
           </button>
 
           {showDeskMenu && (
@@ -1035,7 +1074,7 @@ function Desk({ user }) {
                         fontWeight: desk.id === selectedDeskId ? 600 : 400
                       }}
                     >
-                      {desk.name || 'Untitled desk'}
+                      {getDeskNameValue(desk)}
                     </button>
                   ))
                 )}
@@ -1648,6 +1687,7 @@ function Desk({ user }) {
               value={deskNameDialog.value}
               onChange={(e) => {
                 const nextValue = e.target.value
+                if (deskNameError) setDeskNameError('')
                 setDeskNameDialog((prev) => ({ ...prev, value: nextValue }))
               }}
               autoFocus
@@ -1663,10 +1703,17 @@ function Desk({ user }) {
               }}
             />
 
+            {deskNameError && (
+              <div style={{ color: '#d32f2f', fontSize: 12, marginBottom: 10 }}>
+                {deskNameError}
+              </div>
+            )}
+
             <div style={{ textAlign: 'right' }}>
               <button
                 type="button"
                 onClick={closeDeskNameDialog}
+                disabled={deskNameSaving}
                 style={{
                   marginRight: 8,
                   padding: '6px 12px',
@@ -1674,23 +1721,26 @@ function Desk({ user }) {
                   border: 'none',
                   background: '#eee',
                   color: '#333',
-                  cursor: 'pointer'
+                  cursor: deskNameSaving ? 'not-allowed' : 'pointer',
+                  opacity: deskNameSaving ? 0.6 : 1
                 }}
               >
                 Cancel
               </button>
               <button
                 type="submit"
+                disabled={deskNameSaving}
                 style={{
                   padding: '6px 12px',
                   borderRadius: 4,
                   border: 'none',
                   background: '#4285F4',
                   color: '#fff',
-                  cursor: 'pointer'
+                  cursor: deskNameSaving ? 'not-allowed' : 'pointer',
+                  opacity: deskNameSaving ? 0.7 : 1
                 }}
               >
-                Save
+                {deskNameSaving ? 'Saving...' : 'Save'}
               </button>
             </div>
           </form>
