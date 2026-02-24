@@ -63,6 +63,8 @@ function Desk({ user }) {
   const [notes, setNotes] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [editValue, setEditValue] = useState('')
+  const [checklistLinesValue, setChecklistLinesValue] = useState('')
+  const [showNewNoteMenu, setShowNewNoteMenu] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const [draggedId, setDraggedId] = useState(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
@@ -77,6 +79,7 @@ function Desk({ user }) {
   const rotatingNoteIdRef = useRef(null)
   const rotationOffsetRef = useRef(0)
   const rotationCenterRef = useRef({ x: 0, y: 0 })
+  const newNoteMenuRef = useRef(null)
 
   const noteWidth = 200
   const noteHeight = 120
@@ -92,8 +95,33 @@ function Desk({ user }) {
   ).join(', ')
   const backgroundRepeat = Array.from({ length: sectionCount }, () => 'no-repeat').join(', ')
 
+  function getItemKey(item) {
+    return `${item.item_type}:${item.id}`
+  }
+
+  function isChecklistItem(item) {
+    return item.item_type === 'checklist'
+  }
+
+  function checklistToLines(items) {
+    return items.map((item) => `${item.is_checked ? '[x]' : '[ ]'} ${item.text}`).join('\n')
+  }
+
+  function linesToChecklistItems(lines) {
+    return lines
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line, index) => {
+        const checked = /^\[(x|X)\]\s*/.test(line)
+        const text = line.replace(/^\[(x|X| )\]\s*/, '').trim()
+        return { text, is_checked: checked, sort_order: index }
+      })
+      .filter((item) => item.text.length > 0)
+  }
+
   useEffect(() => {
-    fetchNotes()
+    fetchDeskItems()
   }, [])
 
   useEffect(() => {
@@ -131,24 +159,117 @@ function Desk({ user }) {
     }
   }, [pendingDeleteId])
 
-  async function fetchNotes() {
-    const { data, error } = await supabase.from('notes').select('*').eq('user_id', user.id)
-    if (!error && data) {
-      setNotes(data)
+  useEffect(() => {
+    if (!showNewNoteMenu) return
 
-      const maxNoteY = data.reduce((maxY, note) => Math.max(maxY, Number(note.y) || 0), 0)
-      const requiredHeight = maxNoteY + noteHeight + growThreshold
-      const requiredSections = Math.max(2, Math.ceil(requiredHeight / sectionHeight))
-      setCanvasHeight((prev) => Math.max(prev, requiredSections * sectionHeight))
+    function handleClickOutside(e) {
+      if (!newNoteMenuRef.current?.contains(e.target)) {
+        setShowNewNoteMenu(false)
+      }
     }
+
+    window.addEventListener('mousedown', handleClickOutside)
+    return () => window.removeEventListener('mousedown', handleClickOutside)
+  }, [showNewNoteMenu])
+
+  async function fetchDeskItems() {
+    const [{ data: notesData, error: notesError }, { data: checklistsData, error: checklistsError }] = await Promise.all([
+      supabase.from('notes').select('*').eq('user_id', user.id),
+      supabase.from('checklists').select('*').eq('user_id', user.id)
+    ])
+
+    if (notesError) {
+      console.error('Failed to fetch notes:', notesError)
+    }
+    if (checklistsError) {
+      console.error('Failed to fetch checklists:', checklistsError)
+    }
+
+    const checklistRows = checklistsData || []
+    const checklistIds = checklistRows.map((row) => row.id)
+
+    let checklistItemsMap = new Map()
+
+    if (checklistIds.length > 0) {
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('checklist_items')
+        .select('*')
+        .in('checklist_id', checklistIds)
+        .order('sort_order', { ascending: true })
+
+      if (itemsError) {
+        console.error('Failed to fetch checklist items:', itemsError)
+      } else {
+        checklistItemsMap = (itemsData || []).reduce((acc, item) => {
+          const existing = acc.get(item.checklist_id) || []
+          existing.push(item)
+          acc.set(item.checklist_id, existing)
+          return acc
+        }, new Map())
+      }
+    }
+
+    const mappedNotes = (notesData || []).map((note) => ({ ...note, item_type: 'note' }))
+    const mappedChecklists = checklistRows.map((checklist) => ({
+      ...checklist,
+      item_type: 'checklist',
+      items: checklistItemsMap.get(checklist.id) || []
+    }))
+
+    const combined = [...mappedNotes, ...mappedChecklists]
+    setNotes(combined)
+
+    const maxNoteY = combined.reduce((maxY, item) => Math.max(maxY, Number(item.y) || 0), 0)
+    const requiredHeight = maxNoteY + noteHeight + growThreshold
+    const requiredSections = Math.max(2, Math.ceil(requiredHeight / sectionHeight))
+    setCanvasHeight((prev) => Math.max(prev, requiredSections * sectionHeight))
   }
 
-  async function addNote() {
+  async function addStickyNote() {
     const { data, error } = await supabase
       .from('notes')
       .insert([{ user_id: user.id, content: 'New note', x: 100, y: 100, rotation: 0 }])
       .select()
-    if (!error) setNotes((prev) => [...prev, ...data])
+
+    if (!error && data?.[0]) {
+      setNotes((prev) => [...prev, { ...data[0], item_type: 'note' }])
+    }
+
+    setShowNewNoteMenu(false)
+  }
+
+  async function addChecklistNote() {
+    const { data: checklistData, error: checklistError } = await supabase
+      .from('checklists')
+      .insert([{ user_id: user.id, title: 'Checklist', x: 100, y: 100, rotation: 0 }])
+      .select()
+
+    if (checklistError || !checklistData?.[0]) {
+      console.error('Failed to create checklist:', checklistError)
+      setShowNewNoteMenu(false)
+      return
+    }
+
+    const createdChecklist = checklistData[0]
+    const { data: itemData, error: itemError } = await supabase
+      .from('checklist_items')
+      .insert([{ checklist_id: createdChecklist.id, text: 'New item', is_checked: false, sort_order: 0 }])
+      .select()
+
+    if (itemError) {
+      console.error('Failed to create checklist item:', itemError)
+    }
+
+    setNotes((prev) => [
+      ...prev,
+      {
+        ...createdChecklist,
+        item_type: 'checklist',
+        items: itemData || []
+      }
+    ])
+
+    setShowNewNoteMenu(false)
   }
 
   async function handleLogout() {
@@ -163,27 +284,151 @@ function Desk({ user }) {
     return Math.round(normalizeRotation(value))
   }
 
-  async function persistRotation(noteId, rotationValue) {
+  async function persistRotation(itemKey, rotationValue) {
+    const item = notesRef.current.find((row) => getItemKey(row) === itemKey)
+    if (!item) return null
+
     const storedRotation = toStoredRotation(rotationValue)
+    const table = isChecklistItem(item) ? 'checklists' : 'notes'
     const { error } = await supabase
-      .from('notes')
+      .from(table)
       .update({ rotation: storedRotation })
-      .eq('id', noteId)
+      .eq('id', item.id)
       .eq('user_id', user.id)
 
     if (error) {
-      console.error('Failed to save note rotation:', error)
+      console.error('Failed to save item rotation:', error)
       return null
     }
 
     return storedRotation
   }
 
+  async function persistItemPosition(itemKey, x, y) {
+    const item = notesRef.current.find((row) => getItemKey(row) === itemKey)
+    if (!item) return
+
+    const table = isChecklistItem(item) ? 'checklists' : 'notes'
+    await supabase
+      .from(table)
+      .update({ x, y })
+      .eq('id', item.id)
+      .eq('user_id', user.id)
+  }
+
+  async function saveItemEdits(item) {
+    const nextRotation = toStoredRotation(Number(item.rotation) || 0)
+
+    if (!isChecklistItem(item)) {
+      const { error } = await supabase
+        .from('notes')
+        .update({ content: editValue, rotation: nextRotation })
+        .eq('id', item.id)
+        .eq('user_id', user.id)
+
+      if (error) {
+        console.error('Failed to save note:', error)
+        return
+      }
+
+      setNotes((prev) =>
+        prev.map((row) =>
+          getItemKey(row) === getItemKey(item) ? { ...row, content: editValue, rotation: nextRotation } : row
+        )
+      )
+      return
+    }
+
+    const nextItems = linesToChecklistItems(checklistLinesValue)
+
+    const { error: checklistError } = await supabase
+      .from('checklists')
+      .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation })
+      .eq('id', item.id)
+      .eq('user_id', user.id)
+
+    if (checklistError) {
+      console.error('Failed to save checklist:', checklistError)
+      return
+    }
+
+    const { error: deleteItemsError } = await supabase
+      .from('checklist_items')
+      .delete()
+      .eq('checklist_id', item.id)
+
+    if (deleteItemsError) {
+      console.error('Failed clearing checklist items:', deleteItemsError)
+      return
+    }
+
+    let insertedItems = []
+    if (nextItems.length > 0) {
+      const { data: inserted, error: insertItemsError } = await supabase
+        .from('checklist_items')
+        .insert(nextItems.map((entry) => ({ ...entry, checklist_id: item.id })))
+        .select()
+
+      if (insertItemsError) {
+        console.error('Failed saving checklist items:', insertItemsError)
+        return
+      }
+
+      insertedItems = inserted || []
+    }
+
+    setNotes((prev) =>
+      prev.map((row) =>
+        getItemKey(row) === getItemKey(item)
+          ? {
+              ...row,
+              title: editValue.trim() || 'Checklist',
+              rotation: nextRotation,
+              items: insertedItems
+            }
+          : row
+      )
+    )
+  }
+
+  async function toggleChecklistItem(itemKey, itemIndex) {
+    const checklist = notesRef.current.find((row) => getItemKey(row) === itemKey)
+    if (!checklist || !isChecklistItem(checklist)) return
+
+    const targetItem = checklist.items?.[itemIndex]
+    if (!targetItem) return
+
+    const nextChecked = !targetItem.is_checked
+
+    setNotes((prev) =>
+      prev.map((row) =>
+        getItemKey(row) === itemKey
+          ? {
+              ...row,
+              items: row.items.map((entry, index) =>
+                index === itemIndex ? { ...entry, is_checked: nextChecked } : entry
+              )
+            }
+          : row
+      )
+    )
+
+    const { error } = await supabase
+      .from('checklist_items')
+      .update({ is_checked: nextChecked })
+      .eq('id', targetItem.id)
+
+    if (error) {
+      console.error('Failed to toggle checklist item:', error)
+      await fetchDeskItems()
+    }
+  }
+
   function getPointerAngleFromCenter(pageX, pageY) {
     return (Math.atan2(pageY - rotationCenterRef.current.y, pageX - rotationCenterRef.current.x) * 180) / Math.PI
   }
 
-  function handleRotateMouseDown(e, noteId) {
+  function handleRotateMouseDown(e, item) {
     e.preventDefault()
     e.stopPropagation()
 
@@ -195,13 +440,10 @@ function Desk({ user }) {
     const centerY = rect.top + window.scrollY + rect.height / 2
     rotationCenterRef.current = { x: centerX, y: centerY }
 
-    const currentNote = notesRef.current.find((note) => note.id === noteId)
-    if (!currentNote) return
-
-    const currentRotation = Number(currentNote.rotation) || 0
+    const currentRotation = Number(item.rotation) || 0
     const pointerAngle = getPointerAngleFromCenter(e.pageX, e.pageY)
     rotationOffsetRef.current = currentRotation - pointerAngle
-    rotatingNoteIdRef.current = noteId
+    rotatingNoteIdRef.current = getItemKey(item)
 
     window.addEventListener('mousemove', handleRotateMouseMove)
     window.addEventListener('mouseup', handleRotateMouseUp)
@@ -215,8 +457,8 @@ function Desk({ user }) {
     const nextRotation = normalizeRotation(pointerAngle + rotationOffsetRef.current)
 
     setNotes((prev) =>
-      prev.map((note) =>
-        note.id === activeRotatingId ? { ...note, rotation: nextRotation } : note
+      prev.map((item) =>
+        getItemKey(item) === activeRotatingId ? { ...item, rotation: nextRotation } : item
       )
     )
   }
@@ -237,57 +479,77 @@ function Desk({ user }) {
       nextRotation = normalizeRotation(pointerAngle + rotationOffsetRef.current)
 
       setNotes((prev) =>
-        prev.map((note) =>
-          note.id === activeRotatingId ? { ...note, rotation: nextRotation } : note
+        prev.map((item) =>
+          getItemKey(item) === activeRotatingId ? { ...item, rotation: nextRotation } : item
         )
       )
     } else {
-      const noteToPersist = notesRef.current.find((note) => note.id === activeRotatingId)
-      if (!noteToPersist) return
-      nextRotation = Number(noteToPersist.rotation) || 0
+      const itemToPersist = notesRef.current.find((item) => getItemKey(item) === activeRotatingId)
+      if (!itemToPersist) return
+      nextRotation = Number(itemToPersist.rotation) || 0
     }
 
     const savedRotation = await persistRotation(activeRotatingId, nextRotation)
     if (savedRotation !== null) {
       setNotes((prev) =>
-        prev.map((note) =>
-          note.id === activeRotatingId ? { ...note, rotation: savedRotation } : note
+        prev.map((item) =>
+          getItemKey(item) === activeRotatingId ? { ...item, rotation: savedRotation } : item
         )
       )
     }
   }
 
-  function requestDeleteNote(noteId) {
-    setPendingDeleteId(noteId)
+  function requestDeleteNote(itemKey) {
+    setPendingDeleteId(itemKey)
   }
 
   async function confirmDeleteNote() {
     if (!pendingDeleteId) return
 
-    const { error } = await supabase
-      .from('notes')
-      .delete()
-      .eq('id', pendingDeleteId)
-      .eq('user_id', user.id)
+    const item = notesRef.current.find((row) => getItemKey(row) === pendingDeleteId)
+    if (!item) {
+      setPendingDeleteId(null)
+      return
+    }
+
+    let error = null
+
+    if (isChecklistItem(item)) {
+      const { error: checklistError } = await supabase
+        .from('checklists')
+        .delete()
+        .eq('id', item.id)
+        .eq('user_id', user.id)
+      error = checklistError
+    } else {
+      const { error: noteError } = await supabase
+        .from('notes')
+        .delete()
+        .eq('id', item.id)
+        .eq('user_id', user.id)
+      error = noteError
+    }
 
     if (!error) {
-      setNotes((prev) => prev.filter((note) => note.id !== pendingDeleteId))
+      setNotes((prev) => prev.filter((row) => getItemKey(row) !== pendingDeleteId))
       if (editingId === pendingDeleteId) {
         setEditingId(null)
         setEditValue('')
+        setChecklistLinesValue('')
       }
     }
 
     setPendingDeleteId(null)
   }
 
-  function handleDragStart(e, note) {
+  function handleDragStart(e, item) {
     if (editingId) return
 
-    setDraggedId(note.id)
-    draggedIdRef.current = note.id
+    const itemKey = getItemKey(item)
+    setDraggedId(itemKey)
+    draggedIdRef.current = itemKey
 
-    const offset = { x: e.pageX - note.x, y: e.pageY - note.y }
+    const offset = { x: e.pageX - item.x, y: e.pageY - item.y }
     setDragOffset(offset)
     dragOffsetRef.current = offset
 
@@ -314,10 +576,10 @@ function Desk({ user }) {
     const boundedY = Math.max(0, nextY)
 
     setNotes((prev) =>
-      prev.map((note) =>
-        note.id === activeDraggedId
-          ? { ...note, x: boundedX, y: boundedY }
-          : note
+      prev.map((item) =>
+        getItemKey(item) === activeDraggedId
+          ? { ...item, x: boundedX, y: boundedY }
+          : item
       )
     )
   }
@@ -344,20 +606,17 @@ function Desk({ user }) {
       }
 
       setNotes((prev) =>
-        prev.map((note) =>
-          note.id === activeDraggedId ? { ...note, x: nextPosition.x, y: nextPosition.y } : note
+        prev.map((item) =>
+          getItemKey(item) === activeDraggedId ? { ...item, x: nextPosition.x, y: nextPosition.y } : item
         )
       )
     } else {
-      const noteToPersist = notesRef.current.find((note) => note.id === activeDraggedId)
-      if (!noteToPersist) return
-      nextPosition = { x: noteToPersist.x, y: noteToPersist.y }
+      const itemToPersist = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
+      if (!itemToPersist) return
+      nextPosition = { x: itemToPersist.x, y: itemToPersist.y }
     }
 
-    await supabase
-      .from('notes')
-      .update({ x: nextPosition.x, y: nextPosition.y })
-      .eq('id', activeDraggedId)
+    await persistItemPosition(activeDraggedId, nextPosition.x, nextPosition.y)
   }
 
   return (
@@ -386,167 +645,278 @@ function Desk({ user }) {
         Logout
       </button>
 
-      <button
-        onClick={addNote}
-        style={{ padding: '8px 16px', fontSize: 14, marginBottom: 20, cursor: 'pointer' }}
-      >
-        New Note
-      </button>
-
-      {notes.map((note) => (
-        <div
-          key={note.id}
-          data-note-id={note.id}
-          onMouseDown={editingId ? undefined : (e) => handleDragStart(e, note)}
-          style={{
-            position: 'absolute',
-            left: note.x,
-            top: note.y,
-            transform: `rotate(${note.rotation || 0}deg)`,
-            background: '#fffa91',
-            padding: 20,
-            width: 200,
-            boxShadow: '3px 3px 10px rgba(0,0,0,0.3)',
-            cursor: editingId ? 'text' : draggedId === note.id ? 'grabbing' : 'grab',
-            zIndex: draggedId === note.id ? 100 : 1
-          }}
+      <div ref={newNoteMenuRef} style={{ position: 'relative', display: 'inline-block', marginBottom: 20 }}>
+        <button
+          onClick={() => setShowNewNoteMenu((prev) => !prev)}
+          style={{ padding: '8px 16px', fontSize: 14, cursor: 'pointer' }}
         >
-          {editingId === note.id ? (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault()
-                const noteToSave = notesRef.current.find((item) => item.id === note.id)
-                const nextRotation = toStoredRotation(Number(noteToSave?.rotation) || 0)
+          New Note ▼
+        </button>
 
-                const { error } = await supabase
-                  .from('notes')
-                  .update({ content: editValue, rotation: nextRotation })
-                  .eq('id', note.id)
-                  .eq('user_id', user.id)
-
-                if (!error) {
-                  setNotes((prev) =>
-                    prev.map((item) =>
-                      item.id === note.id ? { ...item, content: editValue, rotation: nextRotation } : item
-                    )
-                  )
-                }
-
-                setEditingId(null)
-                setEditValue('')
+        {showNewNoteMenu && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              marginTop: 6,
+              background: '#fff',
+              border: '1px solid #ddd',
+              borderRadius: 6,
+              boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
+              overflow: 'hidden',
+              zIndex: 200
+            }}
+          >
+            <button
+              type="button"
+              onClick={addStickyNote}
+              style={{
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                padding: '8px 12px',
+                border: 'none',
+                background: '#fff',
+                cursor: 'pointer'
               }}
             >
-              <div style={{ marginBottom: 8, textAlign: 'center' }}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => handleRotateMouseDown(e, note.id)}
-                  aria-label="Rotate note"
-                  title="Hold and drag to rotate"
-                  style={{
-                    width: 24,
-                    height: 24,
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 16,
-                    lineHeight: 1,
-                    borderRadius: 4,
-                    border: 'none',
-                    background: '#777',
-                    color: '#fff',
-                    cursor: 'pointer'
-                  }}
-                >
-                  ↻
-                </button>
-              </div>
+              Sticky Note
+            </button>
+            <button
+              type="button"
+              onClick={addChecklistNote}
+              style={{
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                padding: '8px 12px',
+                border: 'none',
+                background: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              Checklist
+            </button>
+          </div>
+        )}
+      </div>
 
-              <textarea
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                autoFocus
+      {notes.map((item) => {
+        const itemKey = getItemKey(item)
+        const isChecklist = isChecklistItem(item)
+
+        return (
+          <div
+            key={itemKey}
+            data-note-id={item.id}
+            onMouseDown={editingId ? undefined : (e) => handleDragStart(e, item)}
+            style={{
+              position: 'absolute',
+              left: item.x,
+              top: item.y,
+              transform: `rotate(${item.rotation || 0}deg)`,
+              background: '#fffa91',
+              padding: 20,
+              width: 200,
+              boxShadow: '3px 3px 10px rgba(0,0,0,0.3)',
+              cursor: editingId ? 'text' : draggedId === itemKey ? 'grabbing' : 'grab',
+              zIndex: draggedId === itemKey ? 100 : 1
+            }}
+          >
+            {editingId === itemKey ? (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  await saveItemEdits(item)
+
+                  setEditingId(null)
+                  setEditValue('')
+                  setChecklistLinesValue('')
+                }}
+              >
+                <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => handleRotateMouseDown(e, item)}
+                    aria-label="Rotate note"
+                    title="Hold and drag to rotate"
+                    style={{
+                      width: 24,
+                      height: 24,
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 16,
+                      lineHeight: 1,
+                      borderRadius: 4,
+                      border: 'none',
+                      background: '#777',
+                      color: '#fff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ↻
+                  </button>
+                </div>
+
+                {isChecklist ? (
+                  <>
+                    <input
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      placeholder="Checklist title"
+                      style={{
+                        width: '100%',
+                        marginBottom: 8,
+                        fontSize: 14,
+                        borderRadius: 4,
+                        border: '1px solid #ccc',
+                        color: '#222',
+                        padding: '6px 8px',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <textarea
+                      value={checklistLinesValue}
+                      onChange={(e) => setChecklistLinesValue(e.target.value)}
+                      autoFocus
+                      placeholder={'[ ] Item one\n[x] Completed item'}
+                      style={{
+                        width: '100%',
+                        minHeight: 70,
+                        fontSize: 13,
+                        borderRadius: 4,
+                        border: '1px solid #ccc',
+                        resize: 'vertical',
+                        color: '#222',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </>
+                ) : (
+                  <textarea
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    autoFocus
+                    style={{
+                      width: '100%',
+                      minHeight: 60,
+                      fontSize: 16,
+                      borderRadius: 4,
+                      border: '1px solid #ccc',
+                      resize: 'vertical',
+                      color: '#222',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                )}
+
+                <div style={{ marginTop: 8, textAlign: 'right' }}>
+                  <button
+                    type="button"
+                    onClick={() => requestDeleteNote(itemKey)}
+                    style={{
+                      marginRight: 4,
+                      padding: '2px 6px',
+                      fontSize: 11,
+                      borderRadius: 4,
+                      border: 'none',
+                      background: '#d32f2f',
+                      color: '#fff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="submit"
+                    style={{
+                      marginRight: 4,
+                      padding: '2px 6px',
+                      fontSize: 11,
+                      borderRadius: 4,
+                      border: 'none',
+                      background: '#4285F4',
+                      color: '#fff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingId(null)
+                      setEditValue('')
+                      setChecklistLinesValue('')
+                    }}
+                    style={{
+                      padding: '2px 6px',
+                      fontSize: 11,
+                      borderRadius: 4,
+                      border: 'none',
+                      background: '#eee',
+                      color: '#333',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div
+                onClick={() => {
+                  setEditingId(itemKey)
+                  if (isChecklist) {
+                    setEditValue(item.title || 'Checklist')
+                    setChecklistLinesValue(checklistToLines(item.items || []))
+                  } else {
+                    setEditValue(item.content || '')
+                    setChecklistLinesValue('')
+                  }
+                }}
                 style={{
-                  width: '100%',
-                  minHeight: 60,
-                  fontSize: 16,
-                  borderRadius: 4,
-                  border: '1px solid #ccc',
-                  resize: 'vertical',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  cursor: 'pointer',
+                  minHeight: 40,
                   color: '#222'
                 }}
-              />
-              <div style={{ marginTop: 8, textAlign: 'right' }}>
-                <button
-                  type="button"
-                  onClick={() => requestDeleteNote(note.id)}
-                  style={{
-                    marginRight: 4,
-                    padding: '2px 6px',
-                    fontSize: 11,
-                    borderRadius: 4,
-                    border: 'none',
-                    background: '#d32f2f',
-                    color: '#fff',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Delete
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    marginRight: 4,
-                    padding: '2px 6px',
-                    fontSize: 11,
-                    borderRadius: 4,
-                    border: 'none',
-                    background: '#4285F4',
-                    color: '#fff',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingId(null)
-                    setEditValue('')
-                  }}
-                  style={{
-                    padding: '2px 6px',
-                    fontSize: 11,
-                    borderRadius: 4,
-                    border: 'none',
-                    background: '#eee',
-                    color: '#333',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Cancel
-                </button>
+              >
+                {isChecklist ? (
+                  <>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>{item.title || 'Checklist'}</div>
+                    {(item.items || []).length === 0 ? (
+                      <div style={{ opacity: 0.7 }}>No checklist items</div>
+                    ) : (
+                      (item.items || []).map((checklistItem, index) => (
+                        <label
+                          key={`${item.id}-${checklistItem.id || index}`}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={Boolean(checklistItem.is_checked)}
+                            onChange={() => toggleChecklistItem(itemKey, index)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <span style={{ textDecoration: checklistItem.is_checked ? 'line-through' : 'none' }}>{checklistItem.text}</span>
+                        </label>
+                      ))
+                    )}
+                  </>
+                ) : (
+                  item.content
+                )}
               </div>
-            </form>
-          ) : (
-            <div
-              onClick={() => {
-                setEditingId(note.id)
-                setEditValue(note.content)
-              }}
-              style={{
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                cursor: 'pointer',
-                minHeight: 40,
-                color: '#222'
-              }}
-            >
-              {note.content}
-            </div>
-          )}
-        </div>
-      ))}
+            )}
+          </div>
+        )
+      })}
 
       {pendingDeleteId && (
         <div
