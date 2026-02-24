@@ -74,7 +74,13 @@ function Desk({ user }) {
   const [showDeskMenu, setShowDeskMenu] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [profileTab, setProfileTab] = useState('profile')
-  const [deskNameDialog, setDeskNameDialog] = useState({ isOpen: false, mode: 'create', value: '' })
+  const [deskNameDialog, setDeskNameDialog] = useState({
+    isOpen: false,
+    mode: 'create',
+    value: '',
+    isCollaborative: false,
+    invitedFriendIds: []
+  })
   const [deskNameError, setDeskNameError] = useState('')
   const [deskNameSaving, setDeskNameSaving] = useState(false)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
@@ -278,18 +284,58 @@ function Desk({ user }) {
   }
 
   async function fetchDesks() {
-    const { data, error } = await supabase
+    const { data: ownedDesks, error: ownedError } = await supabase
       .from('desks')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: true })
 
-    if (error) {
-      console.error('Failed to fetch desks:', error)
+    if (ownedError) {
+      console.error('Failed to fetch owned desks:', ownedError)
       return
     }
 
-    const loadedDesks = data || []
+    let sharedDesks = []
+
+    const { data: membershipRows, error: membershipError } = await supabase
+      .from('desk_members')
+      .select('desk_id')
+      .eq('user_id', user.id)
+
+    if (membershipError) {
+      console.error('Failed to fetch shared desk memberships:', membershipError)
+    } else {
+      const ownedDeskIds = new Set((ownedDesks || []).map((desk) => desk.id))
+      const sharedDeskIds = (membershipRows || [])
+        .map((row) => row.desk_id)
+        .filter((deskId) => deskId && !ownedDeskIds.has(deskId))
+
+      if (sharedDeskIds.length > 0) {
+        const { data: loadedSharedDesks, error: sharedDesksError } = await supabase
+          .from('desks')
+          .select('*')
+          .in('id', sharedDeskIds)
+          .order('created_at', { ascending: true })
+
+        if (sharedDesksError) {
+          console.error('Failed to fetch shared desks:', sharedDesksError)
+        } else {
+          sharedDesks = loadedSharedDesks || []
+        }
+      }
+    }
+
+    const mergedDeskMap = new Map()
+    ;[...(ownedDesks || []), ...sharedDesks].forEach((desk) => {
+      if (desk?.id) mergedDeskMap.set(desk.id, desk)
+    })
+
+    const loadedDesks = Array.from(mergedDeskMap.values()).sort((a, b) => {
+      const left = a?.created_at ? new Date(a.created_at).getTime() : 0
+      const right = b?.created_at ? new Date(b.created_at).getTime() : 0
+      return left - right
+    })
+
     setDesks(loadedDesks)
 
     if (loadedDesks.length === 0) {
@@ -305,11 +351,16 @@ function Desk({ user }) {
     })
   }
 
-  async function createDesk(nextDeskName) {
+  async function createDesk(nextDeskName, options = {}) {
     const trimmedName = (nextDeskName || '').trim()
     if (!trimmedName) {
       return { ok: false, errorMessage: 'Please enter a desk name.' }
     }
+
+    const isCollaborative = Boolean(options.isCollaborative)
+    const invitedFriendIds = Array.isArray(options.invitedFriendIds)
+      ? Array.from(new Set(options.invitedFriendIds.filter((friendId) => friendId && friendId !== user.id)))
+      : []
 
     const { data, error } = await supabase
       .from('desks')
@@ -322,6 +373,24 @@ function Desk({ user }) {
     }
 
     const createdDesk = data[0]
+
+    if (isCollaborative) {
+      const memberRows = [
+        { desk_id: createdDesk.id, user_id: user.id, role: 'owner' },
+        ...invitedFriendIds.map((friendId) => ({ desk_id: createdDesk.id, user_id: friendId, role: 'editor' }))
+      ]
+
+      const { error: memberInsertError } = await supabase
+        .from('desk_members')
+        .upsert(memberRows, { onConflict: 'desk_id,user_id' })
+
+      if (memberInsertError) {
+        console.error('Failed to add collaborators:', memberInsertError)
+        await supabase.from('desks').delete().eq('id', createdDesk.id).eq('user_id', user.id)
+        return { ok: false, errorMessage: memberInsertError?.message || 'Failed to invite collaborators.' }
+      }
+    }
+
     setDesks((prev) => [...prev, createdDesk])
     setSelectedDeskId(createdDesk.id)
     setBackgroundMode(getDeskBackgroundValue(createdDesk))
@@ -394,7 +463,13 @@ function Desk({ user }) {
 
   function openCreateDeskDialog() {
     setDeskNameError('')
-    setDeskNameDialog({ isOpen: true, mode: 'create', value: `Desk ${desks.length + 1}` })
+    setDeskNameDialog({
+      isOpen: true,
+      mode: 'create',
+      value: `Desk ${desks.length + 1}`,
+      isCollaborative: false,
+      invitedFriendIds: []
+    })
     setShowDeskMenu(false)
   }
 
@@ -403,14 +478,29 @@ function Desk({ user }) {
     if (!currentDesk) return
 
     setDeskNameError('')
-    setDeskNameDialog({ isOpen: true, mode: 'rename', value: getDeskNameValue(currentDesk) || 'Desk' })
+    setDeskNameDialog({
+      isOpen: true,
+      mode: 'rename',
+      value: getDeskNameValue(currentDesk) || 'Desk',
+      isCollaborative: false,
+      invitedFriendIds: []
+    })
     setShowDeskMenu(false)
+  }
+
+  function toggleInvitedFriend(friendId) {
+    setDeskNameDialog((prev) => {
+      const selected = new Set(prev.invitedFriendIds || [])
+      if (selected.has(friendId)) selected.delete(friendId)
+      else selected.add(friendId)
+      return { ...prev, invitedFriendIds: Array.from(selected) }
+    })
   }
 
   function closeDeskNameDialog() {
     setDeskNameError('')
     setDeskNameSaving(false)
-    setDeskNameDialog({ isOpen: false, mode: 'create', value: '' })
+    setDeskNameDialog({ isOpen: false, mode: 'create', value: '', isCollaborative: false, invitedFriendIds: [] })
   }
 
   async function submitDeskNameDialog(e) {
@@ -426,7 +516,10 @@ function Desk({ user }) {
     setDeskNameError('')
 
     const saveResult = deskNameDialog.mode === 'create'
-      ? await createDesk(nextName)
+      ? await createDesk(nextName, {
+          isCollaborative: deskNameDialog.isCollaborative,
+          invitedFriendIds: deskNameDialog.invitedFriendIds
+        })
       : await renameCurrentDesk(nextName)
 
     if (saveResult.ok) {
@@ -2550,6 +2643,62 @@ function Desk({ user }) {
                 fontSize: 14
               }}
             />
+
+            {deskNameDialog.mode === 'create' && (
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(deskNameDialog.isCollaborative)}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      if (deskNameError) setDeskNameError('')
+                      setDeskNameDialog((prev) => ({
+                        ...prev,
+                        isCollaborative: checked,
+                        invitedFriendIds: checked ? prev.invitedFriendIds : []
+                      }))
+                    }}
+                  />
+                  Collaborative desk
+                </label>
+
+                {deskNameDialog.isCollaborative && (
+                  <div
+                    style={{
+                      border: '1px solid #e3e3e3',
+                      borderRadius: 6,
+                      padding: 8,
+                      maxHeight: 140,
+                      overflowY: 'auto',
+                      background: '#fafafa'
+                    }}
+                  >
+                    <div style={{ fontSize: 12, marginBottom: 6, color: '#555' }}>Invite friends:</div>
+                    {friends.length === 0 ? (
+                      <div style={{ fontSize: 12, color: '#777' }}>No friends available to invite yet.</div>
+                    ) : (
+                      friends.map((friend) => {
+                        const checked = (deskNameDialog.invitedFriendIds || []).includes(friend.id)
+                        return (
+                          <label
+                            key={friend.id}
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 6 }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleInvitedFriend(friend.id)}
+                            />
+                            <span>{friend.email}</span>
+                          </label>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {deskNameError && (
               <div style={{ color: '#d32f2f', fontSize: 12, marginBottom: 10 }}>
