@@ -182,9 +182,32 @@ function Desk({ user }) {
     return Number.isFinite(value) && value > 0 ? value : 200
   }
 
+  function getAutoChecklistHeight(item) {
+    const itemCount = Array.isArray(item?.items) ? item.items.length : 0
+    return clampDimension(74 + itemCount * 26, 96, 260)
+  }
+
+  function getAutoNoteHeight(item) {
+    const content = typeof item?.content === 'string' ? item.content : ''
+    const newlineCount = content.length > 0 ? content.split('\n').length : 1
+    const wrappedLineCount = Math.max(1, Math.ceil(content.length / 70))
+    const estimatedLines = Math.max(newlineCount, wrappedLineCount)
+    return clampDimension(68 + estimatedLines * 22, 88, 220)
+  }
+
   function getItemHeight(item) {
     const value = Number(item?.height)
-    return Number.isFinite(value) && value > 0 ? value : 120
+    if (Number.isFinite(value) && value > 0) {
+      if (isChecklistItem(item) && value === 160) {
+        return getAutoChecklistHeight(item)
+      }
+      if (!isChecklistItem(item) && value === 120) {
+        return getAutoNoteHeight(item)
+      }
+      return value
+    }
+
+    return isChecklistItem(item) ? getAutoChecklistHeight(item) : getAutoNoteHeight(item)
   }
 
   function clampScale(value) {
