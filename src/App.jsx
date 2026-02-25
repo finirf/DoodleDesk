@@ -3043,17 +3043,19 @@ function Desk({ user }) {
                     display: 'block',
                     width: '100%',
                     textAlign: 'left',
-                    padding: '6px 8px',
-                    border: 'none',
+                    padding: '7px 10px',
+                    border: '1px solid #d2d7e0',
                     borderRadius: 4,
-                    background: '#f3f5f8',
-                    color: '#333',
+                    background: '#e8f0fe',
+                    color: '#1f3b75',
                     cursor: 'pointer',
                     fontSize: 12,
-                    fontWeight: 600
+                    fontWeight: 700,
+                    letterSpacing: 0.2,
+                    marginBottom: 2
                   }}
                 >
-                  {showFolderHierarchyTools ? '▼' : '▶'} Folder Hierarchy Tools
+                  {showFolderHierarchyTools ? '▼' : '▶'} Shelf Organizer
                 </button>
 
                 {showFolderHierarchyTools && (
