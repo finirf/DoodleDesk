@@ -96,6 +96,15 @@ function Desk({ user }) {
   const [customBackgroundInput, setCustomBackgroundInput] = useState('')
   const [backgroundMenuError, setBackgroundMenuError] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmLabel: 'Confirm',
+    tone: 'danger',
+    onConfirm: null
+  })
+  const [confirmDialogLoading, setConfirmDialogLoading] = useState(false)
   const [friends, setFriends] = useState([])
   const [incomingFriendRequests, setIncomingFriendRequests] = useState([])
   const [outgoingFriendRequests, setOutgoingFriendRequests] = useState([])
@@ -165,6 +174,53 @@ function Desk({ user }) {
     index === 0 ? 'top center' : `center ${index * sectionHeight}px`
   ).join(', ')
   const backgroundRepeat = Array.from({ length: sectionCount }, () => 'no-repeat').join(', ')
+  const hasModalOpen = Boolean(
+    pendingDeleteId ||
+    deskNameDialog.isOpen ||
+    deskMembersDialogOpen ||
+    confirmDialog.isOpen
+  )
+  const modalOverlayStyle = {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0, 0, 0, 0.35)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  }
+  const modalCardStyle = {
+    background: '#fff',
+    borderRadius: 8,
+    padding: 16,
+    boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+    color: '#222'
+  }
+  const modalTitleStyle = { marginBottom: 10, fontWeight: 600 }
+  const modalActionsStyle = { textAlign: 'right' }
+  const modalSecondaryButtonStyle = {
+    padding: '6px 12px',
+    borderRadius: 4,
+    border: 'none',
+    background: '#eee',
+    color: '#333',
+    cursor: 'pointer'
+  }
+  const modalPrimaryButtonStyle = {
+    padding: '6px 12px',
+    borderRadius: 4,
+    border: 'none',
+    background: '#4285F4',
+    color: '#fff',
+    cursor: 'pointer'
+  }
+  const modalDangerButtonStyle = {
+    padding: '6px 12px',
+    borderRadius: 4,
+    border: 'none',
+    background: '#d32f2f',
+    color: '#fff',
+    cursor: 'pointer'
+  }
 
   function getItemKey(item) {
     return `${item.item_type}:${item.id}`
@@ -306,14 +362,21 @@ function Desk({ user }) {
   }, [])
 
   useEffect(() => {
-    if (!pendingDeleteId) return
+    if (!hasModalOpen) return
 
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
     function handleKeyDown(e) {
       if (e.key === 'Escape') {
-        setPendingDeleteId(null)
+        if (confirmDialog.isOpen && !confirmDialogLoading) {
+          closeConfirmDialog()
+          return
+        }
+
+        if (pendingDeleteId) {
+          setPendingDeleteId(null)
+        }
       }
     }
 
@@ -323,7 +386,7 @@ function Desk({ user }) {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [pendingDeleteId])
+  }, [hasModalOpen, confirmDialog.isOpen, confirmDialogLoading, pendingDeleteId])
 
   useEffect(() => {
     if (!showNewNoteMenu && !showDeskMenu && !showProfileMenu) return
@@ -536,93 +599,148 @@ function Desk({ user }) {
     return { ok: true }
   }
 
+  function openConfirmDialog({ title, message, confirmLabel = 'Confirm', tone = 'danger', onConfirm }) {
+    setConfirmDialog({
+      isOpen: true,
+      title,
+      message,
+      confirmLabel,
+      tone,
+      onConfirm: typeof onConfirm === 'function' ? onConfirm : null
+    })
+    setConfirmDialogLoading(false)
+  }
+
+  function closeConfirmDialog() {
+    if (confirmDialogLoading) return
+    setConfirmDialog({
+      isOpen: false,
+      title: '',
+      message: '',
+      confirmLabel: 'Confirm',
+      tone: 'danger',
+      onConfirm: null
+    })
+  }
+
+  async function confirmDialogAction() {
+    if (confirmDialogLoading || typeof confirmDialog.onConfirm !== 'function') return
+
+    setConfirmDialogLoading(true)
+    try {
+      await confirmDialog.onConfirm()
+      setConfirmDialog({
+        isOpen: false,
+        title: '',
+        message: '',
+        confirmLabel: 'Confirm',
+        tone: 'danger',
+        onConfirm: null
+      })
+    } catch (error) {
+      console.error('Confirmation action failed:', error)
+    } finally {
+      setConfirmDialogLoading(false)
+    }
+  }
+
   async function deleteCurrentDesk() {
     const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
     if (!currentDesk) return
 
-    const shouldDelete = window.confirm(`Delete "${getDeskNameValue(currentDesk)}"? This cannot be undone.`)
-    if (!shouldDelete) return
+    openConfirmDialog({
+      title: 'Delete Desk',
+      message: `Delete "${getDeskNameValue(currentDesk)}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+      onConfirm: async () => {
+        const { error } = await supabase
+          .from('desks')
+          .delete()
+          .eq('id', currentDesk.id)
+          .eq('user_id', user.id)
 
-    const { error } = await supabase
-      .from('desks')
-      .delete()
-      .eq('id', currentDesk.id)
-      .eq('user_id', user.id)
+        if (error) {
+          console.error('Failed to delete desk:', error)
+          return
+        }
 
-    if (error) {
-      console.error('Failed to delete desk:', error)
-      return
-    }
+        const savedDeskId = localStorage.getItem(lastDeskStorageKey)
+        if (savedDeskId && savedDeskId === String(currentDesk.id)) {
+          localStorage.removeItem(lastDeskStorageKey)
+        }
 
-    const savedDeskId = localStorage.getItem(lastDeskStorageKey)
-    if (savedDeskId && savedDeskId === String(currentDesk.id)) {
-      localStorage.removeItem(lastDeskStorageKey)
-    }
+        const remainingDesks = desks.filter((desk) => desk.id !== currentDesk.id)
+        setDesks(remainingDesks)
 
-    const remainingDesks = desks.filter((desk) => desk.id !== currentDesk.id)
-    setDesks(remainingDesks)
+        if (remainingDesks.length === 0) {
+          setSelectedDeskId(null)
+          setBackgroundMode('desk1')
+          setCustomBackgroundUrl('')
+          setCustomBackgroundInput('')
+          setNotes([])
+        } else {
+          const nextDesk = remainingDesks[0]
+          setSelectedDeskId(nextDesk.id)
+          const nextBackgroundMode = getDeskBackgroundValue(nextDesk)
+          setBackgroundMode(nextBackgroundMode)
+          setCustomBackgroundUrl(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
+          setCustomBackgroundInput(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
+        }
 
-    if (remainingDesks.length === 0) {
-      setSelectedDeskId(null)
-      setBackgroundMode('desk1')
-      setCustomBackgroundUrl('')
-      setCustomBackgroundInput('')
-      setNotes([])
-    } else {
-      const nextDesk = remainingDesks[0]
-      setSelectedDeskId(nextDesk.id)
-      const nextBackgroundMode = getDeskBackgroundValue(nextDesk)
-      setBackgroundMode(nextBackgroundMode)
-      setCustomBackgroundUrl(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
-      setCustomBackgroundInput(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
-    }
-
-    setShowDeskMenu(false)
-    await incrementUserStat('desks_deleted', 1)
+        setShowDeskMenu(false)
+        await incrementUserStat('desks_deleted', 1)
+      }
+    })
   }
 
   async function leaveCurrentDesk() {
     const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
     if (!currentDesk || currentDesk.user_id === user.id) return
 
-    const shouldLeave = window.confirm(`Leave "${getDeskNameValue(currentDesk)}"?`)
-    if (!shouldLeave) return
+    openConfirmDialog({
+      title: 'Leave Desk',
+      message: `Leave "${getDeskNameValue(currentDesk)}"?`,
+      confirmLabel: 'Leave',
+      tone: 'danger',
+      onConfirm: async () => {
+        const { error } = await supabase
+          .from('desk_members')
+          .delete()
+          .eq('desk_id', currentDesk.id)
+          .eq('user_id', user.id)
 
-    const { error } = await supabase
-      .from('desk_members')
-      .delete()
-      .eq('desk_id', currentDesk.id)
-      .eq('user_id', user.id)
+        if (error) {
+          console.error('Failed to leave desk:', error)
+          return
+        }
 
-    if (error) {
-      console.error('Failed to leave desk:', error)
-      return
-    }
+        const savedDeskId = localStorage.getItem(lastDeskStorageKey)
+        if (savedDeskId && savedDeskId === String(currentDesk.id)) {
+          localStorage.removeItem(lastDeskStorageKey)
+        }
 
-    const savedDeskId = localStorage.getItem(lastDeskStorageKey)
-    if (savedDeskId && savedDeskId === String(currentDesk.id)) {
-      localStorage.removeItem(lastDeskStorageKey)
-    }
+        const remainingDesks = desks.filter((desk) => desk.id !== currentDesk.id)
+        setDesks(remainingDesks)
 
-    const remainingDesks = desks.filter((desk) => desk.id !== currentDesk.id)
-    setDesks(remainingDesks)
+        if (remainingDesks.length === 0) {
+          setSelectedDeskId(null)
+          setBackgroundMode('desk1')
+          setCustomBackgroundUrl('')
+          setCustomBackgroundInput('')
+          setNotes([])
+        } else {
+          const nextDesk = remainingDesks[0]
+          setSelectedDeskId(nextDesk.id)
+          const nextBackgroundMode = getDeskBackgroundValue(nextDesk)
+          setBackgroundMode(nextBackgroundMode)
+          setCustomBackgroundUrl(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
+          setCustomBackgroundInput(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
+        }
 
-    if (remainingDesks.length === 0) {
-      setSelectedDeskId(null)
-      setBackgroundMode('desk1')
-      setCustomBackgroundUrl('')
-      setCustomBackgroundInput('')
-      setNotes([])
-    } else {
-      const nextDesk = remainingDesks[0]
-      setSelectedDeskId(nextDesk.id)
-      const nextBackgroundMode = getDeskBackgroundValue(nextDesk)
-      setBackgroundMode(nextBackgroundMode)
-      setCustomBackgroundUrl(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
-      setCustomBackgroundInput(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
-    }
-
-    setShowDeskMenu(false)
+        setShowDeskMenu(false)
+      }
+    })
   }
 
   async function renameCurrentDesk(nextNameInput) {
@@ -1421,30 +1539,34 @@ function Desk({ user }) {
     if (!friendId) return
 
     const friend = friends.find((entry) => entry.id === friendId)
-    const shouldRemove = window.confirm(
-      `Remove ${friend?.email || 'this friend'} from your friends list?`
-    )
-    if (!shouldRemove) return
 
-    setFriendActionLoadingId(friendId)
-    setFriendError('')
-    setFriendMessage('')
+    openConfirmDialog({
+      title: 'Remove Friend',
+      message: `Remove ${friend?.email || 'this friend'} from your friends list?`,
+      confirmLabel: 'Remove',
+      tone: 'danger',
+      onConfirm: async () => {
+        setFriendActionLoadingId(friendId)
+        setFriendError('')
+        setFriendMessage('')
 
-    const { error } = await supabase
-      .from('friend_requests')
-      .delete()
-      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friendId},status.eq.accepted),and(sender_id.eq.${friendId},receiver_id.eq.${user.id},status.eq.accepted)`)
+        const { error } = await supabase
+          .from('friend_requests')
+          .delete()
+          .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friendId},status.eq.accepted),and(sender_id.eq.${friendId},receiver_id.eq.${user.id},status.eq.accepted)`)
 
-    if (error) {
-      console.error('Failed to remove friend:', error)
-      setFriendError(error?.message || 'Could not remove friend.')
-      setFriendActionLoadingId(null)
-      return
-    }
+        if (error) {
+          console.error('Failed to remove friend:', error)
+          setFriendError(error?.message || 'Could not remove friend.')
+          setFriendActionLoadingId(null)
+          return
+        }
 
-    setFriendMessage('Friend removed.')
-    await fetchFriends()
-    setFriendActionLoadingId(null)
+        setFriendMessage('Friend removed.')
+        await fetchFriends()
+        setFriendActionLoadingId(null)
+      }
+    })
   }
 
   function normalizeRotation(value) {
@@ -2585,6 +2707,8 @@ function Desk({ user }) {
               <div style={{ borderTop: '1px solid #eee', marginTop: 12, paddingTop: 10 }}>
                 <a
                   href="/privacy.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   style={{
                     display: 'block',
                     width: '100%',
@@ -2812,7 +2936,7 @@ function Desk({ user }) {
                       cursor: 'pointer'
                     }}
                   >
-                    ↔
+                    ↕↔
                   </button>
                 </div>
 
@@ -3178,22 +3302,14 @@ function Desk({ user }) {
       {pendingDeleteId && (
         <div
           style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            ...modalOverlayStyle,
             zIndex: 1000
           }}
         >
           <div
             style={{
-              background: '#fff',
-              borderRadius: 8,
-              padding: 16,
+              ...modalCardStyle,
               width: 280,
-              boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
               textAlign: 'center'
             }}
           >
@@ -3202,13 +3318,8 @@ function Desk({ user }) {
               type="button"
               onClick={confirmDeleteNote}
               style={{
+                ...modalDangerButtonStyle,
                 marginRight: 8,
-                padding: '6px 12px',
-                borderRadius: 4,
-                border: 'none',
-                background: '#d32f2f',
-                color: '#fff',
-                cursor: 'pointer'
               }}
             >
               Delete
@@ -3216,13 +3327,51 @@ function Desk({ user }) {
             <button
               type="button"
               onClick={() => setPendingDeleteId(null)}
+              style={modalSecondaryButtonStyle}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmDialog.isOpen && (
+        <div
+          style={{
+            ...modalOverlayStyle,
+            zIndex: 1100
+          }}
+        >
+          <div
+            style={{
+              ...modalCardStyle,
+              width: 320,
+              textAlign: 'center'
+            }}
+          >
+            <div style={{ ...modalTitleStyle, marginBottom: 12 }}>{confirmDialog.title || 'Confirm Action'}</div>
+            <div style={{ marginBottom: 14, fontSize: 13, color: '#333' }}>{confirmDialog.message}</div>
+            <button
+              type="button"
+              onClick={confirmDialogAction}
+              disabled={confirmDialogLoading}
               style={{
-                padding: '6px 12px',
-                borderRadius: 4,
-                border: 'none',
-                background: '#eee',
-                color: '#333',
-                cursor: 'pointer'
+                ...(confirmDialog.tone === 'danger' ? modalDangerButtonStyle : modalPrimaryButtonStyle),
+                marginRight: 8,
+                cursor: confirmDialogLoading ? 'not-allowed' : 'pointer',
+                opacity: confirmDialogLoading ? 0.7 : 1
+              }}
+            >
+              {confirmDialogLoading ? 'Working...' : confirmDialog.confirmLabel}
+            </button>
+            <button
+              type="button"
+              onClick={closeConfirmDialog}
+              disabled={confirmDialogLoading}
+              style={{
+                ...modalSecondaryButtonStyle,
+                cursor: confirmDialogLoading ? 'not-allowed' : 'pointer',
+                opacity: confirmDialogLoading ? 0.7 : 1
               }}
             >
               Cancel
@@ -3234,27 +3383,18 @@ function Desk({ user }) {
       {deskNameDialog.isOpen && (
         <div
           style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            ...modalOverlayStyle,
             zIndex: 1200
           }}
         >
           <form
             onSubmit={submitDeskNameDialog}
             style={{
-              background: '#fff',
-              borderRadius: 8,
-              padding: 16,
+              ...modalCardStyle,
               width: 320,
-              boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
-              color: '#222'
             }}
           >
-            <div style={{ marginBottom: 10, fontWeight: 600 }}>
+            <div style={modalTitleStyle}>
               {deskNameDialog.mode === 'create' ? 'Create New Desk' : 'Rename Desk'}
             </div>
 
@@ -3340,18 +3480,14 @@ function Desk({ user }) {
               </div>
             )}
 
-            <div style={{ textAlign: 'right' }}>
+            <div style={modalActionsStyle}>
               <button
                 type="button"
                 onClick={closeDeskNameDialog}
                 disabled={deskNameSaving}
                 style={{
+                  ...modalSecondaryButtonStyle,
                   marginRight: 8,
-                  padding: '6px 12px',
-                  borderRadius: 4,
-                  border: 'none',
-                  background: '#eee',
-                  color: '#333',
                   cursor: deskNameSaving ? 'not-allowed' : 'pointer',
                   opacity: deskNameSaving ? 0.6 : 1
                 }}
@@ -3362,11 +3498,7 @@ function Desk({ user }) {
                 type="submit"
                 disabled={deskNameSaving}
                 style={{
-                  padding: '6px 12px',
-                  borderRadius: 4,
-                  border: 'none',
-                  background: '#4285F4',
-                  color: '#fff',
+                  ...modalPrimaryButtonStyle,
                   cursor: deskNameSaving ? 'not-allowed' : 'pointer',
                   opacity: deskNameSaving ? 0.7 : 1
                 }}
@@ -3381,28 +3513,19 @@ function Desk({ user }) {
       {deskMembersDialogOpen && (
         <div
           style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            ...modalOverlayStyle,
             zIndex: 1250
           }}
         >
           <div
             style={{
-              background: '#fff',
-              borderRadius: 8,
-              padding: 16,
+              ...modalCardStyle,
               width: 360,
-              boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
-              color: '#222',
               maxHeight: '75vh',
               overflowY: 'auto'
             }}
           >
-            <div style={{ marginBottom: 10, fontWeight: 600 }}>Manage Desk Members</div>
+            <div style={modalTitleStyle}>Manage Desk Members</div>
 
             {deskMembersMessage && (
               <div style={{ color: 'green', fontSize: 12, marginBottom: 8 }}>{deskMembersMessage}</div>
@@ -3500,18 +3623,11 @@ function Desk({ user }) {
               )}
             </div>
 
-            <div style={{ textAlign: 'right' }}>
+            <div style={modalActionsStyle}>
               <button
                 type="button"
                 onClick={closeDeskMembersDialog}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 4,
-                  border: 'none',
-                  background: '#eee',
-                  color: '#333',
-                  cursor: 'pointer'
-                }}
+                style={modalSecondaryButtonStyle}
               >
                 Close
               </button>
@@ -3538,7 +3654,7 @@ function Desk({ user }) {
             minWidth: 170
           }}
         >
-          <span style={{ fontSize: 14 }}>↔</span>
+          <span style={{ fontSize: 14 }}>↕↔</span>
           <input
             type="range"
             min={50}
