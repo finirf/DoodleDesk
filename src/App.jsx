@@ -75,6 +75,7 @@ function Desk({ user }) {
   const [showNewNoteMenu, setShowNewNoteMenu] = useState(false)
   const [showDeskMenu, setShowDeskMenu] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showFolderHierarchyTools, setShowFolderHierarchyTools] = useState(false)
   const [deskFolders, setDeskFolders] = useState([])
   const [deskFolderAssignments, setDeskFolderAssignments] = useState({})
   const [expandedDeskFolders, setExpandedDeskFolders] = useState({
@@ -3031,95 +3032,119 @@ function Desk({ user }) {
               </div>
 
               <div style={{ padding: '0 8px 8px', borderBottom: '1px solid #eee', marginBottom: 6 }}>
-                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Folder Hierarchy</div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input
-                    value={newFolderNameInput}
-                    onChange={(e) => {
-                      setFolderActionError('')
-                      setNewFolderNameInput(e.target.value)
-                    }}
-                    placeholder="New folder name"
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      borderRadius: 4,
-                      border: '1px solid #ccc',
-                      padding: '5px 7px',
-                      fontSize: 12
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={createDeskFolder}
-                    style={{
-                      border: 'none',
-                      borderRadius: 4,
-                      background: '#4285F4',
-                      color: '#fff',
-                      padding: '5px 8px',
-                      fontSize: 12,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Add
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFolderHierarchyTools((prev) => !prev)}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '6px 8px',
+                    border: 'none',
+                    borderRadius: 4,
+                    background: '#f3f5f8',
+                    color: '#333',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontWeight: 600
+                  }}
+                >
+                  {showFolderHierarchyTools ? '▼' : '▶'} Folder Hierarchy Tools
+                </button>
 
-                <div style={{ marginTop: 6 }}>
-                  <select
-                    value={newFolderParentId}
-                    onChange={(e) => {
-                      setFolderActionError('')
-                      setNewFolderParentId(e.target.value)
-                    }}
-                    style={{
-                      width: '100%',
-                      borderRadius: 4,
-                      border: '1px solid #ccc',
-                      padding: '5px 7px',
-                      fontSize: 12,
-                      background: '#fff',
-                      color: '#222'
-                    }}
-                  >
-                    <option value="">Top-level custom folder</option>
-                    {customFolderOptions.map((folderOption) => (
-                      <option key={folderOption.id} value={folderOption.id}>
-                        {'· '.repeat(folderOption.depth)}{folderOption.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {showFolderHierarchyTools && (
+                  <>
+                    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6, marginBottom: 4 }}>Folder Hierarchy</div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input
+                        value={newFolderNameInput}
+                        onChange={(e) => {
+                          setFolderActionError('')
+                          setNewFolderNameInput(e.target.value)
+                        }}
+                        placeholder="New folder name"
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          borderRadius: 4,
+                          border: '1px solid #ccc',
+                          padding: '5px 7px',
+                          fontSize: 12
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={createDeskFolder}
+                        style={{
+                          border: 'none',
+                          borderRadius: 4,
+                          background: '#4285F4',
+                          color: '#fff',
+                          padding: '5px 8px',
+                          fontSize: 12,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Add
+                      </button>
+                    </div>
 
-                {currentDesk && (
-                  <div style={{ marginTop: 6 }}>
-                    <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>Move current desk</div>
-                    <select
-                      value={getDeskAssignedCustomFolderId(currentDesk.id)}
-                      onChange={(e) => setSelectedDeskCustomFolder(e.target.value)}
-                      style={{
-                        width: '100%',
-                        borderRadius: 4,
-                        border: '1px solid #ccc',
-                        padding: '5px 7px',
-                        fontSize: 12,
-                        background: '#fff',
-                        color: '#222'
-                      }}
-                    >
-                      <option value="">Auto ({getDeskGroupLabel(currentDesk)})</option>
-                      {customFolderOptions.map((folderOption) => (
-                        <option key={folderOption.id} value={folderOption.id}>
-                          {'· '.repeat(folderOption.depth)}{folderOption.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                    <div style={{ marginTop: 6 }}>
+                      <select
+                        value={newFolderParentId}
+                        onChange={(e) => {
+                          setFolderActionError('')
+                          setNewFolderParentId(e.target.value)
+                        }}
+                        style={{
+                          width: '100%',
+                          borderRadius: 4,
+                          border: '1px solid #ccc',
+                          padding: '5px 7px',
+                          fontSize: 12,
+                          background: '#fff',
+                          color: '#222'
+                        }}
+                      >
+                        <option value="">Top-level custom folder</option>
+                        {customFolderOptions.map((folderOption) => (
+                          <option key={folderOption.id} value={folderOption.id}>
+                            {'· '.repeat(folderOption.depth)}{folderOption.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                {folderActionError && (
-                  <div style={{ marginTop: 4, color: '#d32f2f', fontSize: 11 }}>{folderActionError}</div>
+                    {currentDesk && (
+                      <div style={{ marginTop: 6 }}>
+                        <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>Move current desk</div>
+                        <select
+                          value={getDeskAssignedCustomFolderId(currentDesk.id)}
+                          onChange={(e) => setSelectedDeskCustomFolder(e.target.value)}
+                          style={{
+                            width: '100%',
+                            borderRadius: 4,
+                            border: '1px solid #ccc',
+                            padding: '5px 7px',
+                            fontSize: 12,
+                            background: '#fff',
+                            color: '#222'
+                          }}
+                        >
+                          <option value="">Auto ({getDeskGroupLabel(currentDesk)})</option>
+                          {customFolderOptions.map((folderOption) => (
+                            <option key={folderOption.id} value={folderOption.id}>
+                              {'· '.repeat(folderOption.depth)}{folderOption.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {folderActionError && (
+                      <div style={{ marginTop: 4, color: '#d32f2f', fontSize: 11 }}>{folderActionError}</div>
+                    )}
+                  </>
                 )}
               </div>
 
