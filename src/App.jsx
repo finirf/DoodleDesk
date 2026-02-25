@@ -136,6 +136,11 @@ function Desk({ user }) {
   const [preferredNameError, setPreferredNameError] = useState('')
   const [preferredNameMessage, setPreferredNameMessage] = useState('')
   const [deleteAccountError, setDeleteAccountError] = useState('')
+  const [deleteAccountDialog, setDeleteAccountDialog] = useState({
+    isOpen: false,
+    confirmationText: ''
+  })
+  const [deleteAccountDeleting, setDeleteAccountDeleting] = useState(false)
   const [draggedId, setDraggedId] = useState(null)
   const [activeDecorationHandleId, setActiveDecorationHandleId] = useState(null)
   const [rotatingId, setRotatingId] = useState(null)
@@ -206,11 +211,13 @@ function Desk({ user }) {
     index === 0 ? 'top center' : `center ${index * sectionHeight}px`
   ).join(', ')
   const backgroundRepeat = Array.from({ length: sectionCount }, () => 'no-repeat').join(', ')
+  const deleteAccountConfirmationMatches = deleteAccountDialog.confirmationText.trim().toUpperCase() === 'DELETE'
   const hasModalOpen = Boolean(
     pendingDeleteId ||
     deskNameDialog.isOpen ||
     deskMembersDialogOpen ||
-    confirmDialog.isOpen
+    confirmDialog.isOpen ||
+    deleteAccountDialog.isOpen
   )
   const modalOverlayStyle = {
     position: 'fixed',
@@ -918,6 +925,11 @@ function Desk({ user }) {
           return
         }
 
+        if (deleteAccountDialog.isOpen && !deleteAccountDeleting) {
+          setDeleteAccountDialog({ isOpen: false, confirmationText: '' })
+          return
+        }
+
         if (pendingDeleteId) {
           setPendingDeleteId(null)
         }
@@ -930,7 +942,7 @@ function Desk({ user }) {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [hasModalOpen, confirmDialog.isOpen, confirmDialogLoading, pendingDeleteId])
+  }, [hasModalOpen, confirmDialog.isOpen, confirmDialogLoading, deleteAccountDeleting, deleteAccountDialog.isOpen, pendingDeleteId])
 
   useEffect(() => {
     if (!showNewNoteMenu && !showDeskMenu && !showProfileMenu) return
@@ -1856,42 +1868,59 @@ function Desk({ user }) {
   }
 
   async function handleDeleteAccount() {
-    const confirmationText = window.prompt('Type DELETE to confirm account deletion.')
-    if (confirmationText === null) return
+    setDeleteAccountError('')
+    setDeleteAccountDialog({
+      isOpen: true,
+      confirmationText: ''
+    })
+  }
 
-    if (confirmationText.trim().toUpperCase() !== 'DELETE') {
-      setDeleteAccountError('Confirmation text did not match. Account deletion canceled.')
+  function closeDeleteAccountDialog() {
+    if (deleteAccountDeleting) return
+    setDeleteAccountDialog({
+      isOpen: false,
+      confirmationText: ''
+    })
+  }
+
+  async function submitDeleteAccountDialog(e) {
+    e.preventDefault()
+    if (deleteAccountDeleting) return
+
+    if (deleteAccountDialog.confirmationText.trim().toUpperCase() !== 'DELETE') {
+      setDeleteAccountError('Type DELETE exactly to continue.')
       return
     }
 
     setDeleteAccountError('')
+    setDeleteAccountDeleting(true)
 
-    openConfirmDialog({
-      title: 'Delete Account',
-      message: 'This permanently deletes your DoodleDesk profile data, desks, shelves, and friend data. This action cannot be undone.',
-      confirmLabel: 'Delete Account',
-      tone: 'danger',
-      onConfirm: async () => {
-        try {
-          const { error } = await supabase.functions.invoke('delete-account')
-          if (error) {
-            const message = `${error?.message || ''}`.toLowerCase()
-            if (message.includes('function') || message.includes('404')) {
-              throw new Error('Delete-account function is not deployed yet. Deploy the Supabase Edge Function first.')
-            }
-            throw error
-          }
-
-          localStorage.removeItem(lastDeskStorageKey)
-          localStorage.removeItem(shelfPrefsStorageKey)
-
-          await supabase.auth.signOut()
-        } catch (error) {
-          console.error('Failed to delete account data:', error)
-          setDeleteAccountError(error?.message || 'Could not delete account data.')
+    try {
+      const { error } = await supabase.functions.invoke('delete-account')
+      if (error) {
+        const message = `${error?.message || ''}`.toLowerCase()
+        if (message.includes('function') || message.includes('404')) {
+          throw new Error('Delete-account function is not deployed yet. Deploy the Supabase Edge Function first.')
         }
+        throw error
       }
-    })
+
+      localStorage.removeItem(lastDeskStorageKey)
+      localStorage.removeItem(shelfPrefsStorageKey)
+
+      setDeleteAccountDialog({
+        isOpen: false,
+        confirmationText: ''
+      })
+
+      await supabase.auth.signOut()
+    } catch (error) {
+      console.error('Failed to delete account data:', error)
+      setDeleteAccountError(error?.message || 'Could not delete account data.')
+    } finally {
+      setDeleteAccountDeleting(false)
+    }
+
   }
 
   async function ensureCurrentUserProfile() {
@@ -3810,16 +3839,19 @@ function Desk({ user }) {
                   </button>
 
                   <div style={{ borderTop: '1px solid #eee', marginTop: 12, paddingTop: 10 }}>
+                    {deleteAccountError && (
+                      <div style={{ marginBottom: 6, color: '#d32f2f', fontSize: 12, textAlign: 'right' }}>{deleteAccountError}</div>
+                    )}
                     <button
                       type="button"
                       onClick={handleDeleteAccount}
                       style={{
-                        width: '100%',
-                        textAlign: 'left',
+                        marginLeft: 0,
+                        display: 'inline-block',
                         padding: '7px 8px',
                         borderRadius: 4,
-                        border: '1px solid #ef9a9a',
-                        background: '#fff5f5',
+                        border: 'none',
+                        background: '#fff',
                         color: '#b71c1c',
                         fontSize: 12,
                         cursor: 'pointer'
@@ -3827,9 +3859,6 @@ function Desk({ user }) {
                     >
                       Delete account
                     </button>
-                    {deleteAccountError && (
-                      <div style={{ marginTop: 6, color: '#d32f2f', fontSize: 12 }}>{deleteAccountError}</div>
-                    )}
                   </div>
                 </div>
               ) : (
@@ -5008,6 +5037,74 @@ function Desk({ user }) {
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {deleteAccountDialog.isOpen && (
+        <div
+          style={{
+            ...modalOverlayStyle,
+            zIndex: 1120
+          }}
+        >
+          <form
+            onSubmit={submitDeleteAccountDialog}
+            style={{
+              ...modalCardStyle,
+              width: 360
+            }}
+          >
+            <div style={modalTitleStyle}>Delete Account</div>
+            <div style={{ marginBottom: 10, fontSize: 13, color: '#333' }}>
+              This permanently deletes your DoodleDesk profile data, desks, shelves, and friend data. This action cannot be undone.
+            </div>
+            <div style={{ marginBottom: 8, fontSize: 12, color: '#666' }}>Type DELETE to confirm.</div>
+            <input
+              value={deleteAccountDialog.confirmationText}
+              onChange={(e) => {
+                if (deleteAccountError) setDeleteAccountError('')
+                setDeleteAccountDialog((prev) => ({ ...prev, confirmationText: e.target.value }))
+              }}
+              autoFocus
+              placeholder="DELETE"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '8px 10px',
+                borderRadius: 6,
+                border: '1px solid #ccc',
+                marginBottom: 12,
+                fontSize: 14
+              }}
+            />
+
+            <div style={modalActionsStyle}>
+              <button
+                type="button"
+                onClick={closeDeleteAccountDialog}
+                disabled={deleteAccountDeleting}
+                style={{
+                  ...modalSecondaryButtonStyle,
+                  marginRight: 8,
+                  cursor: deleteAccountDeleting ? 'not-allowed' : 'pointer',
+                  opacity: deleteAccountDeleting ? 0.6 : 1
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={deleteAccountDeleting || !deleteAccountConfirmationMatches}
+                style={{
+                  ...modalDangerButtonStyle,
+                  cursor: deleteAccountDeleting || !deleteAccountConfirmationMatches ? 'not-allowed' : 'pointer',
+                  opacity: deleteAccountDeleting || !deleteAccountConfirmationMatches ? 0.7 : 1
+                }}
+              >
+                {deleteAccountDeleting ? 'Deleting...' : 'Delete Account'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
