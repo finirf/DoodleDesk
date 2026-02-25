@@ -1851,7 +1851,6 @@ function Desk({ user }) {
                       style={{
                         display: 'block',
                         width: '100%',
-                        textAlign: 'left',
                         padding: '8px 10px',
                         border: 'none',
                         borderRadius: 4,
@@ -1859,23 +1858,30 @@ function Desk({ user }) {
                         background: desk.id === selectedDeskId ? '#eef4ff' : '#fff',
                         color: '#222',
                         cursor: 'pointer',
-                        fontWeight: desk.id === selectedDeskId ? 600 : 400
+                        fontWeight: desk.id === selectedDeskId ? 600 : 400,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 10
                       }}
                     >
-                      <span>{getDeskNameValue(desk)}</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {getDeskNameValue(desk)}
+                      </span>
                       <span
                         style={{
-                          marginLeft: 6,
                           fontSize: 11,
                           color: '#666',
-                          fontWeight: 500
+                          fontWeight: 500,
+                          flexShrink: 0,
+                          textAlign: 'right'
                         }}
                       >
                         {desk.user_id !== user.id
-                          ? '• Shared'
+                          ? 'Shared'
                           : isDeskCollaborative(desk)
-                            ? '• Sharing'
-                            : ''}
+                            ? 'Sharing'
+                            : 'Private'}
                       </span>
                     </button>
                   ))
