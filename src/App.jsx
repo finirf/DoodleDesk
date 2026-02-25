@@ -2869,42 +2869,46 @@ function Desk({ user }) {
           >
             {isExpanded ? '▼' : '▶'} {folder.name}
           </button>
-          <button
-            type="button"
-            onClick={() => renameDeskFolder(folder.id)}
-            aria-label={`Rename folder ${folder.name}`}
-            title="Rename folder"
-            style={{
-              border: 'none',
-              borderRadius: 4,
-              background: '#e8f0fe',
-              color: '#1a73e8',
-              cursor: 'pointer',
-              padding: '0 7px',
-              fontSize: 11,
-              fontWeight: 700
-            }}
-          >
-            ✎
-          </button>
-          <button
-            type="button"
-            onClick={() => deleteDeskFolder(folder.id)}
-            aria-label={`Delete folder ${folder.name}`}
-            title="Delete folder"
-            style={{
-              border: 'none',
-              borderRadius: 4,
-              background: '#fdecea',
-              color: '#d93025',
-              cursor: 'pointer',
-              padding: '0 7px',
-              fontSize: 11,
-              fontWeight: 700
-            }}
-          >
-            ×
-          </button>
+          {showFolderHierarchyTools && (
+            <>
+              <button
+                type="button"
+                onClick={() => renameDeskFolder(folder.id)}
+                aria-label={`Rename folder ${folder.name}`}
+                title="Rename folder"
+                style={{
+                  border: 'none',
+                  borderRadius: 4,
+                  background: '#e8f0fe',
+                  color: '#1a73e8',
+                  cursor: 'pointer',
+                  padding: '0 7px',
+                  fontSize: 11,
+                  fontWeight: 700
+                }}
+              >
+                ✎
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteDeskFolder(folder.id)}
+                aria-label={`Delete folder ${folder.name}`}
+                title="Delete folder"
+                style={{
+                  border: 'none',
+                  borderRadius: 4,
+                  background: '#fdecea',
+                  color: '#d93025',
+                  cursor: 'pointer',
+                  padding: '0 7px',
+                  fontSize: 11,
+                  fontWeight: 700
+                }}
+              >
+                ×
+              </button>
+            </>
+          )}
         </div>
         {isExpanded && (
           <>
