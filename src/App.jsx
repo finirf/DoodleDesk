@@ -116,6 +116,10 @@ function Desk({ user }) {
   const [friendActionLoadingId, setFriendActionLoadingId] = useState(null)
   const [profileStats, setProfileStats] = useState({ desks_created: 0, desks_deleted: 0 })
   const [profileStatsLoading, setProfileStatsLoading] = useState(false)
+  const [preferredNameInput, setPreferredNameInput] = useState('')
+  const [preferredNameSaving, setPreferredNameSaving] = useState(false)
+  const [preferredNameError, setPreferredNameError] = useState('')
+  const [preferredNameMessage, setPreferredNameMessage] = useState('')
   const [draggedId, setDraggedId] = useState(null)
   const [activeDecorationHandleId, setActiveDecorationHandleId] = useState(null)
   const [rotatingId, setRotatingId] = useState(null)
@@ -307,6 +311,8 @@ function Desk({ user }) {
   }
 
   function getItemCreatorLabel(item) {
+    const creatorPreferredName = typeof item?.created_by_name === 'string' ? item.created_by_name.trim() : ''
+    if (creatorPreferredName) return creatorPreferredName
     const creatorEmail = typeof item?.created_by_email === 'string' ? item.created_by_email.trim() : ''
     if (creatorEmail) return creatorEmail
     if (item?.user_id && item.user_id === user.id) return 'You'
@@ -817,17 +823,24 @@ function Desk({ user }) {
       const memberIds = memberRows.map((row) => row.user_id)
       const { data: profileRows, error: profileError } = await supabase
         .from('profiles')
-        .select('id, email')
+        .select('id, email, preferred_name')
         .in('id', memberIds)
 
       if (profileError) throw profileError
 
-      const emailById = new Map((profileRows || []).map((row) => [row.id, row.email || 'Unknown user']))
+      const profileById = new Map((profileRows || []).map((row) => [
+        row.id,
+        {
+          email: row.email || 'Unknown user',
+          preferred_name: row.preferred_name || ''
+        }
+      ]))
       setDeskMembers(
         memberRows.map((row) => ({
           membership_id: row.id,
           user_id: row.user_id,
-          email: emailById.get(row.user_id) || 'Unknown user'
+          email: profileById.get(row.user_id)?.email || 'Unknown user',
+          preferred_name: profileById.get(row.user_id)?.preferred_name || ''
         }))
       )
     } catch (error) {
@@ -1155,21 +1168,31 @@ function Desk({ user }) {
     if (creatorIds.length > 0) {
       const { data: profileRows, error: profileError } = await supabase
         .from('profiles')
-        .select('id, email')
+        .select('id, email, preferred_name')
         .in('id', creatorIds)
 
       if (profileError) {
         console.error('Failed to fetch item creator profiles:', profileError)
       } else {
-        creatorEmailById = new Map((profileRows || []).map((row) => [row.id, row.email || '']))
+        creatorEmailById = new Map((profileRows || []).map((row) => [
+          row.id,
+          {
+            email: row.email || '',
+            preferredName: row.preferred_name || ''
+          }
+        ]))
       }
     }
 
     const combined = [...mappedNotes, ...mappedChecklists, ...mappedDecorations].map((item) => {
       if (isDecorationItem(item)) return item
-      const creatorEmail = creatorEmailById.get(item.user_id) || ''
-      if (!creatorEmail) return item
-      return { ...item, created_by_email: creatorEmail }
+      const creatorProfile = creatorEmailById.get(item.user_id)
+      if (!creatorProfile) return item
+      return {
+        ...item,
+        created_by_email: creatorProfile.email,
+        created_by_name: creatorProfile.preferredName
+      }
     })
     setNotes(combined)
 
@@ -1314,6 +1337,69 @@ function Desk({ user }) {
     }
   }
 
+  async function fetchCurrentUserProfile() {
+    setPreferredNameError('')
+    setPreferredNameMessage('')
+
+    try {
+      await ensureCurrentUserProfile()
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('preferred_name')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (error) {
+        throw error
+      }
+
+      setPreferredNameInput((data?.preferred_name || '').trim())
+    } catch (error) {
+      console.error('Failed to fetch current profile:', error)
+      const message = error?.message || ''
+      if (message.toLowerCase().includes('preferred_name')) {
+        setPreferredNameError('Preferred name is not available yet. Add a preferred_name column to profiles first.')
+      } else {
+        setPreferredNameError('Could not load preferred name.')
+      }
+    }
+  }
+
+  async function savePreferredName() {
+    const nextPreferredName = preferredNameInput.trim()
+
+    setPreferredNameSaving(true)
+    setPreferredNameError('')
+    setPreferredNameMessage('')
+
+    try {
+      await ensureCurrentUserProfile()
+      const { error } = await supabase
+        .from('profiles')
+        .update({ preferred_name: nextPreferredName || null })
+        .eq('id', user.id)
+
+      if (error) {
+        throw error
+      }
+
+      setPreferredNameMessage('Preferred name saved.')
+      if (selectedDeskId) {
+        await fetchDeskItems(selectedDeskId)
+      }
+    } catch (error) {
+      console.error('Failed to save preferred name:', error)
+      const message = error?.message || ''
+      if (message.toLowerCase().includes('preferred_name')) {
+        setPreferredNameError('Preferred name is not available yet. Add a preferred_name column to profiles first.')
+      } else {
+        setPreferredNameError(error?.message || 'Could not save preferred name.')
+      }
+    } finally {
+      setPreferredNameSaving(false)
+    }
+  }
+
   async function ensureUserStats() {
     const { error } = await supabase
       .from('user_stats')
@@ -1398,6 +1484,20 @@ function Desk({ user }) {
     })
   }
 
+  function getProfileDisplayParts(profileLike) {
+    const preferredName = typeof profileLike?.preferred_name === 'string' ? profileLike.preferred_name.trim() : ''
+    const email = typeof profileLike?.email === 'string' ? profileLike.email.trim() : ''
+
+    if (preferredName && email && preferredName.toLowerCase() !== email.toLowerCase()) {
+      return { primary: preferredName, secondary: email }
+    }
+
+    return {
+      primary: preferredName || email || 'Unknown user',
+      secondary: ''
+    }
+  }
+
   async function fetchFriends() {
     setFriendsLoading(true)
     setFriendError('')
@@ -1447,27 +1547,35 @@ function Desk({ user }) {
       if (profileIdList.length > 0) {
         const { data: profilesData, error: profilesError } = await supabase
           .from('profiles')
-          .select('id, email')
+          .select('id, email, preferred_name')
           .in('id', profileIdList)
 
         if (profilesError) {
           throw profilesError
         }
 
-        profileEmailById = new Map((profilesData || []).map((profile) => [profile.id, profile.email || 'Unknown user']))
+        profileEmailById = new Map((profilesData || []).map((profile) => [
+          profile.id,
+          {
+            email: profile.email || 'Unknown user',
+            preferred_name: profile.preferred_name || ''
+          }
+        ]))
       }
 
       setIncomingFriendRequests(
         incomingRows.map((row) => ({
           ...row,
-          email: profileEmailById.get(row.sender_id) || 'Unknown user'
+          email: profileEmailById.get(row.sender_id)?.email || 'Unknown user',
+          preferred_name: profileEmailById.get(row.sender_id)?.preferred_name || ''
         }))
       )
 
       setOutgoingFriendRequests(
         outgoingRows.map((row) => ({
           ...row,
-          email: profileEmailById.get(row.receiver_id) || 'Unknown user'
+          email: profileEmailById.get(row.receiver_id)?.email || 'Unknown user',
+          preferred_name: profileEmailById.get(row.receiver_id)?.preferred_name || ''
         }))
       )
 
@@ -1476,7 +1584,8 @@ function Desk({ user }) {
           const friendId = row.sender_id === user.id ? row.receiver_id : row.sender_id
           return {
             id: friendId,
-            email: profileEmailById.get(friendId) || 'Unknown user'
+            email: profileEmailById.get(friendId)?.email || 'Unknown user',
+            preferred_name: profileEmailById.get(friendId)?.preferred_name || ''
           }
         })
       )
@@ -1619,10 +1728,11 @@ function Desk({ user }) {
     if (!friendId) return
 
     const friend = friends.find((entry) => entry.id === friendId)
+    const friendDisplay = getProfileDisplayParts(friend)
 
     openConfirmDialog({
       title: 'Remove Friend',
-      message: `Remove ${friend?.email || 'this friend'} from your friends list?`,
+      message: `Remove ${friendDisplay.primary || 'this friend'} from your friends list?`,
       confirmLabel: 'Remove',
       tone: 'danger',
       onConfirm: async () => {
@@ -2622,9 +2732,13 @@ function Desk({ user }) {
           <button
             type="button"
             onClick={() => {
-              setShowProfileMenu((prev) => !prev)
+              const nextOpen = !showProfileMenu
+              setShowProfileMenu(nextOpen)
               setFriendError('')
               setFriendMessage('')
+              if (nextOpen) {
+                fetchCurrentUserProfile()
+              }
             }}
             style={{
               padding: '8px 16px',
@@ -2692,6 +2806,51 @@ function Desk({ user }) {
               {profileTab === 'profile' ? (
                 <div>
                   <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 14 }}>{user.email || 'Unknown user'}</div>
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, marginBottom: 4, color: '#333' }}>Preferred name</div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input
+                        value={preferredNameInput}
+                        onChange={(e) => {
+                          if (preferredNameError) setPreferredNameError('')
+                          if (preferredNameMessage) setPreferredNameMessage('')
+                          setPreferredNameInput(e.target.value)
+                        }}
+                        placeholder="How you want your name shown"
+                        style={{
+                          flex: 1,
+                          padding: '7px 8px',
+                          borderRadius: 4,
+                          border: '1px solid #ccc',
+                          fontSize: 13
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={savePreferredName}
+                        disabled={preferredNameSaving}
+                        style={{
+                          padding: '7px 10px',
+                          borderRadius: 4,
+                          border: 'none',
+                          background: '#4285F4',
+                          color: '#fff',
+                          cursor: preferredNameSaving ? 'not-allowed' : 'pointer',
+                          opacity: preferredNameSaving ? 0.75 : 1,
+                          fontSize: 12,
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {preferredNameSaving ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                    {preferredNameMessage && (
+                      <div style={{ marginTop: 5, color: '#2e7d32', fontSize: 12 }}>{preferredNameMessage}</div>
+                    )}
+                    {preferredNameError && (
+                      <div style={{ marginTop: 5, color: '#d32f2f', fontSize: 12 }}>{preferredNameError}</div>
+                    )}
+                  </div>
                   <div style={{ fontSize: 13, marginBottom: 4 }}>Join date: {joinDate}</div>
                   <div style={{ fontSize: 13, marginBottom: 4 }}>Desks currently active: {desks.length}</div>
                   <div style={{ fontSize: 13, marginBottom: 4 }}>Items on current desk: {totalItemsCount}</div>
@@ -2786,9 +2945,16 @@ function Desk({ user }) {
                     {incomingFriendRequests.length === 0 ? (
                       <div style={{ fontSize: 12, opacity: 0.75 }}>No incoming requests</div>
                     ) : (
-                      incomingFriendRequests.map((request) => (
+                      incomingFriendRequests.map((request) => {
+                        const requestDisplay = getProfileDisplayParts(request)
+                        return (
                         <div key={request.id} style={{ marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #f1f1f1' }}>
-                          <div style={{ fontSize: 13, marginBottom: 4 }}>{request.email}</div>
+                          <div style={{ fontSize: 13, marginBottom: 4 }}>
+                            {requestDisplay.primary}
+                            {requestDisplay.secondary && (
+                              <div style={{ fontSize: 11, color: '#666' }}>{requestDisplay.secondary}</div>
+                            )}
+                          </div>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button
                               type="button"
@@ -2822,7 +2988,8 @@ function Desk({ user }) {
                             </button>
                           </div>
                         </div>
-                      ))
+                        )
+                      })
                     )}
                   </div>
 
@@ -2831,7 +2998,9 @@ function Desk({ user }) {
                     {friends.length === 0 ? (
                       <div style={{ fontSize: 12, opacity: 0.75 }}>No friends yet</div>
                     ) : (
-                      friends.map((friend) => (
+                      friends.map((friend) => {
+                        const friendDisplay = getProfileDisplayParts(friend)
+                        return (
                         <div
                           key={friend.id}
                           style={{
@@ -2842,7 +3011,12 @@ function Desk({ user }) {
                             gap: 8
                           }}
                         >
-                          <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>{friend.email}</span>
+                          <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {friendDisplay.primary}
+                            {friendDisplay.secondary && (
+                              <div style={{ fontSize: 11, color: '#666' }}>{friendDisplay.secondary}</div>
+                            )}
+                          </span>
                           <button
                             type="button"
                             onClick={() => removeFriend(friend.id)}
@@ -2862,7 +3036,8 @@ function Desk({ user }) {
                             {friendActionLoadingId === friend.id ? 'Removing...' : 'Remove'}
                           </button>
                         </div>
-                      ))
+                        )
+                      })
                     )}
                   </div>
 
@@ -2871,9 +3046,16 @@ function Desk({ user }) {
                     {outgoingFriendRequests.length === 0 ? (
                       <div style={{ fontSize: 12, opacity: 0.75 }}>No pending sent requests</div>
                     ) : (
-                      outgoingFriendRequests.map((request) => (
+                      outgoingFriendRequests.map((request) => {
+                        const requestDisplay = getProfileDisplayParts(request)
+                        return (
                         <div key={request.id} style={{ marginBottom: 6, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                          <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>{request.email}</span>
+                          <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {requestDisplay.primary}
+                            {requestDisplay.secondary && (
+                              <div style={{ fontSize: 11, color: '#666' }}>{requestDisplay.secondary}</div>
+                            )}
+                          </span>
                           <button
                             type="button"
                             onClick={() => cancelOutgoingFriendRequest(request.id)}
@@ -2891,7 +3073,8 @@ function Desk({ user }) {
                             Cancel
                           </button>
                         </div>
-                      ))
+                        )
+                      })
                     )}
                   </div>
                 </div>
@@ -3693,34 +3876,39 @@ function Desk({ user }) {
                   wordBreak: 'break-word',
                   cursor: isDecoration ? 'grab' : 'pointer',
                   minHeight: 40,
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
                   color: '#222',
                   fontFamily: getItemFontFamily(item)
                 }}
               >
                 {isChecklist ? (
                   <>
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>{item.title || 'Checklist'}</div>
-                    {(item.items || []).length === 0 ? (
-                      <div style={{ opacity: 0.7 }}>No checklist items</div>
-                    ) : (
-                      (item.items || []).map((checklistItem, index) => (
-                        <label
-                          key={`${item.id}-${checklistItem.id || index}`}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={Boolean(checklistItem.is_checked)}
-                            onChange={() => toggleChecklistItem(itemKey, index)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                          <span style={{ textDecoration: checklistItem.is_checked ? 'line-through' : 'none' }}>{checklistItem.text}</span>
-                        </label>
-                      ))
-                    )}
+                    <div>
+                      <div style={{ fontWeight: 700, marginBottom: 6 }}>{item.title || 'Checklist'}</div>
+                      {(item.items || []).length === 0 ? (
+                        <div style={{ opacity: 0.7 }}>No checklist items</div>
+                      ) : (
+                        (item.items || []).map((checklistItem, index) => (
+                          <label
+                            key={`${item.id}-${checklistItem.id || index}`}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={Boolean(checklistItem.is_checked)}
+                              onChange={() => toggleChecklistItem(itemKey, index)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <span style={{ textDecoration: checklistItem.is_checked ? 'line-through' : 'none' }}>{checklistItem.text}</span>
+                          </label>
+                        ))
+                      )}
+                    </div>
                     {shouldShowCreatorLabel && (
-                      <div style={{ marginTop: 8, fontSize: 10, color: '#444', textAlign: 'right' }}>
+                      <div style={{ marginTop: 'auto', paddingTop: 8, fontSize: 10, color: '#444', textAlign: 'right' }}>
                         Added by {creatorLabel}
                       </div>
                     )}
@@ -3736,7 +3924,7 @@ function Desk({ user }) {
                   <>
                     <div>{item.content}</div>
                     {shouldShowCreatorLabel && (
-                      <div style={{ marginTop: 8, fontSize: 10, color: '#444', textAlign: 'right' }}>
+                      <div style={{ marginTop: 'auto', paddingTop: 8, fontSize: 10, color: '#444', textAlign: 'right' }}>
                         Added by {creatorLabel}
                       </div>
                     )}
@@ -3903,6 +4091,7 @@ function Desk({ user }) {
                     ) : (
                       friends.map((friend) => {
                         const checked = (deskNameDialog.invitedFriendIds || []).includes(friend.id)
+                        const friendDisplay = getProfileDisplayParts(friend)
                         return (
                           <label
                             key={friend.id}
@@ -3913,7 +4102,7 @@ function Desk({ user }) {
                               checked={checked}
                               onChange={() => toggleInvitedFriend(friend.id)}
                             />
-                            <span>{friend.email}</span>
+                            <span>{friendDisplay.primary}</span>
                           </label>
                         )
                       })
@@ -3992,6 +4181,7 @@ function Desk({ user }) {
               ) : (
                 deskMembers.map((member) => {
                   const isRemoving = deskMemberActionLoadingId === `remove:${member.user_id}`
+                  const memberDisplay = getProfileDisplayParts(member)
                   return (
                     <div
                       key={member.user_id}
@@ -4003,7 +4193,12 @@ function Desk({ user }) {
                         marginBottom: 6
                       }}
                     >
-                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.email}</span>
+                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {memberDisplay.primary}
+                        {memberDisplay.secondary && (
+                          <div style={{ fontSize: 11, color: '#666' }}>{memberDisplay.secondary}</div>
+                        )}
+                      </span>
                       <button
                         type="button"
                         onClick={() => removeDeskMember(member.user_id)}
@@ -4036,6 +4231,7 @@ function Desk({ user }) {
                 friends.map((friend) => {
                   const alreadyMember = deskMembers.some((member) => member.user_id === friend.id)
                   const isAdding = deskMemberActionLoadingId === `add:${friend.id}`
+                  const friendDisplay = getProfileDisplayParts(friend)
                   return (
                     <div
                       key={friend.id}
@@ -4047,7 +4243,12 @@ function Desk({ user }) {
                         marginBottom: 6
                       }}
                     >
-                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>{friend.email}</span>
+                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {friendDisplay.primary}
+                        {friendDisplay.secondary && (
+                          <div style={{ fontSize: 11, color: '#666' }}>{friendDisplay.secondary}</div>
+                        )}
+                      </span>
                       <button
                         type="button"
                         onClick={() => addDeskMember(friend.id)}
