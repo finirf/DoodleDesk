@@ -1,46 +1,33 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import LoginScreen from './LoginScreen'
+import ResetPasswordScreen from './ResetPasswordScreen'
+import useAuthSession from './features/auth/useAuthSession'
+import DeskModals from './features/desk/components/DeskModals'
+import { BUILT_IN_SHELVES, DECORATION_OPTIONS, FONT_OPTIONS } from './features/desk/constants/deskConstants'
+import { getDeskBackgroundStyles } from './features/desk/utils/backgroundUtils'
+import {
+  clampDimension,
+  getDecorationOption,
+  getDefaultItemColor,
+  getItemColor,
+  getItemCreatorLabel,
+  getItemFontFamily,
+  getItemFontSize,
+  getItemHeight,
+  getItemKey,
+  getItemTableName,
+  getItemTextColor,
+  getItemWidth,
+  isChecklistItem,
+  isDecorationItem,
+  isMissingColumnError,
+  isMissingShelfStorageTableError,
+  normalizeFontSize
+} from './features/desk/utils/itemUtils'
 
 export default function App() {
-  const [session, setSession] = useState(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    async function loadSession() {
-      try {
-        // 1️⃣ Check if coming back from OAuth redirect
-        const { data: redirectData, error: redirectError } = await supabase.auth.getSessionFromUrl()
-        if (redirectError) console.error('Redirect session error:', redirectError)
-        if (redirectData?.session) {
-          setSession(redirectData.session)
-          console.log('Session from redirect:', redirectData.session)
-          if (window.location.hash) {
-            window.history.replaceState({}, document.title, window.location.pathname)
-          }
-        } else {
-          // 2️⃣ Fallback: get session from storage
-          const { data: { session }, error } = await supabase.auth.getSession()
-          if (error) console.error('Get session error:', error)
-          setSession(session)
-          console.log('Initial session:', session)
-        }
-      } catch (err) {
-        console.error('Error loading session:', err)
-      } finally {
-        setLoading(false)
-      }
-
-      // Listen for auth changes
-      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-        setSession(session)
-        console.log('Auth state changed:', session)
-      })
-      return () => listener.subscription.unsubscribe()
-    }
-
-    loadSession()
-  }, [])
+  const { session, loading, isRecoveryFlow, exitRecoveryFlow } = useAuthSession()
 
   if (loading) {
     return (
@@ -48,6 +35,15 @@ export default function App() {
         <h2>DoodleDesk</h2>
         <p>Loading...</p>
       </div>
+    )
+  }
+
+  if (isRecoveryFlow) {
+    return (
+      <ResetPasswordScreen
+        hasRecoverySession={Boolean(session?.user)}
+        onBackToLogin={exitRecoveryFlow}
+      />
     )
   }
 
@@ -154,10 +150,13 @@ function Desk({ user }) {
   })
   const draggedIdRef = useRef(null)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
+  const dragPointerIdRef = useRef(null)
   const notesRef = useRef([])
   const rotatingNoteIdRef = useRef(null)
+  const rotatingPointerIdRef = useRef(null)
   const rotationOffsetRef = useRef(0)
   const rotationCenterRef = useRef({ x: 0, y: 0 })
+  const resizingPointerIdRef = useRef(null)
   const resizeStartRef = useRef({
     itemKey: null,
     startPageX: 0,
@@ -172,45 +171,21 @@ function Desk({ user }) {
   const shelfSyncTimeoutRef = useRef(null)
 
   const growThreshold = 180
-  const FONT_OPTIONS = [
-    { label: 'System', value: 'inherit' },
-    { label: 'Arial', value: 'Arial, sans-serif' },
-    { label: 'Georgia', value: 'Georgia, serif' },
-    { label: 'Courier New', value: '"Courier New", monospace' },
-    { label: 'Trebuchet MS', value: '"Trebuchet MS", sans-serif' }
-  ]
-  const DECORATION_OPTIONS = [
-    { key: 'mug', label: 'Mug', emoji: '☕' },
-    { key: 'pen', label: 'Pen', emoji: '🖊️' },
-    { key: 'pencil', label: 'Pencil', emoji: '✏️' },
-    { key: 'plant', label: 'Plant', emoji: '🪴' }
-  ]
-
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
   const lastDeskStorageKey = `doodledesk:lastDesk:${user.id}`
   const shelfPrefsStorageKey = `doodledesk:deskShelves:${user.id}`
-  const BUILT_IN_SHELVES = [
-    { id: '__private', label: 'Private' },
-    { id: '__shared', label: 'Shared' },
-    { id: '__sharing', label: 'Sharing' }
-  ]
-  const customBackgroundIsHex = /^#(?:[\da-fA-F]{3}|[\da-fA-F]{6}|[\da-fA-F]{8})$/.test(customBackgroundUrl)
-  const safeCustomBackgroundUrl = customBackgroundUrl.replace(/"/g, '\\"')
-  const backgroundLayers = Array.from({ length: sectionCount }, (_, index) => {
-    if (backgroundMode === 'desk1') return "url('/brownDesk.png')"
-    if (backgroundMode === 'desk2') return "url('/grayDesk.png')"
-    if (backgroundMode === 'desk3') return "url('/leavesDesk.jpg')"
-    if (backgroundMode === 'desk4') return "url('/flowersDesk.png')"
-    if (backgroundMode === 'custom' && safeCustomBackgroundUrl && !customBackgroundIsHex) return `url("${safeCustomBackgroundUrl}")`
-    return "url('/brownDesk.png')"
+  const {
+    backgroundImage,
+    backgroundColor,
+    backgroundSize,
+    backgroundPosition,
+    backgroundRepeat
+  } = getDeskBackgroundStyles({
+    backgroundMode,
+    customBackgroundUrl,
+    sectionCount,
+    sectionHeight
   })
-  const backgroundImage = backgroundMode === 'custom' && customBackgroundIsHex ? 'none' : backgroundLayers.join(', ')
-  const backgroundColor = backgroundMode === 'custom' && customBackgroundIsHex ? customBackgroundUrl : undefined
-  const backgroundSize = Array.from({ length: sectionCount }, () => `100% ${sectionHeight}px`).join(', ')
-  const backgroundPosition = Array.from({ length: sectionCount }, (_, index) =>
-    index === 0 ? 'top center' : `center ${index * sectionHeight}px`
-  ).join(', ')
-  const backgroundRepeat = Array.from({ length: sectionCount }, () => 'no-repeat').join(', ')
   const deleteAccountConfirmationMatches = deleteAccountDialog.confirmationText.trim().toUpperCase() === 'DELETE'
   const hasModalOpen = Boolean(
     pendingDeleteId ||
@@ -261,143 +236,12 @@ function Desk({ user }) {
     cursor: 'pointer'
   }
 
-  function getItemKey(item) {
-    return `${item.item_type}:${item.id}`
-  }
-
-  function isChecklistItem(item) {
-    return item.item_type === 'checklist'
-  }
-
-  function isDecorationItem(item) {
-    return item.item_type === 'decoration'
-  }
-
-  function getDecorationOption(kind) {
-    return DECORATION_OPTIONS.find((option) => option.key === kind) || { key: 'custom', label: 'Decoration', emoji: '📌' }
-  }
-
-  function getDefaultItemColor(itemType) {
-    if (itemType === 'decoration') return 'transparent'
-    return itemType === 'checklist' ? '#ffffff' : '#fff59d'
-  }
-
-  function getItemColor(item) {
-    const fallback = getDefaultItemColor(item?.item_type)
-    const color = typeof item?.color === 'string' ? item.color.trim() : ''
-    return color || fallback
-  }
-
-  function getItemTextColor(item) {
-    const value = typeof item?.text_color === 'string' ? item.text_color.trim() : ''
-    return value || '#222222'
-  }
-
-  function isMissingColumnError(error, columnName) {
-    const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase()
-    return message.includes(columnName) && (
-      message.includes('column')
-      || message.includes('schema cache')
-      || message.includes('does not exist')
-      || message.includes('not found')
-    )
-  }
-
-  function normalizeFontSize(value, fallback = 16) {
-    const parsed = Number(value)
-    if (!Number.isFinite(parsed)) return fallback
-    const rounded = Math.round(parsed)
-    return Math.min(48, Math.max(10, rounded))
-  }
-
-  function getItemFontSize(item) {
-    return normalizeFontSize(item?.font_size, 16)
-  }
-
-  function getItemFontFamily(item) {
-    const value = typeof item?.font_family === 'string' ? item.font_family.trim() : ''
-    return value || 'inherit'
-  }
-
-  function getItemWidth(item) {
-    const value = Number(item?.width)
-    if (Number.isFinite(value) && value > 0) return value
-    if (isDecorationItem(item)) return 88
-    return 200
-  }
-
-  function getAutoDecorationHeight() {
-    return 88
-  }
-
-  function getAutoChecklistHeight(item) {
-    const itemCount = Array.isArray(item?.items) ? item.items.length : 0
-    return clampDimension(74 + itemCount * 26, 96, 260)
-  }
-
-  function getAutoNoteHeight(item) {
-    const content = typeof item?.content === 'string' ? item.content : ''
-    const newlineCount = content.length > 0 ? content.split('\n').length : 1
-    const wrappedLineCount = Math.max(1, Math.ceil(content.length / 70))
-    const estimatedLines = Math.max(newlineCount, wrappedLineCount)
-    return clampDimension(68 + estimatedLines * 22, 88, 220)
-  }
-
-  function getItemHeight(item) {
-    const value = Number(item?.height)
-    if (Number.isFinite(value) && value > 0) {
-      if (isChecklistItem(item) && value === 160) {
-        return getAutoChecklistHeight(item)
-      }
-      if (isDecorationItem(item)) {
-        return value
-      }
-      if (!isChecklistItem(item) && value === 120) {
-        return getAutoNoteHeight(item)
-      }
-      return value
-    }
-
-    if (isChecklistItem(item)) return getAutoChecklistHeight(item)
-    if (isDecorationItem(item)) return getAutoDecorationHeight()
-    return getAutoNoteHeight(item)
-  }
-
-  function getItemTableName(item) {
-    if (isChecklistItem(item)) return 'checklists'
-    if (isDecorationItem(item)) return 'decorations'
-    return 'notes'
-  }
-
-  function getItemCreatorLabel(item) {
-    const creatorPreferredName = typeof item?.created_by_name === 'string' ? item.created_by_name.trim() : ''
-    if (creatorPreferredName) return creatorPreferredName
-    const creatorEmail = typeof item?.created_by_email === 'string' ? item.created_by_email.trim() : ''
-    if (creatorEmail) return creatorEmail
-    if (item?.user_id && item.user_id === user.id) return 'You'
-    return 'A collaborator'
-  }
-
-  function clampDimension(value, min, max) {
-    return Math.min(max, Math.max(min, value))
-  }
-
   function addChecklistEditItem() {
     const text = newChecklistItemText.trim()
     if (!text) return
 
     setChecklistEditItems((prev) => [...prev, { text, is_checked: false }])
     setNewChecklistItemText('')
-  }
-
-  function isMissingShelfStorageTableError(error) {
-    const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase()
-    const code = `${error?.code || ''}`.toLowerCase()
-    return code === '42p01'
-      || (
-        (message.includes('desk_shelves') || message.includes('desk_shelf_assignments'))
-        && (message.includes('does not exist') || message.includes('relation') || message.includes('not found'))
-      )
   }
 
   function getDeskGroupLabel(desk) {
@@ -2432,45 +2276,85 @@ function Desk({ user }) {
     })
   }
 
+  function getEventPosition(event) {
+    if (event?.touches?.length) {
+      const touch = event.touches[0]
+      return {
+        pageX: touch.pageX,
+        pageY: touch.pageY,
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      }
+    }
+
+    if (event?.changedTouches?.length) {
+      const touch = event.changedTouches[0]
+      return {
+        pageX: touch.pageX,
+        pageY: touch.pageY,
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      }
+    }
+
+    return {
+      pageX: event?.pageX ?? 0,
+      pageY: event?.pageY ?? 0,
+      clientX: event?.clientX ?? 0,
+      clientY: event?.clientY ?? 0
+    }
+  }
+
   function handleResizeMouseDown(e, item) {
+    if (typeof e.button === 'number' && e.button !== 0) return
+    if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return
+
     e.preventDefault()
     e.stopPropagation()
+
+    const { pageX, pageY, clientX, clientY } = getEventPosition(e)
 
     const itemKey = getItemKey(item)
     const startWidth = getItemWidth(item)
     const startHeight = getItemHeight(item)
+    resizingPointerIdRef.current = typeof e.pointerId === 'number' ? e.pointerId : null
 
     resizeStartRef.current = {
       itemKey,
-      startPageX: e.pageX,
-      startPageY: e.pageY,
+      startPageX: pageX,
+      startPageY: pageY,
       startWidth,
       startHeight
     }
 
     setResizingId(itemKey)
     setResizeOverlay({
-      x: e.clientX,
-      y: e.clientY,
+      x: clientX,
+      y: clientY,
       scale: 1,
       ratioLocked: false,
       width: startWidth,
       height: startHeight
     })
 
-    window.addEventListener('mousemove', handleResizeMouseMove)
-    window.addEventListener('mouseup', handleResizeMouseUp)
+    window.addEventListener('pointermove', handleResizeMouseMove)
+    window.addEventListener('pointerup', handleResizeMouseUp)
+    window.addEventListener('pointercancel', handleResizeMouseUp)
   }
 
   function handleResizeMouseMove(e) {
+    if (resizingPointerIdRef.current !== null && e.pointerId !== resizingPointerIdRef.current) return
+
     const activeItemKey = resizeStartRef.current.itemKey
     if (!activeItemKey) return
+
+    const { pageX, pageY, clientX, clientY } = getEventPosition(e)
 
     const activeItem = notesRef.current.find((item) => getItemKey(item) === activeItemKey)
     if (!activeItem) return
 
-    const deltaX = e.pageX - resizeStartRef.current.startPageX
-    const deltaY = e.pageY - resizeStartRef.current.startPageY
+    const deltaX = pageX - resizeStartRef.current.startPageX
+    const deltaY = pageY - resizeStartRef.current.startPageY
     const isDecoration = isDecorationItem(activeItem)
     const isRatioLocked = isDecoration || e.shiftKey
 
@@ -2513,8 +2397,8 @@ function Desk({ user }) {
     )
 
     setResizeOverlay({
-      x: e.clientX,
-      y: e.clientY,
+      x: clientX,
+      y: clientY,
       scale,
       ratioLocked: isRatioLocked,
       width: nextWidth,
@@ -2522,11 +2406,15 @@ function Desk({ user }) {
     })
   }
 
-  async function handleResizeMouseUp() {
-    const activeItemKey = resizeStartRef.current.itemKey
+  async function handleResizeMouseUp(e) {
+    if (resizingPointerIdRef.current !== null && e?.pointerId !== undefined && e.pointerId !== resizingPointerIdRef.current) return
 
-    window.removeEventListener('mousemove', handleResizeMouseMove)
-    window.removeEventListener('mouseup', handleResizeMouseUp)
+    const activeItemKey = resizeStartRef.current.itemKey
+    resizingPointerIdRef.current = null
+
+    window.removeEventListener('pointermove', handleResizeMouseMove)
+    window.removeEventListener('pointerup', handleResizeMouseUp)
+    window.removeEventListener('pointercancel', handleResizeMouseUp)
 
     setResizingId(null)
     setResizeOverlay(null)
@@ -2793,8 +2681,13 @@ function Desk({ user }) {
   }
 
   function handleRotateMouseDown(e, item) {
+    if (typeof e.button === 'number' && e.button !== 0) return
+    if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return
+
     e.preventDefault()
     e.stopPropagation()
+
+    const { pageX, pageY } = getEventPosition(e)
 
     const noteElement = e.currentTarget.closest('[data-note-id]')
     if (!noteElement) return
@@ -2805,21 +2698,27 @@ function Desk({ user }) {
     rotationCenterRef.current = { x: centerX, y: centerY }
 
     const currentRotation = Number(item.rotation) || 0
-    const pointerAngle = getPointerAngleFromCenter(e.pageX, e.pageY)
+    const pointerAngle = getPointerAngleFromCenter(pageX, pageY)
     rotationOffsetRef.current = currentRotation - pointerAngle
     const itemKey = getItemKey(item)
+    rotatingPointerIdRef.current = typeof e.pointerId === 'number' ? e.pointerId : null
     rotatingNoteIdRef.current = itemKey
     setRotatingId(itemKey)
 
-    window.addEventListener('mousemove', handleRotateMouseMove)
-    window.addEventListener('mouseup', handleRotateMouseUp)
+    window.addEventListener('pointermove', handleRotateMouseMove)
+    window.addEventListener('pointerup', handleRotateMouseUp)
+    window.addEventListener('pointercancel', handleRotateMouseUp)
   }
 
   function handleRotateMouseMove(e) {
+    if (rotatingPointerIdRef.current !== null && e.pointerId !== rotatingPointerIdRef.current) return
+
     const activeRotatingId = rotatingNoteIdRef.current
     if (!activeRotatingId) return
 
-    const pointerAngle = getPointerAngleFromCenter(e.pageX, e.pageY)
+    const { pageX, pageY } = getEventPosition(e)
+
+    const pointerAngle = getPointerAngleFromCenter(pageX, pageY)
     const nextRotation = normalizeRotation(pointerAngle + rotationOffsetRef.current)
 
     setNotes((prev) =>
@@ -2830,19 +2729,24 @@ function Desk({ user }) {
   }
 
   async function handleRotateMouseUp(e) {
+    if (rotatingPointerIdRef.current !== null && e?.pointerId !== undefined && e.pointerId !== rotatingPointerIdRef.current) return
+
     const activeRotatingId = rotatingNoteIdRef.current
 
     rotatingNoteIdRef.current = null
+    rotatingPointerIdRef.current = null
     setRotatingId(null)
-    window.removeEventListener('mousemove', handleRotateMouseMove)
-    window.removeEventListener('mouseup', handleRotateMouseUp)
+    window.removeEventListener('pointermove', handleRotateMouseMove)
+    window.removeEventListener('pointerup', handleRotateMouseUp)
+    window.removeEventListener('pointercancel', handleRotateMouseUp)
 
     if (!activeRotatingId) return
 
     let nextRotation = null
 
     if (e) {
-      const pointerAngle = getPointerAngleFromCenter(e.pageX, e.pageY)
+      const { pageX, pageY } = getEventPosition(e)
+      const pointerAngle = getPointerAngleFromCenter(pageX, pageY)
       nextRotation = normalizeRotation(pointerAngle + rotationOffsetRef.current)
 
       setNotes((prev) =>
@@ -2918,30 +2822,40 @@ function Desk({ user }) {
   }
 
   function handleDragStart(e, item) {
+    if (typeof e.button === 'number' && e.button !== 0) return
+    if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return
     if (editingId) return
+
+    const { pageX, pageY } = getEventPosition(e)
 
     const itemKey = getItemKey(item)
     setDraggedId(itemKey)
     draggedIdRef.current = itemKey
+    dragPointerIdRef.current = typeof e.pointerId === 'number' ? e.pointerId : null
 
-    const offset = { x: e.pageX - item.x, y: e.pageY - item.y }
+    const offset = { x: pageX - item.x, y: pageY - item.y }
     setDragOffset(offset)
     dragOffsetRef.current = offset
 
-    window.addEventListener('mousemove', handleDragMove)
-    window.addEventListener('mouseup', handleDragEnd)
+    window.addEventListener('pointermove', handleDragMove)
+    window.addEventListener('pointerup', handleDragEnd)
+    window.addEventListener('pointercancel', handleDragEnd)
   }
 
   function handleDragMove(e) {
+    if (dragPointerIdRef.current !== null && e.pointerId !== dragPointerIdRef.current) return
+
     const activeDraggedId = draggedIdRef.current
     if (!activeDraggedId) return
+
+    const { pageX, pageY } = getEventPosition(e)
 
     const activeItem = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
     const activeItemWidth = getItemWidth(activeItem)
     const activeItemHeight = getItemHeight(activeItem)
 
-    const nextX = e.pageX - dragOffsetRef.current.x
-    const nextY = e.pageY - dragOffsetRef.current.y
+    const nextX = pageX - dragOffsetRef.current.x
+    const nextY = pageY - dragOffsetRef.current.y
 
     setCanvasHeight((prev) => {
       if (nextY + activeItemHeight + growThreshold <= prev) return prev
@@ -2964,20 +2878,25 @@ function Desk({ user }) {
   }
 
   async function handleDragEnd(e) {
+    if (dragPointerIdRef.current !== null && e?.pointerId !== undefined && e.pointerId !== dragPointerIdRef.current) return
+
     const activeDraggedId = draggedIdRef.current
 
     setDraggedId(null)
     draggedIdRef.current = null
-    window.removeEventListener('mousemove', handleDragMove)
-    window.removeEventListener('mouseup', handleDragEnd)
+    dragPointerIdRef.current = null
+    window.removeEventListener('pointermove', handleDragMove)
+    window.removeEventListener('pointerup', handleDragEnd)
+    window.removeEventListener('pointercancel', handleDragEnd)
 
     if (!activeDraggedId) return
 
     let nextPosition = null
 
     if (e) {
-      const nextX = e.pageX - dragOffsetRef.current.x
-      const nextY = e.pageY - dragOffsetRef.current.y
+      const { pageX, pageY } = getEventPosition(e)
+      const nextX = pageX - dragOffsetRef.current.x
+      const nextY = pageY - dragOffsetRef.current.y
       const activeItem = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
       const maxX = Math.max(0, window.innerWidth - getItemWidth(activeItem))
       nextPosition = {
@@ -4204,7 +4123,7 @@ function Desk({ user }) {
         const isDecoration = isDecorationItem(item)
         const decorationOption = isDecoration ? getDecorationOption(item.kind) : null
         const shouldShowCreatorLabel = Boolean(currentDesk && isDeskCollaborative(currentDesk) && !isDecoration)
-        const creatorLabel = shouldShowCreatorLabel ? getItemCreatorLabel(item) : ''
+        const creatorLabel = shouldShowCreatorLabel ? getItemCreatorLabel(item, user.id) : ''
         const baseZIndex = index + 1
 
         return (
@@ -4212,7 +4131,7 @@ function Desk({ user }) {
             key={itemKey}
             data-note-id={item.id}
             data-item-key={itemKey}
-            onMouseDown={editingId ? undefined : (e) => handleDragStart(e, item)}
+            onPointerDown={editingId ? undefined : (e) => handleDragStart(e, item)}
             onClick={
               isDecoration
                 ? () => setActiveDecorationHandleId((prev) => (prev === itemKey ? null : itemKey))
@@ -4233,6 +4152,7 @@ function Desk({ user }) {
               mixBlendMode: 'normal',
               opacity: 1,
               fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
+              touchAction: editingId === itemKey ? 'auto' : 'none',
               cursor: draggedId === itemKey ? 'grabbing' : 'grab',
               zIndex: draggedId === itemKey
                 ? 3000
@@ -4267,7 +4187,7 @@ function Desk({ user }) {
                   <>
                     <button
                       type="button"
-                      onMouseDown={(e) => {
+                      onPointerDown={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
                       }}
@@ -4301,7 +4221,7 @@ function Desk({ user }) {
                     </button>
                     <button
                       type="button"
-                      onMouseDown={(e) => {
+                      onPointerDown={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
                       }}
@@ -4336,7 +4256,7 @@ function Desk({ user }) {
                     </button>
                     <button
                       type="button"
-                      onMouseDown={(e) => {
+                      onPointerDown={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
                       }}
@@ -4371,7 +4291,7 @@ function Desk({ user }) {
                     </button>
                     <button
                       type="button"
-                      onMouseDown={(e) => handleRotateMouseDown(e, item)}
+                      onPointerDown={(e) => handleRotateMouseDown(e, item)}
                       onClick={(e) => e.stopPropagation()}
                       aria-label="Rotate decoration"
                       title="Hold and drag to rotate"
@@ -4399,7 +4319,7 @@ function Desk({ user }) {
                     </button>
                     <button
                       type="button"
-                      onMouseDown={(e) => handleResizeMouseDown(e, item)}
+                      onPointerDown={(e) => handleResizeMouseDown(e, item)}
                       onClick={(e) => e.stopPropagation()}
                       aria-label="Resize decoration"
                       title="Hold and move cursor to resize"
@@ -4436,7 +4356,7 @@ function Desk({ user }) {
                 <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
                   <button
                     type="button"
-                    onMouseDown={(e) => handleRotateMouseDown(e, item)}
+                    onPointerDown={(e) => handleRotateMouseDown(e, item)}
                     aria-label="Rotate note"
                     title="Hold and drag to rotate"
                     style={{
@@ -4459,7 +4379,7 @@ function Desk({ user }) {
                   </button>
                   <button
                     type="button"
-                    onMouseDown={(e) => handleResizeMouseDown(e, item)}
+                    onPointerDown={(e) => handleResizeMouseDown(e, item)}
                     aria-label="Resize note"
                     title="Hold and move cursor to resize"
                     style={{
@@ -4485,7 +4405,7 @@ function Desk({ user }) {
                     <>
                       <button
                         type="button"
-                        onMouseDown={(e) => {
+                        onPointerDown={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
                         }}
@@ -4514,7 +4434,7 @@ function Desk({ user }) {
                       </button>
                       <button
                         type="button"
-                        onMouseDown={(e) => {
+                        onPointerDown={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
                         }}
@@ -4704,7 +4624,7 @@ function Desk({ user }) {
                       gap: 6,
                       flexDirection: 'column'
                     }}
-                    onMouseDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
                   >
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#222' }}>
@@ -4916,7 +4836,7 @@ function Desk({ user }) {
                         (item.items || []).map((checklistItem, index) => (
                           <label
                             key={`${item.id}-${checklistItem.id || index}`}
-                            onMouseDown={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
                             style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}
                           >
                             <input
@@ -4959,457 +4879,51 @@ function Desk({ user }) {
         )
       })}
 
-      {pendingDeleteId && (
-        <div
-          style={{
-            ...modalOverlayStyle,
-            zIndex: 1000
-          }}
-        >
-          <div
-            style={{
-              ...modalCardStyle,
-              width: 280,
-              textAlign: 'center'
-            }}
-          >
-            <div style={{ marginBottom: 12, color: '#222' }}>Delete this note?</div>
-            <button
-              type="button"
-              onClick={confirmDeleteNote}
-              style={{
-                ...modalDangerButtonStyle,
-                marginRight: 8,
-              }}
-            >
-              Delete
-            </button>
-            <button
-              type="button"
-              onClick={() => setPendingDeleteId(null)}
-              style={modalSecondaryButtonStyle}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {confirmDialog.isOpen && (
-        <div
-          style={{
-            ...modalOverlayStyle,
-            zIndex: 1100
-          }}
-        >
-          <div
-            style={{
-              ...modalCardStyle,
-              width: 320,
-              textAlign: 'center'
-            }}
-          >
-            <div style={{ ...modalTitleStyle, marginBottom: 12 }}>{confirmDialog.title || 'Confirm Action'}</div>
-            <div style={{ marginBottom: 14, fontSize: 13, color: '#333' }}>{confirmDialog.message}</div>
-            <button
-              type="button"
-              onClick={confirmDialogAction}
-              disabled={confirmDialogLoading}
-              style={{
-                ...(confirmDialog.tone === 'danger' ? modalDangerButtonStyle : modalPrimaryButtonStyle),
-                marginRight: 8,
-                cursor: confirmDialogLoading ? 'not-allowed' : 'pointer',
-                opacity: confirmDialogLoading ? 0.7 : 1
-              }}
-            >
-              {confirmDialogLoading ? 'Working...' : confirmDialog.confirmLabel}
-            </button>
-            <button
-              type="button"
-              onClick={closeConfirmDialog}
-              disabled={confirmDialogLoading}
-              style={{
-                ...modalSecondaryButtonStyle,
-                cursor: confirmDialogLoading ? 'not-allowed' : 'pointer',
-                opacity: confirmDialogLoading ? 0.7 : 1
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {deleteAccountDialog.isOpen && (
-        <div
-          style={{
-            ...modalOverlayStyle,
-            zIndex: 1120
-          }}
-        >
-          <form
-            onSubmit={submitDeleteAccountDialog}
-            style={{
-              ...modalCardStyle,
-              width: 360
-            }}
-          >
-            <div style={modalTitleStyle}>Delete Account</div>
-            <div style={{ marginBottom: 10, fontSize: 13, color: '#333' }}>
-              This permanently deletes your DoodleDesk profile data, desks, shelves, and friend data. This action cannot be undone.
-            </div>
-            <div style={{ marginBottom: 8, fontSize: 12, color: '#666' }}>Type DELETE to confirm.</div>
-            <input
-              value={deleteAccountDialog.confirmationText}
-              onChange={(e) => {
-                if (deleteAccountError) setDeleteAccountError('')
-                setDeleteAccountDialog((prev) => ({ ...prev, confirmationText: e.target.value }))
-              }}
-              autoFocus
-              placeholder="DELETE"
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                padding: '8px 10px',
-                borderRadius: 6,
-                border: '1px solid #ccc',
-                marginBottom: 12,
-                fontSize: 14
-              }}
-            />
-
-            <div style={modalActionsStyle}>
-              <button
-                type="button"
-                onClick={closeDeleteAccountDialog}
-                disabled={deleteAccountDeleting}
-                style={{
-                  ...modalSecondaryButtonStyle,
-                  marginRight: 8,
-                  cursor: deleteAccountDeleting ? 'not-allowed' : 'pointer',
-                  opacity: deleteAccountDeleting ? 0.6 : 1
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={deleteAccountDeleting || !deleteAccountConfirmationMatches}
-                style={{
-                  ...modalDangerButtonStyle,
-                  cursor: deleteAccountDeleting || !deleteAccountConfirmationMatches ? 'not-allowed' : 'pointer',
-                  opacity: deleteAccountDeleting || !deleteAccountConfirmationMatches ? 0.7 : 1
-                }}
-              >
-                {deleteAccountDeleting ? 'Deleting...' : 'Delete Account'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {deskNameDialog.isOpen && (
-        <div
-          style={{
-            ...modalOverlayStyle,
-            zIndex: 1200
-          }}
-        >
-          <form
-            onSubmit={submitDeskNameDialog}
-            style={{
-              ...modalCardStyle,
-              width: 320,
-            }}
-          >
-            <div style={modalTitleStyle}>
-              {deskNameDialog.mode === 'create' ? 'Create New Desk' : 'Rename Desk'}
-            </div>
-
-            <input
-              value={deskNameDialog.value}
-              onChange={(e) => {
-                const nextValue = e.target.value
-                if (deskNameError) setDeskNameError('')
-                setDeskNameDialog((prev) => ({ ...prev, value: nextValue }))
-              }}
-              autoFocus
-              placeholder="Desk name"
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                padding: '8px 10px',
-                borderRadius: 6,
-                border: '1px solid #ccc',
-                marginBottom: 12,
-                fontSize: 14
-              }}
-            />
-
-            {deskNameDialog.mode === 'create' && (
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 8 }}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(deskNameDialog.isCollaborative)}
-                    onChange={(e) => {
-                      const checked = e.target.checked
-                      if (deskNameError) setDeskNameError('')
-                      setDeskNameDialog((prev) => ({
-                        ...prev,
-                        isCollaborative: checked,
-                        invitedFriendIds: checked ? prev.invitedFriendIds : []
-                      }))
-                    }}
-                  />
-                  Collaborative desk
-                </label>
-
-                {deskNameDialog.isCollaborative && (
-                  <div
-                    style={{
-                      border: '1px solid #e3e3e3',
-                      borderRadius: 6,
-                      padding: 8,
-                      maxHeight: 140,
-                      overflowY: 'auto',
-                      background: '#fafafa'
-                    }}
-                  >
-                    <div style={{ fontSize: 12, marginBottom: 6, color: '#555' }}>Invite friends:</div>
-                    {friends.length === 0 ? (
-                      <div style={{ fontSize: 12, color: '#777' }}>No friends available to invite yet.</div>
-                    ) : (
-                      friends.map((friend) => {
-                        const checked = (deskNameDialog.invitedFriendIds || []).includes(friend.id)
-                        const friendDisplay = getProfileDisplayParts(friend)
-                        return (
-                          <label
-                            key={friend.id}
-                            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 6 }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleInvitedFriend(friend.id)}
-                            />
-                            <span>{friendDisplay.primary}</span>
-                          </label>
-                        )
-                      })
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {deskNameError && (
-              <div style={{ color: '#d32f2f', fontSize: 12, marginBottom: 10 }}>
-                {deskNameError}
-              </div>
-            )}
-
-            <div style={modalActionsStyle}>
-              <button
-                type="button"
-                onClick={closeDeskNameDialog}
-                disabled={deskNameSaving}
-                style={{
-                  ...modalSecondaryButtonStyle,
-                  marginRight: 8,
-                  cursor: deskNameSaving ? 'not-allowed' : 'pointer',
-                  opacity: deskNameSaving ? 0.6 : 1
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={deskNameSaving}
-                style={{
-                  ...modalPrimaryButtonStyle,
-                  cursor: deskNameSaving ? 'not-allowed' : 'pointer',
-                  opacity: deskNameSaving ? 0.7 : 1
-                }}
-              >
-                {deskNameSaving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {deskMembersDialogOpen && (
-        <div
-          style={{
-            ...modalOverlayStyle,
-            zIndex: 1250
-          }}
-        >
-          <div
-            style={{
-              ...modalCardStyle,
-              width: 360,
-              maxHeight: '75vh',
-              overflowY: 'auto'
-            }}
-          >
-            <div style={modalTitleStyle}>Manage Desk Members</div>
-
-            {deskMembersMessage && (
-              <div style={{ color: 'green', fontSize: 12, marginBottom: 8 }}>{deskMembersMessage}</div>
-            )}
-            {deskMembersError && (
-              <div style={{ color: '#d32f2f', fontSize: 12, marginBottom: 8 }}>{deskMembersError}</div>
-            )}
-
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Current members</div>
-              {deskMembersLoading ? (
-                <div style={{ fontSize: 12, color: '#777' }}>Loading members...</div>
-              ) : deskMembers.length === 0 ? (
-                <div style={{ fontSize: 12, color: '#777' }}>No members yet</div>
-              ) : (
-                deskMembers.map((member) => {
-                  const isRemoving = deskMemberActionLoadingId === `remove:${member.user_id}`
-                  const memberDisplay = getProfileDisplayParts(member)
-                  return (
-                    <div
-                      key={member.user_id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 8,
-                        marginBottom: 6
-                      }}
-                    >
-                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {memberDisplay.primary}
-                        {memberDisplay.secondary && (
-                          <div style={{ fontSize: 11, color: '#666' }}>{memberDisplay.secondary}</div>
-                        )}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeDeskMember(member.user_id)}
-                        disabled={isRemoving}
-                        style={{
-                          border: 'none',
-                          borderRadius: 4,
-                          padding: '4px 8px',
-                          background: '#eee',
-                          color: '#333',
-                          fontSize: 12,
-                          cursor: isRemoving ? 'not-allowed' : 'pointer',
-                          opacity: isRemoving ? 0.7 : 1,
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        {isRemoving ? 'Removing...' : 'Remove'}
-                      </button>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Add friends</div>
-              {friends.length === 0 ? (
-                <div style={{ fontSize: 12, color: '#777' }}>No friends available</div>
-              ) : (
-                friends.map((friend) => {
-                  const alreadyMember = deskMembers.some((member) => member.user_id === friend.id)
-                  const isAdding = deskMemberActionLoadingId === `add:${friend.id}`
-                  const friendDisplay = getProfileDisplayParts(friend)
-                  return (
-                    <div
-                      key={friend.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 8,
-                        marginBottom: 6
-                      }}
-                    >
-                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {friendDisplay.primary}
-                        {friendDisplay.secondary && (
-                          <div style={{ fontSize: 11, color: '#666' }}>{friendDisplay.secondary}</div>
-                        )}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => addDeskMember(friend.id)}
-                        disabled={alreadyMember || isAdding}
-                        style={{
-                          border: 'none',
-                          borderRadius: 4,
-                          padding: '4px 8px',
-                          background: alreadyMember ? '#eee' : '#4285F4',
-                          color: alreadyMember ? '#777' : '#fff',
-                          fontSize: 12,
-                          cursor: alreadyMember || isAdding ? 'not-allowed' : 'pointer',
-                          opacity: isAdding ? 0.7 : 1,
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        {alreadyMember ? 'Added' : isAdding ? 'Adding...' : 'Add'}
-                      </button>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-
-            <div style={modalActionsStyle}>
-              <button
-                type="button"
-                onClick={closeDeskMembersDialog}
-                style={modalSecondaryButtonStyle}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {resizeOverlay && (
-        <div
-          style={{
-            position: 'fixed',
-            left: resizeOverlay.x + 14,
-            top: resizeOverlay.y + 14,
-            background: 'rgba(20, 20, 20, 0.9)',
-            color: '#fff',
-            borderRadius: 8,
-            padding: '8px 10px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            zIndex: 1500,
-            pointerEvents: 'none',
-            minWidth: 170
-          }}
-        >
-          <FourWayResizeIcon size={14} color="#fff" />
-          <input
-            type="range"
-            min={50}
-            max={250}
-            value={Math.round(resizeOverlay.scale * 100)}
-            readOnly
-            style={{ width: 90 }}
-          />
-          <span style={{ fontSize: 11 }}>
-            {resizeOverlay.width}×{resizeOverlay.height}
-            {resizeOverlay.ratioLocked ? ' • lock' : ''}
-          </span>
-        </div>
-      )}
+      <DeskModals
+        pendingDeleteId={pendingDeleteId}
+        confirmDeleteNote={confirmDeleteNote}
+        setPendingDeleteId={setPendingDeleteId}
+        confirmDialog={confirmDialog}
+        confirmDialogLoading={confirmDialogLoading}
+        confirmDialogAction={confirmDialogAction}
+        closeConfirmDialog={closeConfirmDialog}
+        deleteAccountDialog={deleteAccountDialog}
+        submitDeleteAccountDialog={submitDeleteAccountDialog}
+        deleteAccountError={deleteAccountError}
+        setDeleteAccountError={setDeleteAccountError}
+        setDeleteAccountDialog={setDeleteAccountDialog}
+        deleteAccountDeleting={deleteAccountDeleting}
+        deleteAccountConfirmationMatches={deleteAccountConfirmationMatches}
+        closeDeleteAccountDialog={closeDeleteAccountDialog}
+        deskNameDialog={deskNameDialog}
+        submitDeskNameDialog={submitDeskNameDialog}
+        deskNameError={deskNameError}
+        setDeskNameError={setDeskNameError}
+        setDeskNameDialog={setDeskNameDialog}
+        friends={friends}
+        getProfileDisplayParts={getProfileDisplayParts}
+        toggleInvitedFriend={toggleInvitedFriend}
+        closeDeskNameDialog={closeDeskNameDialog}
+        deskNameSaving={deskNameSaving}
+        deskMembersDialogOpen={deskMembersDialogOpen}
+        deskMembersMessage={deskMembersMessage}
+        deskMembersError={deskMembersError}
+        deskMembersLoading={deskMembersLoading}
+        deskMembers={deskMembers}
+        deskMemberActionLoadingId={deskMemberActionLoadingId}
+        removeDeskMember={removeDeskMember}
+        addDeskMember={addDeskMember}
+        closeDeskMembersDialog={closeDeskMembersDialog}
+        resizeOverlay={resizeOverlay}
+        ResizeIconComponent={FourWayResizeIcon}
+        modalOverlayStyle={modalOverlayStyle}
+        modalCardStyle={modalCardStyle}
+        modalTitleStyle={modalTitleStyle}
+        modalActionsStyle={modalActionsStyle}
+        modalSecondaryButtonStyle={modalSecondaryButtonStyle}
+        modalPrimaryButtonStyle={modalPrimaryButtonStyle}
+        modalDangerButtonStyle={modalDangerButtonStyle}
+      />
     </div>
   )
 }

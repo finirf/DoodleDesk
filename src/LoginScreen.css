@@ -152,6 +152,11 @@
   color: #cbd5e1;
 }
 
+.auth-inline-row {
+  margin-top: 2px;
+  text-align: right;
+}
+
 .auth-link-button {
   border: none;
   background: transparent;

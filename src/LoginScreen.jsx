@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import './LoginScreen.css'
 
 export default function LoginScreen() {
-  const [mode, setMode] = useState('login') // 'login' or 'signup'
+  const [mode, setMode] = useState('login') // 'login' | 'signup' | 'forgot'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -20,6 +20,14 @@ export default function LoginScreen() {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) setError(error.message)
         else setSuccess('Logged in!')
+      } else if (mode === 'forgot') {
+        const redirectTo = `${window.location.origin}${window.location.pathname}`
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+        if (error) {
+          setError(error.message)
+        } else {
+          setSuccess('Password reset email sent. Check your inbox for the reset link.')
+        }
       } else {
         const { error } = await supabase.auth.signUp({ email, password })
         if (error) setError(error.message)
@@ -55,36 +63,66 @@ export default function LoginScreen() {
               required
               className="auth-input"
             />
-            <label htmlFor="password" className="auth-label">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              required
-              className="auth-input"
-            />
+            {mode !== 'forgot' && (
+              <>
+                <label htmlFor="password" className="auth-label">Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
+                  required
+                  className="auth-input"
+                />
+              </>
+            )}
+
+            {mode === 'login' && (
+              <div className="auth-inline-row">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError('')
+                    setSuccess('')
+                    setMode('forgot')
+                  }}
+                  className="auth-link-button"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
             <button
               type="submit"
               disabled={loading}
               className="auth-submit-button"
             >
-              {loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create account'}
+              {loading
+                ? 'Please wait...'
+                : mode === 'login'
+                  ? 'Login'
+                  : mode === 'forgot'
+                    ? 'Send reset link'
+                    : 'Create account'}
             </button>
           </form>
 
-          <div className="auth-divider" aria-hidden="true">
-            <span>or continue with</span>
-          </div>
+          {mode !== 'forgot' && (
+            <>
+              <div className="auth-divider" aria-hidden="true">
+                <span>or continue with</span>
+              </div>
 
-          <button
-            className="auth-google-button"
-            onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })}
-            type="button"
-          >
-            Continue with Google
-          </button>
+              <button
+                className="auth-google-button"
+                onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })}
+                type="button"
+              >
+                Continue with Google
+              </button>
+            </>
+          )}
 
           <div className="auth-switch-row">
           {mode === 'login' ? (
@@ -98,7 +136,7 @@ export default function LoginScreen() {
                 Sign up
               </button>
             </>
-          ) : (
+          ) : mode === 'signup' ? (
             <>
               <span>Already have an account? </span>
               <button
@@ -107,6 +145,17 @@ export default function LoginScreen() {
                 className="auth-link-button"
               >
                 Login
+              </button>
+            </>
+          ) : (
+            <>
+              <span>Remembered your password? </span>
+              <button
+                type="button"
+                onClick={() => setMode('login')}
+                className="auth-link-button"
+              >
+                Back to login
               </button>
             </>
           )}

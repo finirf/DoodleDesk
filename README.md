@@ -1031,3 +1031,65 @@ supabase secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=... SUPABASE_SERVICE_ROL
 ```
 
 After deployment, deleting an account removes the auth user and cascades related app data via your foreign keys.
+
+## Friend request email notifications
+
+You can email users whenever a new friend request is created by using a Supabase Edge Function + Database Webhook.
+
+### 1) Deploy the Edge Function
+
+Function path in this repo:
+
+- `supabase/functions/friend-request-email/index.ts`
+
+Deploy it:
+
+```bash
+supabase functions deploy friend-request-email
+```
+
+### 2) Set function secrets
+
+The function expects:
+
+- `RESEND_API_KEY`
+- `FRIEND_REQUEST_FROM_EMAIL`
+- `APP_BASE_URL`
+- `FRIEND_REQUEST_WEBHOOK_SECRET`
+
+Example:
+
+```bash
+supabase secrets set RESEND_API_KEY=your_resend_api_key
+supabase secrets set FRIEND_REQUEST_FROM_EMAIL="DoodleDesk <noreply@yourdomain.com>"
+supabase secrets set APP_BASE_URL="https://your-app-domain.com"
+supabase secrets set FRIEND_REQUEST_WEBHOOK_SECRET="replace-with-random-secret"
+```
+
+Notes:
+
+- `FRIEND_REQUEST_FROM_EMAIL` must be verified with your email provider.
+- `APP_BASE_URL` is used for the “Open DoodleDesk” email button.
+
+### 3) Create a Supabase Database Webhook
+
+In Supabase Dashboard:
+
+- Go to `Database` → `Webhooks` → `Create a new webhook`
+- Table: `public.friend_requests`
+- Events: `INSERT`
+- URL: `https://<your-project-ref>.functions.supabase.co/friend-request-email`
+- Add header:
+	- `x-webhook-secret: <same value as FRIEND_REQUEST_WEBHOOK_SECRET>`
+
+The function only sends when the inserted row has `status = 'pending'`.
+
+### 4) Test
+
+1. Send a friend request from one account to another.
+2. Confirm email delivery for the receiver account.
+3. Check function logs if needed:
+
+```bash
+supabase functions logs --name friend-request-email
+```
