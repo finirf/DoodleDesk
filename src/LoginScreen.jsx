@@ -44,18 +44,6 @@ export default function LoginScreen() {
         </div>
 
         <div className="auth-card">
-          <button
-            className="auth-google-button"
-            onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })}
-            type="button"
-          >
-            Continue with Google
-          </button>
-
-          <div className="auth-divider" aria-hidden="true">
-            <span>or {mode === 'login' ? 'login' : 'sign up'} with email</span>
-          </div>
-
           <form onSubmit={handleEmailAuth} className="auth-form">
             <label htmlFor="email" className="auth-label">Email</label>
             <input
@@ -85,6 +73,18 @@ export default function LoginScreen() {
               {loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create account'}
             </button>
           </form>
+
+          <div className="auth-divider" aria-hidden="true">
+            <span>or continue with</span>
+          </div>
+
+          <button
+            className="auth-google-button"
+            onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })}
+            type="button"
+          >
+            Continue with Google
+          </button>
 
           <div className="auth-switch-row">
           {mode === 'login' ? (
