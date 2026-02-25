@@ -1250,6 +1250,12 @@ function Desk({ user }) {
   async function removeFriend(friendId) {
     if (!friendId) return
 
+    const friend = friends.find((entry) => entry.id === friendId)
+    const shouldRemove = window.confirm(
+      `Remove ${friend?.email || 'this friend'} from your friends list?`
+    )
+    if (!shouldRemove) return
+
     setFriendActionLoadingId(friendId)
     setFriendError('')
     setFriendMessage('')
