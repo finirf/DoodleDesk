@@ -132,12 +132,12 @@
 
 .auth-submit-button {
   margin-top: 8px;
-  background: #111827;
+  background: #4285f4;
   color: #ffffff;
 }
 
 .auth-submit-button:hover:not(:disabled) {
-  background: #1f2937;
+  background: #3b79dc;
 }
 
 .auth-submit-button:disabled {
