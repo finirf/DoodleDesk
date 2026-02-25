@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { supabase } from './supabase'
-import './LoginScreen.css'
+import { supabase } from '../../../supabase'
+import './AuthScreen.css'
 
 export default function ResetPasswordScreen({ hasRecoverySession, onBackToLogin }) {
   const [newPassword, setNewPassword] = useState('')

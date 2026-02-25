@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
-import LoginScreen from './LoginScreen'
-import ResetPasswordScreen from './ResetPasswordScreen'
-import useAuthSession from './features/auth/useAuthSession'
-import DeskModals from './features/desk/components/DeskModals'
-import { BUILT_IN_SHELVES, DECORATION_OPTIONS, FONT_OPTIONS } from './features/desk/constants/deskConstants'
-import { getDeskBackgroundStyles } from './features/desk/utils/backgroundUtils'
+import { AppAuthBoundary, useAuthSession } from './features/auth'
 import {
+  BUILT_IN_SHELVES,
+  DECORATION_OPTIONS,
+  DeskModals,
+  FONT_OPTIONS,
+  FourWayResizeIcon,
+  NewNoteMenu,
   clampDimension,
+  formatDate,
+  getDeskBackgroundStyles,
   getDecorationOption,
+  getDeskNameValue,
   getDefaultItemColor,
   getItemColor,
   getItemCreatorLabel,
@@ -16,42 +20,36 @@ import {
   getItemFontSize,
   getItemHeight,
   getItemKey,
+  getProfileDisplayParts,
   getItemTableName,
   getItemTextColor,
+  getViewportMetrics,
   getItemWidth,
   isChecklistItem,
+  isDeskCollaborative,
   isDecorationItem,
   isMissingColumnError,
   isMissingShelfStorageTableError,
-  normalizeFontSize
-} from './features/desk/utils/itemUtils'
+  loadMergedDesksForUser,
+  modalStyles,
+  normalizeCustomBackgroundValue,
+  normalizeFontSize,
+  useDeskViewport,
+  useMenuCloseOnOutsideClick
+} from './features/desk'
 
 export default function App() {
   const { session, loading, isRecoveryFlow, exitRecoveryFlow } = useAuthSession()
-
-  if (loading) {
-    return (
-      <div style={{ padding: 40, minHeight: '100vh', textAlign: 'center' }}>
-        <h2>DoodleDesk</h2>
-        <p>Loading...</p>
-      </div>
-    )
-  }
-
-  if (isRecoveryFlow) {
-    return (
-      <ResetPasswordScreen
-        hasRecoverySession={Boolean(session?.user)}
-        onBackToLogin={exitRecoveryFlow}
-      />
-    )
-  }
-
-  if (!session || !session.user) {
-    return <LoginScreen />
-  }
-
-  return <Desk user={session.user} />
+  return (
+    <AppAuthBoundary
+      loading={loading}
+      isRecoveryFlow={isRecoveryFlow}
+      session={session}
+      onBackToLogin={exitRecoveryFlow}
+    >
+      <Desk user={session?.user} />
+    </AppAuthBoundary>
+  )
 }
 
 // ------------------- Desk -------------------
@@ -146,12 +144,12 @@ function Desk({ user }) {
   const [resizingId, setResizingId] = useState(null)
   const [resizeOverlay, setResizeOverlay] = useState(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
-  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth || 1280)
-  const [sectionHeight, setSectionHeight] = useState(() => window.innerHeight || 800)
-  const [canvasHeight, setCanvasHeight] = useState(() => {
-    const initialHeight = window.innerHeight || 800
-    return initialHeight * 2
-  })
+  const {
+    viewportWidth,
+    sectionHeight,
+    canvasHeight,
+    setCanvasHeight
+  } = useDeskViewport({ getViewportMetrics })
   const draggedIdRef = useRef(null)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
   const dragPointerIdRef = useRef(null)
@@ -168,13 +166,25 @@ function Desk({ user }) {
     startWidth: 200,
     startHeight: 120
   })
-  const newNoteMenuRef = useRef(null)
-  const deskMenuRef = useRef(null)
-  const profileMenuRef = useRef(null)
+  const {
+    newNoteMenuRef,
+    deskMenuRef,
+    profileMenuRef
+  } = useMenuCloseOnOutsideClick({
+    showNewNoteMenu,
+    showDeskMenu,
+    showProfileMenu,
+    setShowNewNoteMenu,
+    setShowDeskMenu,
+    setShowProfileMenu
+  })
   const shelfSupabaseSyncEnabledRef = useRef(true)
   const shelfSyncTimeoutRef = useRef(null)
+  const deskCanvasRef = useRef(null)
 
   const growThreshold = 180
+  const menuLayerZIndex = 6000
+  const menuPanelZIndex = menuLayerZIndex + 1
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
   const lastDeskStorageKey = `doodledesk:lastDesk:${user.id}`
   const shelfPrefsStorageKey = `doodledesk:deskShelves:${user.id}`
@@ -198,47 +208,15 @@ function Desk({ user }) {
     confirmDialog.isOpen ||
     deleteAccountDialog.isOpen
   )
-  const modalOverlayStyle = {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(0, 0, 0, 0.35)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  }
-  const modalCardStyle = {
-    background: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
-    color: '#222'
-  }
-  const modalTitleStyle = { marginBottom: 10, fontWeight: 600 }
-  const modalActionsStyle = { textAlign: 'right' }
-  const modalSecondaryButtonStyle = {
-    padding: '6px 12px',
-    borderRadius: 4,
-    border: 'none',
-    background: '#eee',
-    color: '#333',
-    cursor: 'pointer'
-  }
-  const modalPrimaryButtonStyle = {
-    padding: '6px 12px',
-    borderRadius: 4,
-    border: 'none',
-    background: '#4285F4',
-    color: '#fff',
-    cursor: 'pointer'
-  }
-  const modalDangerButtonStyle = {
-    padding: '6px 12px',
-    borderRadius: 4,
-    border: 'none',
-    background: '#d32f2f',
-    color: '#fff',
-    cursor: 'pointer'
-  }
+  const {
+    overlay: modalOverlayStyle,
+    card: modalCardStyle,
+    title: modalTitleStyle,
+    actions: modalActionsStyle,
+    secondaryButton: modalSecondaryButtonStyle,
+    primaryButton: modalPrimaryButtonStyle,
+    dangerButton: modalDangerButtonStyle
+  } = modalStyles
 
   function addChecklistEditItem() {
     const text = newChecklistItemText.trim()
@@ -750,19 +728,6 @@ function Desk({ user }) {
   }, [activeDecorationHandleId])
 
   useEffect(() => {
-    function handleResize() {
-      const nextSectionHeight = window.innerHeight || 800
-      const nextViewportWidth = window.innerWidth || 1280
-      setViewportWidth(nextViewportWidth)
-      setSectionHeight(nextSectionHeight)
-      setCanvasHeight((prev) => Math.max(prev, nextSectionHeight * 2))
-    }
-
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
-
-  useEffect(() => {
     if (!hasModalOpen) return
 
     const previousOverflow = document.body.style.overflow
@@ -794,25 +759,6 @@ function Desk({ user }) {
     }
   }, [hasModalOpen, confirmDialog.isOpen, confirmDialogLoading, deleteAccountDeleting, deleteAccountDialog.isOpen, pendingDeleteId])
 
-  useEffect(() => {
-    if (!showNewNoteMenu && !showDeskMenu && !showProfileMenu) return
-
-    function handleClickOutside(e) {
-      if (showNewNoteMenu && !newNoteMenuRef.current?.contains(e.target)) {
-        setShowNewNoteMenu(false)
-      }
-      if (showDeskMenu && !deskMenuRef.current?.contains(e.target)) {
-        setShowDeskMenu(false)
-      }
-      if (showProfileMenu && !profileMenuRef.current?.contains(e.target)) {
-        setShowProfileMenu(false)
-      }
-    }
-
-    window.addEventListener('mousedown', handleClickOutside)
-    return () => window.removeEventListener('mousedown', handleClickOutside)
-  }, [showNewNoteMenu, showDeskMenu, showProfileMenu])
-
   function getDeskBackgroundValue(desk) {
     const modeFromColumn = typeof desk?.background_mode === 'string' ? desk.background_mode.trim() : ''
     const modeFromFallback = typeof desk?.background === 'string' ? desk.background.trim() : ''
@@ -829,32 +775,6 @@ function Desk({ user }) {
     return 'desk1'
   }
 
-  function normalizeHttpUrl(value) {
-    const raw = typeof value === 'string' ? value.trim() : ''
-    if (!raw) return ''
-
-    try {
-      const parsed = new URL(raw)
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return ''
-      return parsed.toString()
-    } catch {
-      return ''
-    }
-  }
-
-  function normalizeHexColor(value) {
-    const raw = typeof value === 'string' ? value.trim() : ''
-    if (!raw) return ''
-
-    const match = raw.match(/^#(?:[\da-fA-F]{3}|[\da-fA-F]{6}|[\da-fA-F]{8})$/)
-    if (!match) return ''
-    return raw.toLowerCase()
-  }
-
-  function normalizeCustomBackgroundValue(value) {
-    return normalizeHexColor(value) || normalizeHttpUrl(value)
-  }
-
   function getDeskCustomBackgroundUrl(desk) {
     const candidates = [desk?.custom_background_url, desk?.background_url, desk?.background]
     for (const candidate of candidates) {
@@ -864,66 +784,17 @@ function Desk({ user }) {
     return ''
   }
 
-  function getDeskNameValue(desk) {
-    return desk?.name || desk?.desk_name || 'Untitled desk'
-  }
-
-  function isDeskCollaborative(desk) {
-    return Boolean(desk?.is_collaborative)
-  }
-
   async function fetchDesks() {
-    const { data: ownedDesks, error: ownedError } = await supabase
-      .from('desks')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: true })
-
-    if (ownedError) {
-      console.error('Failed to fetch owned desks:', ownedError)
+    let loadedDesks = []
+    try {
+      loadedDesks = await loadMergedDesksForUser({
+        supabase,
+        userId: user.id
+      })
+    } catch (error) {
+      console.error(error?.message || 'Failed to fetch desks', error)
       return
     }
-
-    let sharedDesks = []
-
-    const { data: membershipRows, error: membershipError } = await supabase
-      .from('desk_members')
-      .select('desk_id')
-      .eq('user_id', user.id)
-
-    if (membershipError) {
-      console.error('Failed to fetch shared desk memberships:', membershipError)
-    } else {
-      const ownedDeskIds = new Set((ownedDesks || []).map((desk) => desk.id))
-      const sharedDeskIds = (membershipRows || [])
-        .map((row) => row.desk_id)
-        .filter((deskId) => deskId && !ownedDeskIds.has(deskId))
-
-      if (sharedDeskIds.length > 0) {
-        const { data: loadedSharedDesks, error: sharedDesksError } = await supabase
-          .from('desks')
-          .select('*')
-          .in('id', sharedDeskIds)
-          .order('created_at', { ascending: true })
-
-        if (sharedDesksError) {
-          console.error('Failed to fetch shared desks:', sharedDesksError)
-        } else {
-          sharedDesks = loadedSharedDesks || []
-        }
-      }
-    }
-
-    const mergedDeskMap = new Map()
-    ;[...(ownedDesks || []), ...sharedDesks].forEach((desk) => {
-      if (desk?.id) mergedDeskMap.set(desk.id, desk)
-    })
-
-    const loadedDesks = Array.from(mergedDeskMap.values()).sort((a, b) => {
-      const left = a?.created_at ? new Date(a.created_at).getTime() : 0
-      const right = b?.created_at ? new Date(b.created_at).getTime() : 0
-      return left - right
-    })
 
     setDesks(loadedDesks)
 
@@ -2111,30 +1982,6 @@ function Desk({ user }) {
     }
   }
 
-  function formatDate(dateLike) {
-    if (!dateLike) return 'Unknown'
-    const date = new Date(dateLike)
-    if (Number.isNaN(date.getTime())) return 'Unknown'
-    return date.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
-  }
-
-  function getProfileDisplayParts(profileLike) {
-    const preferredName = typeof profileLike?.preferred_name === 'string' ? profileLike.preferred_name.trim() : ''
-    const email = typeof profileLike?.email === 'string' ? profileLike.email.trim() : ''
-
-    if (preferredName && email && preferredName.toLowerCase() !== email.toLowerCase()) {
-      return { primary: preferredName, secondary: email }
-    }
-
-    return {
-      primary: preferredName || email || 'Unknown user',
-      secondary: ''
-    }
-  }
 
   async function fetchFriends() {
     setFriendsLoading(true)
@@ -3096,7 +2943,8 @@ function Desk({ user }) {
       return Math.max(prev, requiredSections * sectionHeight)
     })
 
-    const maxX = Math.max(0, window.innerWidth - activeItemWidth)
+    const canvasWidth = Math.round(deskCanvasRef.current?.clientWidth || getViewportMetrics().width)
+    const maxX = Math.max(0, canvasWidth - activeItemWidth)
     const boundedX = Math.min(Math.max(0, nextX), maxX)
     const boundedY = Math.max(0, nextY)
 
@@ -3130,7 +2978,8 @@ function Desk({ user }) {
       const nextX = pageX - dragOffsetRef.current.x
       const nextY = pageY - dragOffsetRef.current.y
       const activeItem = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
-      const maxX = Math.max(0, window.innerWidth - getItemWidth(activeItem))
+      const canvasWidth = Math.round(deskCanvasRef.current?.clientWidth || getViewportMetrics().width)
+      const maxX = Math.max(0, canvasWidth - getItemWidth(activeItem))
       nextPosition = {
         x: Math.min(Math.max(0, nextX), maxX),
         y: Math.max(0, nextY)
@@ -3148,82 +2997,6 @@ function Desk({ user }) {
     }
 
     await persistItemPosition(activeDraggedId, nextPosition.x, nextPosition.y)
-  }
-
-  function FourWayResizeIcon({ size = 14, color = 'currentColor' }) {
-    const iconSize = Math.max(12, size)
-    const arrowSize = Math.max(8, Math.round(iconSize * 0.64))
-
-    return (
-      <span
-        aria-hidden="true"
-        style={{
-          position: 'relative',
-          width: iconSize,
-          height: iconSize,
-          display: 'inline-block',
-          color,
-          lineHeight: 1,
-          flexShrink: 0
-        }}
-      >
-        <span
-          style={{
-            position: 'absolute',
-            left: '50%',
-            top: -1,
-            transform: 'translateX(-50%)',
-            fontSize: arrowSize
-          }}
-        >
-          ↑
-        </span>
-        <span
-          style={{
-            position: 'absolute',
-            left: '50%',
-            bottom: -1,
-            transform: 'translateX(-50%)',
-            fontSize: arrowSize
-          }}
-        >
-          ↓
-        </span>
-        <span
-          style={{
-            position: 'absolute',
-            left: -1,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            fontSize: arrowSize
-          }}
-        >
-          ←
-        </span>
-        <span
-          style={{
-            position: 'absolute',
-            right: -1,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            fontSize: arrowSize
-          }}
-        >
-          →
-        </span>
-        <span
-          style={{
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            transform: 'translate(-50%, -50%)',
-            fontSize: Math.max(5, Math.round(iconSize * 0.36))
-          }}
-        >
-          •
-        </span>
-      </span>
-    )
   }
 
   const currentDesk = desks.find((desk) => desk.id === selectedDeskId) || null
@@ -3369,8 +3142,11 @@ function Desk({ user }) {
 
   return (
     <div
+      ref={deskCanvasRef}
       style={{
         position: 'relative',
+        width: '100%',
+        boxSizing: 'border-box',
         minHeight: canvasHeight,
         padding: isMobileLayout ? 12 : 20,
         backgroundColor,
@@ -3389,10 +3165,11 @@ function Desk({ user }) {
           display: 'flex',
           flexDirection: isMobileLayout ? 'column' : 'row',
           gap: 8,
-          alignItems: 'stretch'
+          alignItems: 'stretch',
+          zIndex: menuLayerZIndex
         }}
       >
-        <div ref={deskMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto' }}>
+        <div ref={deskMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
           <button
             onClick={() => setShowDeskMenu((prev) => !prev)}
             style={{
@@ -3418,7 +3195,7 @@ function Desk({ user }) {
                 borderRadius: 6,
                 boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
                 color: '#222',
-                zIndex: 220,
+                zIndex: menuPanelZIndex,
                 minWidth: isMobileLayout ? 0 : 200,
                 width: isMobileLayout ? '100%' : 'auto',
                 padding: 6
@@ -3496,10 +3273,10 @@ function Desk({ user }) {
                     width: '100%',
                     textAlign: 'left',
                     padding: '7px 10px',
-                    border: '1px solid #d8c6a8',
+                    border: '1px solid #d9dce2',
                     borderRadius: 4,
-                    background: '#f3e7d3',
-                    color: '#6c4f2c',
+                    background: '#fff',
+                    color: '#333',
                     cursor: 'pointer',
                     fontSize: 12,
                     fontWeight: 700,
@@ -3507,7 +3284,7 @@ function Desk({ user }) {
                     marginBottom: 2
                   }}
                 >
-                  {showShelfHierarchyTools ? '▼' : '▶'} Shelf Organizer
+                  Shelf Organizer
                 </button>
 
                 {showShelfHierarchyTools && (
@@ -3664,26 +3441,6 @@ function Desk({ user }) {
                 </button>
               )}
 
-              {currentDesk && !isCurrentDeskOwner && (
-                <button
-                  type="button"
-                  onClick={leaveCurrentDesk}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '7px 10px',
-                    border: 'none',
-                    borderRadius: 4,
-                    background: '#fff',
-                    color: '#d32f2f',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Leave Desk
-                </button>
-              )}
-
               {currentDesk && (isCurrentDeskOwner || isDeskCollaborative(currentDesk) || currentDesk.user_id !== user.id) && (
                 <button
                   type="button"
@@ -3701,6 +3458,26 @@ function Desk({ user }) {
                   }}
                 >
                   Manage Members
+                </button>
+              )}
+
+              {currentDesk && !isCurrentDeskOwner && (
+                <button
+                  type="button"
+                  onClick={leaveCurrentDesk}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '7px 10px',
+                    border: 'none',
+                    borderRadius: 4,
+                    background: '#fff',
+                    color: '#d32f2f',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Leave Desk
                 </button>
               )}
 
@@ -3845,7 +3622,7 @@ function Desk({ user }) {
           )}
         </div>
 
-        <div ref={profileMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto' }}>
+        <div ref={profileMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
           <button
             type="button"
             onClick={() => {
@@ -3880,7 +3657,7 @@ function Desk({ user }) {
                 borderRadius: 6,
                 boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
                 color: '#222',
-                zIndex: 230,
+                zIndex: menuPanelZIndex,
                 width: isMobileLayout ? '100%' : 340,
                 padding: 10,
                 maxHeight: isMobileLayout ? 420 : 500,
@@ -4262,94 +4039,18 @@ function Desk({ user }) {
         </div>
       </div>
 
-      <div ref={newNoteMenuRef} style={{ position: 'relative', display: 'inline-block', marginBottom: 20 }}>
-        <button
-          onClick={() => setShowNewNoteMenu((prev) => !prev)}
-          disabled={!selectedDeskId}
-          style={{
-            padding: '8px 16px',
-            fontSize: 14,
-            cursor: selectedDeskId ? 'pointer' : 'not-allowed',
-            opacity: selectedDeskId ? 1 : 0.6
-          }}
-        >
-          New Note ▼
-        </button>
-
-        {showNewNoteMenu && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              marginTop: 6,
-              background: '#fff',
-              border: '1px solid #ddd',
-              borderRadius: 6,
-              boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
-              overflow: 'hidden',
-              color: '#222',
-              zIndex: 200
-            }}
-          >
-            <button
-              type="button"
-              onClick={addStickyNote}
-              style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: '8px 12px',
-                border: 'none',
-                background: '#fff',
-                color: '#222',
-                cursor: 'pointer'
-              }}
-            >
-              Sticky Note
-            </button>
-            <button
-              type="button"
-              onClick={addChecklistNote}
-              style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: '8px 12px',
-                border: 'none',
-                background: '#fff',
-                color: '#222',
-                cursor: 'pointer'
-              }}
-            >
-              Checklist
-            </button>
-
-            <div style={{ borderTop: '1px solid #eee', marginTop: 2, paddingTop: 2 }}>
-              <div style={{ padding: '6px 12px', fontSize: 12, color: '#666' }}>Decorations</div>
-              {DECORATION_OPTIONS.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => addDecoration(option.key)}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '8px 12px',
-                    border: 'none',
-                    background: '#fff',
-                    color: '#222',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {option.emoji} {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      <NewNoteMenu
+        menuRef={newNoteMenuRef}
+        isOpen={showNewNoteMenu}
+        onToggle={() => setShowNewNoteMenu((prev) => !prev)}
+        isDeskSelected={Boolean(selectedDeskId)}
+        onAddStickyNote={addStickyNote}
+        onAddChecklist={addChecklistNote}
+        decorationOptions={DECORATION_OPTIONS}
+        onAddDecoration={addDecoration}
+        menuLayerZIndex={menuLayerZIndex}
+        menuPanelZIndex={menuPanelZIndex}
+      />
 
       {!selectedDeskId && (
         <div style={{ color: '#222', background: 'rgba(255,255,255,0.75)', display: 'inline-block', padding: '6px 10px', borderRadius: 6 }}>
@@ -4364,6 +4065,8 @@ function Desk({ user }) {
         const decorationOption = isDecoration ? getDecorationOption(item.kind) : null
         const shouldShowCreatorLabel = Boolean(currentDesk && isDeskCollaborative(currentDesk) && !isDecoration)
         const creatorLabel = shouldShowCreatorLabel ? getItemCreatorLabel(item, user.id) : ''
+        const itemHeight = getItemHeight(item)
+        const contentMinHeight = Math.max(40, itemHeight - 40)
         const baseZIndex = index + 1
 
         return (
@@ -4386,7 +4089,7 @@ function Desk({ user }) {
               color: isDecoration ? undefined : (editingId === itemKey ? editTextColor : getItemTextColor(item)),
               padding: isDecoration ? 8 : 20,
               width: getItemWidth(item),
-              minHeight: getItemHeight(item),
+              minHeight: itemHeight,
               borderRadius: 0,
               boxShadow: isDecoration ? 'none' : '3px 3px 10px rgba(0,0,0,0.3)',
               mixBlendMode: 'normal',
@@ -5057,8 +4760,7 @@ function Desk({ user }) {
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                   cursor: isDecoration ? 'grab' : 'pointer',
-                  minHeight: 40,
-                  height: '100%',
+                  minHeight: isDecoration ? 40 : contentMinHeight,
                   display: 'flex',
                   flexDirection: 'column',
                   color: getItemTextColor(item),
@@ -5091,7 +4793,7 @@ function Desk({ user }) {
                       )}
                     </div>
                     {shouldShowCreatorLabel && (
-                      <div style={{ marginTop: 'auto', paddingTop: 8, fontSize: 10, color: '#444', textAlign: 'right' }}>
+                      <div style={{ marginTop: 'auto', paddingTop: 8, fontSize: 10, color: 'inherit', textAlign: 'right' }}>
                         Added by {creatorLabel}
                       </div>
                     )}
@@ -5107,7 +4809,7 @@ function Desk({ user }) {
                   <>
                     <div>{item.content}</div>
                     {shouldShowCreatorLabel && (
-                      <div style={{ marginTop: 'auto', paddingTop: 8, fontSize: 10, color: '#444', textAlign: 'right' }}>
+                      <div style={{ marginTop: 'auto', paddingTop: 8, fontSize: 10, color: 'inherit', textAlign: 'right' }}>
                         Added by {creatorLabel}
                       </div>
                     )}

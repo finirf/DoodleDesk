@@ -54,6 +54,36 @@ export default function DeskModals({
   modalPrimaryButtonStyle,
   modalDangerButtonStyle
 }) {
+  const sortedDeskMembers = [...deskMembers].sort((left, right) => {
+    const getPriority = (member) => {
+      if (member.is_owner) return 0
+      if (member.user_id === currentUserId) return 1
+      if (friendIds.includes(member.user_id)) return 2
+      return 3
+    }
+
+    const priorityDifference = getPriority(left) - getPriority(right)
+    if (priorityDifference !== 0) return priorityDifference
+
+    const leftName = (left.preferred_name || left.email || '').trim().toLowerCase()
+    const rightName = (right.preferred_name || right.email || '').trim().toLowerCase()
+    return leftName.localeCompare(rightName)
+  })
+
+  const ownerUserId = deskMembers.find((member) => member.is_owner)?.user_id || null
+  const sortedInvitableFriends = friends
+    .filter((friend) => friend.id !== currentUserId)
+    .sort((left, right) => {
+      const leftIsOwner = ownerUserId && left.id === ownerUserId
+      const rightIsOwner = ownerUserId && right.id === ownerUserId
+      if (leftIsOwner && !rightIsOwner) return -1
+      if (!leftIsOwner && rightIsOwner) return 1
+
+      const leftName = (left.preferred_name || left.email || '').trim().toLowerCase()
+      const rightName = (right.preferred_name || right.email || '').trim().toLowerCase()
+      return leftName.localeCompare(rightName)
+    })
+
   return (
     <>
       {pendingDeleteId && (
@@ -370,7 +400,7 @@ export default function DeskModals({
               ) : deskMembers.length === 0 ? (
                 <div style={{ fontSize: 12, color: '#777' }}>No members yet</div>
               ) : (
-                deskMembers.map((member) => {
+                sortedDeskMembers.map((member) => {
                   const isRemoving = deskMemberActionLoadingId === `remove:${member.user_id}`
                   const isOwnerRow = Boolean(member.is_owner)
                   const isSelf = member.user_id === currentUserId
@@ -393,7 +423,7 @@ export default function DeskModals({
                       <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {memberDisplay.primary}
                         {isOwnerRow && (
-                          <div style={{ fontSize: 11, color: '#1a73e8' }}>Desk owner</div>
+                          <div style={{ fontSize: 11, color: '#666' }}>Desk owner</div>
                         )}
                         {memberDisplay.secondary && (
                           <div style={{ fontSize: 11, color: '#666' }}>{memberDisplay.secondary}</div>
@@ -530,10 +560,10 @@ export default function DeskModals({
               <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>
                 {isCurrentDeskOwner ? 'Add friends' : 'Request to add your friends'}
               </div>
-              {friends.length === 0 ? (
+              {sortedInvitableFriends.length === 0 ? (
                 <div style={{ fontSize: 12, color: '#777' }}>No friends available</div>
               ) : (
-                friends.map((friend) => {
+                sortedInvitableFriends.map((friend) => {
                   const alreadyMember = deskMembers.some((member) => member.user_id === friend.id)
                   const hasPendingRequest = deskMemberRequests.some((request) => request.target_friend_id === friend.id && request.status === 'pending')
                   const isAdding = deskMemberActionLoadingId === `add:${friend.id}` || deskMemberActionLoadingId === `request:${friend.id}`

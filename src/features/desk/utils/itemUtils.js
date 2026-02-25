@@ -1,5 +1,6 @@
 import { DECORATION_OPTIONS } from '../constants/deskConstants'
 
+// Normalization and rendering helpers shared across notes, checklists, and decoration items.
 export function getItemKey(item) {
   return `${item.item_type}:${item.id}`
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../supabase'
 
+// Handles initial auth bootstrap, redirect-based recovery sessions, and live session updates.
 export default function useAuthSession() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)

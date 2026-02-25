@@ -1,19 +1,21 @@
-# React + Vite
+# DoodleDesk
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+DoodleDesk is a React + Vite app for organizing notes, checklists, decorations, and collaborative desks backed by Supabase.
 
-Currently, two official plugins are available:
+## Project organization
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- `src/features/auth`: auth-specific session logic and auth screens.
+- `src/features/desk`: desk domain constants, utilities, and modal UI.
+- `src/features/*/index.js`: feature boundaries (barrel exports) used by top-level app code.
+- `src/App.jsx`: orchestration layer that composes auth + desk features.
+- `src/supabase.js`: shared Supabase client used across features.
 
-## React Compiler
+## Local development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- Install dependencies: `npm install`
+- Start dev server: `npm run dev`
+- Build production bundle: `npm run build`
+- Run linting: `npm run lint`
 
 ## Friends feature (Supabase setup)
 

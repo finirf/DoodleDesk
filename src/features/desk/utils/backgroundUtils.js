@@ -1,3 +1,4 @@
+// Produces layered background styles for desk sections, including custom image or solid color mode.
 export function getDeskBackgroundStyles({
   backgroundMode,
   customBackgroundUrl,
