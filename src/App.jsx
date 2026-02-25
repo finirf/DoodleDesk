@@ -75,6 +75,17 @@ function Desk({ user }) {
   const [showNewNoteMenu, setShowNewNoteMenu] = useState(false)
   const [showDeskMenu, setShowDeskMenu] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [deskFolders, setDeskFolders] = useState([])
+  const [deskFolderAssignments, setDeskFolderAssignments] = useState({})
+  const [expandedDeskFolders, setExpandedDeskFolders] = useState({
+    __private: true,
+    __shared: true,
+    __sharing: true,
+    __custom_root: true
+  })
+  const [newFolderNameInput, setNewFolderNameInput] = useState('')
+  const [newFolderParentId, setNewFolderParentId] = useState('')
+  const [folderActionError, setFolderActionError] = useState('')
   const [profileTab, setProfileTab] = useState('profile')
   const [deskNameDialog, setDeskNameDialog] = useState({
     isOpen: false,
@@ -149,6 +160,7 @@ function Desk({ user }) {
   const newNoteMenuRef = useRef(null)
   const deskMenuRef = useRef(null)
   const profileMenuRef = useRef(null)
+  const folderPrefsLoadedRef = useRef(false)
 
   const growThreshold = 180
   const FONT_OPTIONS = [
@@ -167,16 +179,24 @@ function Desk({ user }) {
 
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
   const lastDeskStorageKey = `doodledesk:lastDesk:${user.id}`
+  const folderPrefsStorageKey = `doodledesk:deskFolders:${user.id}`
+  const BUILT_IN_FOLDERS = [
+    { id: '__private', label: 'Private' },
+    { id: '__shared', label: 'Shared' },
+    { id: '__sharing', label: 'Sharing' }
+  ]
+  const customBackgroundIsHex = /^#(?:[\da-fA-F]{3}|[\da-fA-F]{6}|[\da-fA-F]{8})$/.test(customBackgroundUrl)
   const safeCustomBackgroundUrl = customBackgroundUrl.replace(/"/g, '\\"')
   const backgroundLayers = Array.from({ length: sectionCount }, (_, index) => {
     if (backgroundMode === 'desk1') return "url('/brownDesk.png')"
     if (backgroundMode === 'desk2') return "url('/grayDesk.png')"
     if (backgroundMode === 'desk3') return "url('/leavesDesk.jpg')"
     if (backgroundMode === 'desk4') return "url('/flowersDesk.png')"
-    if (backgroundMode === 'custom' && safeCustomBackgroundUrl) return `url("${safeCustomBackgroundUrl}")`
+    if (backgroundMode === 'custom' && safeCustomBackgroundUrl && !customBackgroundIsHex) return `url("${safeCustomBackgroundUrl}")`
     return "url('/brownDesk.png')"
   })
-  const backgroundImage = backgroundLayers.join(', ')
+  const backgroundImage = backgroundMode === 'custom' && customBackgroundIsHex ? 'none' : backgroundLayers.join(', ')
+  const backgroundColor = backgroundMode === 'custom' && customBackgroundIsHex ? customBackgroundUrl : undefined
   const backgroundSize = Array.from({ length: sectionCount }, () => `100% ${sectionHeight}px`).join(', ')
   const backgroundPosition = Array.from({ length: sectionCount }, (_, index) =>
     index === 0 ? 'top center' : `center ${index * sectionHeight}px`
@@ -359,9 +379,251 @@ function Desk({ user }) {
     setNewChecklistItemText('')
   }
 
+  function getDeskGroupLabel(desk) {
+    if (!desk) return 'Private'
+    if (desk.user_id !== user.id) return 'Shared'
+    return isDeskCollaborative(desk) ? 'Sharing' : 'Private'
+  }
+
+  function getDeskDefaultFolderId(desk) {
+    if (!desk) return '__private'
+    if (desk.user_id !== user.id) return '__shared'
+    return isDeskCollaborative(desk) ? '__sharing' : '__private'
+  }
+
+  function getDeskAssignedCustomFolderId(deskId) {
+    const assignment = deskFolderAssignments[String(deskId)]
+    if (!assignment) return ''
+    return deskFolders.some((folder) => folder.id === assignment) ? assignment : ''
+  }
+
+  function getDeskEffectiveFolderId(desk) {
+    const customAssignment = getDeskAssignedCustomFolderId(desk.id)
+    if (customAssignment) return customAssignment
+    return getDeskDefaultFolderId(desk)
+  }
+
+  function getChildDeskFolders(parentId) {
+    const normalizedParent = parentId || null
+    return deskFolders
+      .filter((folder) => (folder.parent_id || null) === normalizedParent)
+      .sort((left, right) => left.name.localeCompare(right.name))
+  }
+
+  function getCustomFolderOptions(parentId = '', depth = 0) {
+    const children = getChildDeskFolders(parentId)
+    return children.flatMap((folder) => [
+      { id: folder.id, name: folder.name, depth },
+      ...getCustomFolderOptions(folder.id, depth + 1)
+    ])
+  }
+
+  function toggleDeskFolderExpanded(folderId) {
+    setExpandedDeskFolders((prev) => ({ ...prev, [folderId]: !prev[folderId] }))
+  }
+
+  function createDeskFolder() {
+    const name = newFolderNameInput.trim()
+    if (!name) {
+      setFolderActionError('Folder name is required.')
+      return
+    }
+
+    if (newFolderParentId && !deskFolders.some((folder) => folder.id === newFolderParentId)) {
+      setFolderActionError('Selected parent folder no longer exists.')
+      return
+    }
+
+    const siblingNameExists = deskFolders.some((folder) =>
+      (folder.parent_id || null) === (newFolderParentId || null)
+      && folder.name.trim().toLowerCase() === name.toLowerCase()
+    )
+    if (siblingNameExists) {
+      setFolderActionError('A folder with that name already exists at this level.')
+      return
+    }
+
+    const nextFolder = {
+      id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      parent_id: newFolderParentId || null
+    }
+
+    setDeskFolders((prev) => [...prev, nextFolder])
+    setExpandedDeskFolders((prev) => ({ ...prev, [nextFolder.id]: true, __custom_root: true }))
+    setNewFolderNameInput('')
+    setNewFolderParentId('')
+    setFolderActionError('')
+  }
+
+  function setSelectedDeskCustomFolder(folderId) {
+    if (!selectedDeskId) return
+
+    setDeskFolderAssignments((prev) => {
+      const nextAssignments = { ...prev }
+      if (!folderId) {
+        delete nextAssignments[String(selectedDeskId)]
+      } else {
+        nextAssignments[String(selectedDeskId)] = folderId
+      }
+      return nextAssignments
+    })
+    setFolderActionError('')
+  }
+
+  function renameDeskFolder(folderId) {
+    const currentFolder = deskFolders.find((folder) => folder.id === folderId)
+    if (!currentFolder) return
+
+    const nextNameInput = window.prompt('Rename folder', currentFolder.name)
+    if (nextNameInput === null) return
+
+    const nextName = nextNameInput.trim()
+    if (!nextName) {
+      setFolderActionError('Folder name is required.')
+      return
+    }
+
+    const siblingNameExists = deskFolders.some((folder) =>
+      folder.id !== folderId
+      && (folder.parent_id || null) === (currentFolder.parent_id || null)
+      && folder.name.trim().toLowerCase() === nextName.toLowerCase()
+    )
+    if (siblingNameExists) {
+      setFolderActionError('A sibling folder already uses that name.')
+      return
+    }
+
+    setDeskFolders((prev) => prev.map((folder) => (
+      folder.id === folderId ? { ...folder, name: nextName } : folder
+    )))
+    setFolderActionError('')
+  }
+
+  function deleteDeskFolder(folderId) {
+    const currentFolder = deskFolders.find((folder) => folder.id === folderId)
+    if (!currentFolder) return
+
+    const childFolderCount = deskFolders.filter((folder) => (folder.parent_id || null) === folderId).length
+    const assignedDeskCount = Object.values(deskFolderAssignments).filter((assignedFolderId) => assignedFolderId === folderId).length
+
+    openConfirmDialog({
+      title: 'Delete Folder',
+      message: `Delete "${currentFolder.name}"? ${childFolderCount > 0 ? `${childFolderCount} child folder(s) will move up. ` : ''}${assignedDeskCount > 0 ? `${assignedDeskCount} desk assignment(s) will be moved safely.` : ''}`,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+      onConfirm: async () => {
+        const parentFolderId = currentFolder.parent_id || null
+
+        setDeskFolders((prev) =>
+          prev
+            .filter((folder) => folder.id !== folderId)
+            .map((folder) => (
+              (folder.parent_id || null) === folderId
+                ? { ...folder, parent_id: parentFolderId }
+                : folder
+            ))
+        )
+
+        setDeskFolderAssignments((prev) => {
+          const nextAssignments = { ...prev }
+          Object.entries(nextAssignments).forEach(([deskId, assignedFolderId]) => {
+            if (assignedFolderId !== folderId) return
+            if (parentFolderId) {
+              nextAssignments[deskId] = parentFolderId
+            } else {
+              delete nextAssignments[deskId]
+            }
+          })
+          return nextAssignments
+        })
+
+        setExpandedDeskFolders((prev) => {
+          const nextExpanded = { ...prev }
+          delete nextExpanded[folderId]
+          return nextExpanded
+        })
+
+        setFolderActionError('')
+      }
+    })
+  }
+
   useEffect(() => {
     fetchDesks()
   }, [user.id])
+
+  useEffect(() => {
+    try {
+      const rawValue = localStorage.getItem(folderPrefsStorageKey)
+      if (!rawValue) {
+        setDeskFolders([])
+        setDeskFolderAssignments({})
+        setExpandedDeskFolders({ __private: true, __shared: true, __sharing: true, __custom_root: true })
+        folderPrefsLoadedRef.current = true
+        return
+      }
+
+      const parsed = JSON.parse(rawValue)
+      const parsedFolders = Array.isArray(parsed?.folders)
+        ? parsed.folders.filter((folder) => folder && typeof folder.id === 'string' && typeof folder.name === 'string')
+        : []
+      const parsedAssignments = parsed?.assignments && typeof parsed.assignments === 'object'
+        ? Object.fromEntries(
+            Object.entries(parsed.assignments).filter((entry) => {
+              const [deskId, folderId] = entry
+              return typeof deskId === 'string' && typeof folderId === 'string'
+            })
+          )
+        : {}
+      const parsedExpanded = parsed?.expanded && typeof parsed.expanded === 'object'
+        ? Object.fromEntries(
+            Object.entries(parsed.expanded).filter((entry) => {
+              const [folderId, expanded] = entry
+              return typeof folderId === 'string' && typeof expanded === 'boolean'
+            })
+          )
+        : {}
+
+      setDeskFolders(parsedFolders)
+      setDeskFolderAssignments(parsedAssignments)
+      setExpandedDeskFolders({ __private: true, __shared: true, __sharing: true, __custom_root: true, ...parsedExpanded })
+      folderPrefsLoadedRef.current = true
+    } catch (error) {
+      console.error('Failed to load desk folder preferences:', error)
+      setDeskFolders([])
+      setDeskFolderAssignments({})
+      setExpandedDeskFolders({ __private: true, __shared: true, __sharing: true, __custom_root: true })
+      folderPrefsLoadedRef.current = true
+    }
+  }, [folderPrefsStorageKey])
+
+  useEffect(() => {
+    if (!folderPrefsLoadedRef.current) return
+    try {
+      localStorage.setItem(
+        folderPrefsStorageKey,
+        JSON.stringify({
+          folders: deskFolders,
+          assignments: deskFolderAssignments,
+          expanded: expandedDeskFolders
+        })
+      )
+    } catch (error) {
+      console.error('Failed to persist desk folder preferences:', error)
+    }
+  }, [folderPrefsStorageKey, deskFolders, deskFolderAssignments, expandedDeskFolders])
+
+  useEffect(() => {
+    const validDeskIds = new Set(desks.map((desk) => String(desk.id)))
+    const validFolderIds = new Set(deskFolders.map((folder) => folder.id))
+
+    setDeskFolderAssignments((prev) => {
+      const nextEntries = Object.entries(prev).filter(([deskId, folderId]) => validDeskIds.has(deskId) && validFolderIds.has(folderId))
+      const didChange = nextEntries.length !== Object.keys(prev).length
+      return didChange ? Object.fromEntries(nextEntries) : prev
+    })
+  }, [desks, deskFolders])
 
   useEffect(() => {
     fetchFriends()
@@ -490,10 +752,23 @@ function Desk({ user }) {
     }
   }
 
+  function normalizeHexColor(value) {
+    const raw = typeof value === 'string' ? value.trim() : ''
+    if (!raw) return ''
+
+    const match = raw.match(/^#(?:[\da-fA-F]{3}|[\da-fA-F]{6}|[\da-fA-F]{8})$/)
+    if (!match) return ''
+    return raw.toLowerCase()
+  }
+
+  function normalizeCustomBackgroundValue(value) {
+    return normalizeHexColor(value) || normalizeHttpUrl(value)
+  }
+
   function getDeskCustomBackgroundUrl(desk) {
     const candidates = [desk?.custom_background_url, desk?.background_url, desk?.background]
     for (const candidate of candidates) {
-      const normalized = normalizeHttpUrl(candidate)
+      const normalized = normalizeCustomBackgroundValue(candidate)
       if (normalized) return normalized
     }
     return ''
@@ -1065,9 +1340,9 @@ function Desk({ user }) {
     const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
     if (!currentDesk || currentDesk.user_id !== user.id) return
 
-    const normalizedUrl = normalizeHttpUrl(urlInput)
+    const normalizedUrl = normalizeCustomBackgroundValue(urlInput)
     if (!normalizedUrl) {
-      setBackgroundMenuError('Please paste a valid http(s) image URL.')
+      setBackgroundMenuError('Please enter a valid hex color or http(s) image URL.')
       return
     }
 
@@ -1090,7 +1365,7 @@ function Desk({ user }) {
 
     if (updateError) {
       console.error('Failed to set custom background:', updateError)
-      setBackgroundMenuError(updateError?.message || 'Could not set custom image.')
+      setBackgroundMenuError(updateError?.message || 'Could not set custom background.')
       return
     }
 
@@ -2509,6 +2784,136 @@ function Desk({ user }) {
   const pendingFriendRequestCount = incomingFriendRequests.length
   const totalItemsCount = notes.length
   const joinDate = formatDate(user.created_at)
+  const sortedDesks = [...desks].sort((left, right) => getDeskNameValue(left).localeCompare(getDeskNameValue(right)))
+  const desksByFolderId = sortedDesks.reduce((accumulator, desk) => {
+    const folderId = getDeskEffectiveFolderId(desk)
+    if (!accumulator[folderId]) accumulator[folderId] = []
+    accumulator[folderId].push(desk)
+    return accumulator
+  }, {})
+  const customFolderOptions = getCustomFolderOptions()
+
+  function renderDeskRow(desk, depth = 0) {
+    return (
+      <button
+        key={desk.id}
+        type="button"
+        onClick={() => handleSelectDesk(desk)}
+        style={{
+          width: '100%',
+          padding: '8px 10px',
+          paddingLeft: 10 + depth * 14,
+          border: 'none',
+          borderRadius: 4,
+          marginBottom: 2,
+          background: desk.id === selectedDeskId ? '#eef4ff' : '#fff',
+          color: '#222',
+          cursor: 'pointer',
+          fontWeight: desk.id === selectedDeskId ? 600 : 400,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {getDeskNameValue(desk)}
+        </span>
+        <span
+          style={{
+            fontSize: 11,
+            color: '#666',
+            fontWeight: 500,
+            flexShrink: 0,
+            textAlign: 'right'
+          }}
+        >
+          {getDeskGroupLabel(desk)}
+        </span>
+      </button>
+    )
+  }
+
+  function renderCustomFolderTree(folder, depth = 1) {
+    const folderDesks = desksByFolderId[folder.id] || []
+    const childFolders = getChildDeskFolders(folder.id)
+    const isExpanded = expandedDeskFolders[folder.id] ?? true
+
+    return (
+      <div key={folder.id}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 4,
+            alignItems: 'stretch',
+            marginBottom: 2
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => toggleDeskFolderExpanded(folder.id)}
+            style={{
+              flex: 1,
+              textAlign: 'left',
+              padding: '6px 10px',
+              paddingLeft: 10 + depth * 14,
+              border: 'none',
+              borderRadius: 4,
+              background: '#f8f9fb',
+              color: '#333',
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 600
+            }}
+          >
+            {isExpanded ? '▼' : '▶'} {folder.name}
+          </button>
+          <button
+            type="button"
+            onClick={() => renameDeskFolder(folder.id)}
+            aria-label={`Rename folder ${folder.name}`}
+            title="Rename folder"
+            style={{
+              border: 'none',
+              borderRadius: 4,
+              background: '#e8f0fe',
+              color: '#1a73e8',
+              cursor: 'pointer',
+              padding: '0 7px',
+              fontSize: 11,
+              fontWeight: 700
+            }}
+          >
+            ✎
+          </button>
+          <button
+            type="button"
+            onClick={() => deleteDeskFolder(folder.id)}
+            aria-label={`Delete folder ${folder.name}`}
+            title="Delete folder"
+            style={{
+              border: 'none',
+              borderRadius: 4,
+              background: '#fdecea',
+              color: '#d93025',
+              cursor: 'pointer',
+              padding: '0 7px',
+              fontSize: 11,
+              fontWeight: 700
+            }}
+          >
+            ×
+          </button>
+        </div>
+        {isExpanded && (
+          <>
+            {folderDesks.map((desk) => renderDeskRow(desk, depth + 1))}
+            {childFolders.map((childFolder) => renderCustomFolderTree(childFolder, depth + 1))}
+          </>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div
@@ -2516,6 +2921,7 @@ function Desk({ user }) {
         position: 'relative',
         minHeight: canvasHeight,
         padding: 20,
+        backgroundColor,
         backgroundImage,
         backgroundSize,
         backgroundPosition,
@@ -2562,50 +2968,158 @@ function Desk({ user }) {
               }}
             >
               <div style={{ maxHeight: 180, overflowY: 'auto', borderBottom: '1px solid #eee', marginBottom: 6 }}>
-                {desks.length === 0 ? (
+                {desks.length === 0 && deskFolders.length === 0 ? (
                   <div style={{ padding: '8px 10px', fontSize: 13, opacity: 0.75 }}>No desks yet</div>
                 ) : (
-                  desks.map((desk) => (
-                    <button
-                      key={desk.id}
-                      type="button"
-                      onClick={() => handleSelectDesk(desk)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        border: 'none',
-                        borderRadius: 4,
-                        marginBottom: 2,
-                        background: desk.id === selectedDeskId ? '#eef4ff' : '#fff',
-                        color: '#222',
-                        cursor: 'pointer',
-                        fontWeight: desk.id === selectedDeskId ? 600 : 400,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 10
-                      }}
-                    >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {getDeskNameValue(desk)}
-                      </span>
-                      <span
+                  <>
+                    {BUILT_IN_FOLDERS.map((folderDef) => {
+                      const isExpanded = expandedDeskFolders[folderDef.id] ?? true
+                      const folderDesks = desksByFolderId[folderDef.id] || []
+
+                      return (
+                        <div key={folderDef.id}>
+                          <button
+                            type="button"
+                            onClick={() => toggleDeskFolderExpanded(folderDef.id)}
+                            style={{
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: '6px 10px',
+                              border: 'none',
+                              borderRadius: 4,
+                              background: '#f3f5f8',
+                              color: '#333',
+                              cursor: 'pointer',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              marginBottom: 2
+                            }}
+                          >
+                            {isExpanded ? '▼' : '▶'} {folderDef.label}
+                          </button>
+                          {isExpanded && folderDesks.map((desk) => renderDeskRow(desk, 1))}
+                        </div>
+                      )
+                    })}
+
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => toggleDeskFolderExpanded('__custom_root')}
                         style={{
-                          fontSize: 11,
-                          color: '#666',
-                          fontWeight: 500,
-                          flexShrink: 0,
-                          textAlign: 'right'
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '6px 10px',
+                          border: 'none',
+                          borderRadius: 4,
+                          background: '#f3f5f8',
+                          color: '#333',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          marginBottom: 2
                         }}
                       >
-                        {desk.user_id !== user.id
-                          ? 'Shared'
-                          : isDeskCollaborative(desk)
-                            ? 'Sharing'
-                            : 'Private'}
-                      </span>
-                    </button>
-                  ))
+                        {(expandedDeskFolders.__custom_root ?? true) ? '▼' : '▶'} Custom Folders
+                      </button>
+                      {(expandedDeskFolders.__custom_root ?? true) && (
+                        getChildDeskFolders(null).map((folder) => renderCustomFolderTree(folder, 1))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div style={{ padding: '0 8px 8px', borderBottom: '1px solid #eee', marginBottom: 6 }}>
+                <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Folder Hierarchy</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    value={newFolderNameInput}
+                    onChange={(e) => {
+                      setFolderActionError('')
+                      setNewFolderNameInput(e.target.value)
+                    }}
+                    placeholder="New folder name"
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      borderRadius: 4,
+                      border: '1px solid #ccc',
+                      padding: '5px 7px',
+                      fontSize: 12
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={createDeskFolder}
+                    style={{
+                      border: 'none',
+                      borderRadius: 4,
+                      background: '#4285F4',
+                      color: '#fff',
+                      padding: '5px 8px',
+                      fontSize: 12,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div style={{ marginTop: 6 }}>
+                  <select
+                    value={newFolderParentId}
+                    onChange={(e) => {
+                      setFolderActionError('')
+                      setNewFolderParentId(e.target.value)
+                    }}
+                    style={{
+                      width: '100%',
+                      borderRadius: 4,
+                      border: '1px solid #ccc',
+                      padding: '5px 7px',
+                      fontSize: 12,
+                      background: '#fff',
+                      color: '#222'
+                    }}
+                  >
+                    <option value="">Top-level custom folder</option>
+                    {customFolderOptions.map((folderOption) => (
+                      <option key={folderOption.id} value={folderOption.id}>
+                        {'· '.repeat(folderOption.depth)}{folderOption.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {currentDesk && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>Move current desk</div>
+                    <select
+                      value={getDeskAssignedCustomFolderId(currentDesk.id)}
+                      onChange={(e) => setSelectedDeskCustomFolder(e.target.value)}
+                      style={{
+                        width: '100%',
+                        borderRadius: 4,
+                        border: '1px solid #ccc',
+                        padding: '5px 7px',
+                        fontSize: 12,
+                        background: '#fff',
+                        color: '#222'
+                      }}
+                    >
+                      <option value="">Auto ({getDeskGroupLabel(currentDesk)})</option>
+                      {customFolderOptions.map((folderOption) => (
+                        <option key={folderOption.id} value={folderOption.id}>
+                          {'· '.repeat(folderOption.depth)}{folderOption.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {folderActionError && (
+                  <div style={{ marginTop: 4, color: '#d32f2f', fontSize: 11 }}>{folderActionError}</div>
                 )}
               </div>
 
@@ -2805,7 +3319,7 @@ function Desk({ user }) {
 
               {currentDesk && isCurrentDeskOwner && (
                 <div style={{ padding: '0 8px 8px' }}>
-                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Custom Image URL</div>
+                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Custom URL or Hex Color</div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input
                       value={customBackgroundInput}
@@ -2813,7 +3327,7 @@ function Desk({ user }) {
                         setBackgroundMenuError('')
                         setCustomBackgroundInput(e.target.value)
                       }}
-                      placeholder="https://..."
+                      placeholder="https://... or #1f2937"
                       style={{
                         flex: 1,
                         minWidth: 0,
