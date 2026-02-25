@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from './supabase'
+import './LoginScreen.css'
 
 export default function LoginScreen() {
   const [mode, setMode] = useState('login') // 'login' or 'signup'
@@ -30,106 +31,69 @@ export default function LoginScreen() {
   }
 
   return (
-    <div style={{ padding: 40, minHeight: '100vh', textAlign: 'center' }}>
-      <img
-        src="/DoodleDesk%20Logo.png"
-        alt="DoodleDesk logo"
-        style={{ width: 120, height: 'auto', marginBottom: 12 }}
-      />
-      <h2>DoodleDesk</h2>
-
-      <button
-        onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })}
-        style={{
-          padding: '10px 20px',
-          fontSize: 16,
-          cursor: 'pointer',
-          background: '#4285F4',
-          color: '#fff',
-          border: 'none',
-          borderRadius: 4,
-          marginTop: 20,
-          marginBottom: 30
-        }}
-      >
-        Login with Google
-      </button>
-
-      <div
-        style={{
-          margin: '30px auto',
-          maxWidth: 320,
-          textAlign: 'left',
-          border: '1px solid #eee',
-          borderRadius: 8,
-          padding: 24
-        }}
-      >
-        <form onSubmit={handleEmailAuth}>
-          <label htmlFor="email" style={{ fontWeight: 600 }}>
-            {mode === 'login' ? 'Login' : 'Sign up'} with email:
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@email.com"
-            required
-            style={{
-              display: 'block',
-              width: '100%',
-              padding: '10px',
-              margin: '10px 0',
-              fontSize: 16,
-              borderRadius: 4,
-              border: '1px solid #ccc'
-            }}
+    <div className="auth-page">
+      <div className="auth-shell">
+        <div className="auth-brand">
+          <img
+            src="/DoodleDesk%20Logo.png"
+            alt="DoodleDesk logo"
+            className="auth-logo"
           />
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            required
-            style={{
-              display: 'block',
-              width: '100%',
-              padding: '10px',
-              margin: '10px 0',
-              fontSize: 16,
-              borderRadius: 4,
-              border: '1px solid #ccc'
-            }}
-          />
+          <h1>DoodleDesk</h1>
+          <p>Organize ideas, notes, and checklists in one focused workspace.</p>
+        </div>
+
+        <div className="auth-card">
           <button
-            type="submit"
-            disabled={loading}
-            style={{
-              padding: '8px 16px',
-              fontSize: 15,
-              background: '#222',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 4,
-              cursor: 'pointer',
-              marginBottom: 10,
-              width: '100%'
-            }}
+            className="auth-google-button"
+            onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })}
+            type="button"
           >
-            {mode === 'login' ? 'Login' : 'Sign Up'}
+            Continue with Google
           </button>
-        </form>
 
-        <div style={{ marginTop: 10, textAlign: 'center' }}>
+          <div className="auth-divider" aria-hidden="true">
+            <span>or {mode === 'login' ? 'login' : 'sign up'} with email</span>
+          </div>
+
+          <form onSubmit={handleEmailAuth} className="auth-form">
+            <label htmlFor="email" className="auth-label">Email</label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@email.com"
+              required
+              className="auth-input"
+            />
+            <label htmlFor="password" className="auth-label">Password</label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              required
+              className="auth-input"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="auth-submit-button"
+            >
+              {loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create account'}
+            </button>
+          </form>
+
+          <div className="auth-switch-row">
           {mode === 'login' ? (
             <>
-              <span>Don't have an account? </span>
+              <span>Don&apos;t have an account? </span>
               <button
                 type="button"
                 onClick={() => setMode('signup')}
-                style={{ color: '#4285F4', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                className="auth-link-button"
               >
                 Sign up
               </button>
@@ -140,16 +104,17 @@ export default function LoginScreen() {
               <button
                 type="button"
                 onClick={() => setMode('login')}
-                style={{ color: '#4285F4', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                className="auth-link-button"
               >
                 Login
               </button>
             </>
           )}
-        </div>
+          </div>
 
-        {success && <div style={{ color: 'green', marginTop: 8 }}>{success}</div>}
-        {error && <div style={{ color: 'red', marginTop: 8 }}>{error}</div>}
+          {success && <div className="auth-message auth-message-success">{success}</div>}
+          {error && <div className="auth-message auth-message-error">{error}</div>}
+        </div>
       </div>
     </div>
   )
