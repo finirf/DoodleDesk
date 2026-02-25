@@ -645,3 +645,21 @@ create policy "owners and members can delete checklist items"
 		)
 	);
 ```
+
+## Text color migration (optional)
+
+If your Supabase tables were created before text color support, run this SQL once:
+
+```sql
+alter table public.notes
+	add column if not exists text_color text not null default '#222222';
+
+alter table public.notes
+	add column if not exists font_size integer not null default 16;
+
+alter table public.checklists
+	add column if not exists text_color text not null default '#222222';
+
+alter table public.checklists
+	add column if not exists font_size integer not null default 16;
+```

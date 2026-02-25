@@ -66,6 +66,8 @@ function Desk({ user }) {
   const [editingId, setEditingId] = useState(null)
   const [editValue, setEditValue] = useState('')
   const [editColor, setEditColor] = useState('#fff59d')
+  const [editTextColor, setEditTextColor] = useState('#222222')
+  const [editFontSize, setEditFontSize] = useState(16)
   const [editFontFamily, setEditFontFamily] = useState('inherit')
   const [showStyleEditor, setShowStyleEditor] = useState(false)
   const [checklistEditItems, setChecklistEditItems] = useState([])
@@ -253,6 +255,32 @@ function Desk({ user }) {
     const fallback = getDefaultItemColor(item?.item_type)
     const color = typeof item?.color === 'string' ? item.color.trim() : ''
     return color || fallback
+  }
+
+  function getItemTextColor(item) {
+    const value = typeof item?.text_color === 'string' ? item.text_color.trim() : ''
+    return value || '#222222'
+  }
+
+  function isMissingColumnError(error, columnName) {
+    const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase()
+    return message.includes(columnName) && (
+      message.includes('column')
+      || message.includes('schema cache')
+      || message.includes('does not exist')
+      || message.includes('not found')
+    )
+  }
+
+  function normalizeFontSize(value, fallback = 16) {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return fallback
+    const rounded = Math.round(parsed)
+    return Math.min(48, Math.max(10, rounded))
+  }
+
+  function getItemFontSize(item) {
+    return normalizeFontSize(item?.font_size, 16)
   }
 
   function getItemFontFamily(item) {
@@ -1947,15 +1975,56 @@ function Desk({ user }) {
   async function saveItemEdits(item) {
     const nextRotation = toStoredRotation(Number(item.rotation) || 0)
     const nextColor = (editColor || getItemColor(item)).trim() || getDefaultItemColor(item.item_type)
+    const nextTextColor = (editTextColor || getItemTextColor(item)).trim() || '#222222'
+    const nextFontSize = normalizeFontSize(editFontSize, getItemFontSize(item))
     const nextFontFamily = (editFontFamily || 'inherit').trim() || 'inherit'
     const itemKey = getItemKey(item)
 
     if (!isChecklistItem(item)) {
-      const { error: saveError } = await supabase
+      const basePayload = {
+        content: editValue,
+        rotation: nextRotation,
+        color: nextColor,
+        font_family: nextFontFamily,
+        desk_id: selectedDeskId
+      }
+      let persistedTextColor = nextTextColor
+      let persistedFontSize = nextFontSize
+
+      let { error: saveError } = await supabase
         .from('notes')
-        .update({ content: editValue, rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId })
+        .update({ ...basePayload, text_color: nextTextColor, font_size: nextFontSize })
         .eq('id', item.id)
         .eq('desk_id', selectedDeskId)
+
+      if (saveError && isMissingColumnError(saveError, 'text_color')) {
+        const { error: retryError } = await supabase
+          .from('notes')
+          .update(basePayload)
+          .eq('id', item.id)
+          .eq('desk_id', selectedDeskId)
+
+        if (!retryError) {
+          saveError = null
+          persistedTextColor = getItemTextColor(item)
+          persistedFontSize = getItemFontSize(item)
+        } else {
+          saveError = retryError
+        }
+      } else if (saveError && isMissingColumnError(saveError, 'font_size')) {
+        const { error: retryError } = await supabase
+          .from('notes')
+          .update({ ...basePayload, text_color: nextTextColor })
+          .eq('id', item.id)
+          .eq('desk_id', selectedDeskId)
+
+        if (!retryError) {
+          saveError = null
+          persistedFontSize = getItemFontSize(item)
+        } else {
+          saveError = retryError
+        }
+      }
 
       if (saveError) {
         console.error('Failed to save note:', saveError)
@@ -1964,7 +2033,15 @@ function Desk({ user }) {
 
       setNotes((prev) =>
         prev.map((row) =>
-          getItemKey(row) === itemKey ? { ...row, content: editValue, rotation: nextRotation, color: nextColor, font_family: nextFontFamily } : row
+          getItemKey(row) === itemKey ? {
+            ...row,
+            content: editValue,
+            rotation: nextRotation,
+            color: nextColor,
+            text_color: persistedTextColor,
+            font_size: persistedFontSize,
+            font_family: nextFontFamily
+          } : row
         )
       )
       return { ok: true }
@@ -1978,11 +2055,50 @@ function Desk({ user }) {
       }))
       .filter((entry) => entry.text.length > 0)
 
-    const { error: checklistSaveError } = await supabase
+    const baseChecklistPayload = {
+      title: editValue.trim() || 'Checklist',
+      rotation: nextRotation,
+      color: nextColor,
+      font_family: nextFontFamily,
+      desk_id: selectedDeskId
+    }
+    let persistedTextColor = nextTextColor
+    let persistedFontSize = nextFontSize
+
+    let { error: checklistSaveError } = await supabase
       .from('checklists')
-      .update({ title: editValue.trim() || 'Checklist', rotation: nextRotation, color: nextColor, font_family: nextFontFamily, desk_id: selectedDeskId })
+      .update({ ...baseChecklistPayload, text_color: nextTextColor, font_size: nextFontSize })
       .eq('id', item.id)
       .eq('desk_id', selectedDeskId)
+
+    if (checklistSaveError && isMissingColumnError(checklistSaveError, 'text_color')) {
+      const { error: retryChecklistError } = await supabase
+        .from('checklists')
+        .update(baseChecklistPayload)
+        .eq('id', item.id)
+        .eq('desk_id', selectedDeskId)
+
+      if (!retryChecklistError) {
+        checklistSaveError = null
+        persistedTextColor = getItemTextColor(item)
+        persistedFontSize = getItemFontSize(item)
+      } else {
+        checklistSaveError = retryChecklistError
+      }
+    } else if (checklistSaveError && isMissingColumnError(checklistSaveError, 'font_size')) {
+      const { error: retryChecklistError } = await supabase
+        .from('checklists')
+        .update({ ...baseChecklistPayload, text_color: nextTextColor })
+        .eq('id', item.id)
+        .eq('desk_id', selectedDeskId)
+
+      if (!retryChecklistError) {
+        checklistSaveError = null
+        persistedFontSize = getItemFontSize(item)
+      } else {
+        checklistSaveError = retryChecklistError
+      }
+    }
 
     if (checklistSaveError) {
       console.error('Failed to save checklist:', checklistSaveError)
@@ -2022,6 +2138,8 @@ function Desk({ user }) {
               title: editValue.trim() || 'Checklist',
               rotation: nextRotation,
               color: nextColor,
+              text_color: persistedTextColor,
+              font_size: persistedFontSize,
               font_family: nextFontFamily,
               items: insertedItems
             }
@@ -2060,6 +2178,8 @@ function Desk({ user }) {
     setNewChecklistItemText('')
     setShowStyleEditor(false)
     setEditColor('#fff59d')
+    setEditTextColor('#222222')
+    setEditFontSize(16)
     setEditFontFamily('inherit')
     setEditSaveError('')
   }
@@ -3241,6 +3361,7 @@ function Desk({ user }) {
               top: item.y,
               transform: `rotate(${item.rotation || 0}deg)`,
               background: isDecoration ? 'transparent' : (editingId === itemKey ? editColor : getItemColor(item)),
+              color: isDecoration ? undefined : (editingId === itemKey ? editTextColor : getItemTextColor(item)),
               padding: isDecoration ? 8 : 20,
               width: getItemWidth(item),
               minHeight: getItemHeight(item),
@@ -3573,7 +3694,7 @@ function Desk({ user }) {
                       style={{
                         width: '100%',
                         marginBottom: 8,
-                        fontSize: 14,
+                        fontSize: editFontSize,
                         borderRadius: 4,
                         border: '1px solid #ccc',
                         background: '#eaf4ff',
@@ -3626,7 +3747,7 @@ function Desk({ user }) {
                             }}
                             style={{
                               flex: 1,
-                              fontSize: 13,
+                              fontSize: editFontSize,
                               borderRadius: 4,
                               border: '1px solid #ccc',
                               background: '#eaf4ff',
@@ -3656,7 +3777,7 @@ function Desk({ user }) {
                           placeholder="New item"
                           style={{
                             flex: 1,
-                            fontSize: 13,
+                            fontSize: editFontSize,
                             borderRadius: 4,
                             border: '1px solid #ccc',
                             background: '#eaf4ff',
@@ -3695,7 +3816,7 @@ function Desk({ user }) {
                     style={{
                       width: '100%',
                       minHeight: 60,
-                      fontSize: 16,
+                      fontSize: editFontSize,
                       borderRadius: 4,
                       border: '1px solid #ccc',
                       background: '#eaf4ff',
@@ -3717,50 +3838,82 @@ function Desk({ user }) {
                       background: 'rgba(255,255,255,0.7)',
                       border: '1px solid rgba(0,0,0,0.15)',
                       display: 'flex',
-                      gap: 8,
-                      alignItems: 'center'
+                      gap: 6,
+                      flexDirection: 'column'
                     }}
                     onMouseDown={(e) => e.stopPropagation()}
                   >
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#222' }}>
-                      Color
-                      <input
-                        type="color"
-                        value={editColor}
-                        onChange={(e) => {
-                          if (editSaveError) setEditSaveError('')
-                          setEditColor(e.target.value)
-                        }}
-                        style={{ width: 28, height: 24, border: 'none', padding: 0, background: 'transparent', cursor: 'pointer' }}
-                      />
-                    </label>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#222' }}>
+                        Box
+                        <input
+                          type="color"
+                          value={editColor}
+                          onChange={(e) => {
+                            if (editSaveError) setEditSaveError('')
+                            setEditColor(e.target.value)
+                          }}
+                          style={{ width: 28, height: 24, border: 'none', padding: 0, background: 'transparent', cursor: 'pointer' }}
+                        />
+                      </label>
 
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#222', flex: 1 }}>
-                      Font
-                      <select
-                        value={editFontFamily}
-                        onChange={(e) => {
-                          if (editSaveError) setEditSaveError('')
-                          setEditFontFamily(e.target.value)
-                        }}
-                        style={{
-                          flex: 1,
-                          minWidth: 110,
-                          borderRadius: 4,
-                          border: '1px solid #bbb',
-                          background: '#fff',
-                          color: '#222',
-                          padding: '3px 6px',
-                          fontSize: 12
-                        }}
-                      >
-                        {FONT_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#222', flex: 1 }}>
+                        Font
+                        <select
+                          value={editFontFamily}
+                          onChange={(e) => {
+                            if (editSaveError) setEditSaveError('')
+                            setEditFontFamily(e.target.value)
+                          }}
+                          style={{
+                            flex: 1,
+                            minWidth: 110,
+                            borderRadius: 4,
+                            border: '1px solid #bbb',
+                            background: '#fff',
+                            color: '#222',
+                            padding: '3px 6px',
+                            fontSize: 12
+                          }}
+                        >
+                          {FONT_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#222' }}>
+                        Text
+                        <input
+                          type="color"
+                          value={editTextColor}
+                          onChange={(e) => {
+                            if (editSaveError) setEditSaveError('')
+                            setEditTextColor(e.target.value)
+                          }}
+                          style={{ width: 28, height: 24, border: 'none', padding: 0, background: 'transparent', cursor: 'pointer' }}
+                        />
+                      </label>
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#222' }}>
+                        Size
+                        <input
+                          type="number"
+                          min={10}
+                          max={48}
+                          value={editFontSize}
+                          onChange={(e) => {
+                            if (editSaveError) setEditSaveError('')
+                            setEditFontSize(normalizeFontSize(e.target.value, 16))
+                          }}
+                          style={{ width: 58, height: 24, border: '1px solid #bbb', borderRadius: 4, padding: '0 6px', fontSize: 12 }}
+                        />
+                      </label>
+                    </div>
                   </div>
                 )}
 
@@ -3826,6 +3979,8 @@ function Desk({ user }) {
                         setNewChecklistItemText('')
                         setShowStyleEditor(false)
                         setEditColor('#fff59d')
+                        setEditTextColor('#222222')
+                        setEditFontSize(16)
                         setEditFontFamily('inherit')
                       }}
                       style={{
@@ -3857,16 +4012,20 @@ function Desk({ user }) {
                   setEditingId(itemKey)
                   setShowStyleEditor(false)
                   setEditColor(getItemColor(item))
+                  setEditTextColor(getItemTextColor(item))
+                  setEditFontSize(getItemFontSize(item))
                   setEditFontFamily(getItemFontFamily(item))
                   if (isChecklist) {
-                    setEditValue(item.title || 'Checklist')
+                    const existingTitle = item.title || 'Checklist'
+                    setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
                     setChecklistEditItems((item.items || []).map((entry) => ({
                       text: entry.text || '',
                       is_checked: Boolean(entry.is_checked)
                     })))
                     setNewChecklistItemText('')
                   } else {
-                    setEditValue(item.content || '')
+                    const existingContent = item.content || ''
+                    setEditValue(existingContent.trim() === 'New note' ? '' : existingContent)
                     setChecklistEditItems([])
                     setNewChecklistItemText('')
                   }
@@ -3879,7 +4038,8 @@ function Desk({ user }) {
                   height: '100%',
                   display: 'flex',
                   flexDirection: 'column',
-                  color: '#222',
+                  color: getItemTextColor(item),
+                  fontSize: getItemFontSize(item),
                   fontFamily: getItemFontFamily(item)
                 }}
               >
