@@ -829,13 +829,14 @@ function Desk({ user }) {
     const invitedFriendIds = Array.isArray(options.invitedFriendIds)
       ? Array.from(new Set(options.invitedFriendIds.filter((friendId) => friendId && friendId !== user.id)))
       : []
+    const shouldStartCollaborative = isCollaborative && invitedFriendIds.length > 0
 
     let createdDesk = null
     let createError = null
 
     const { data: withFlagData, error: withFlagError } = await supabase
       .from('desks')
-      .insert([{ user_id: user.id, name: trimmedName, background: 'desk1', is_collaborative: isCollaborative }])
+      .insert([{ user_id: user.id, name: trimmedName, background: 'desk1', is_collaborative: shouldStartCollaborative }])
       .select()
 
     if (withFlagError) {
@@ -846,7 +847,7 @@ function Desk({ user }) {
 
       createError = fallbackError
       createdDesk = fallbackData?.[0]
-      if (createdDesk && isCollaborative) {
+      if (createdDesk && shouldStartCollaborative) {
         createdDesk = { ...createdDesk, is_collaborative: true }
       }
     } else {
@@ -858,7 +859,7 @@ function Desk({ user }) {
       return { ok: false, errorMessage: createError?.message || 'Failed to create desk.' }
     }
 
-    if (isCollaborative) {
+    if (shouldStartCollaborative) {
       if (invitedFriendIds.length > 0) {
         const invitedRows = invitedFriendIds.map((friendId) => ({
           desk_id: createdDesk.id,
@@ -887,6 +888,40 @@ function Desk({ user }) {
     setShowDeskMenu(false)
     await incrementUserStat('desks_created', 1)
     return { ok: true }
+  }
+
+  async function syncOwnedDeskCollaborativeState(deskId, members = []) {
+    if (!deskId) return
+
+    const targetDesk = desks.find((desk) => desk.id === deskId)
+    if (!targetDesk || targetDesk.user_id !== user.id) return
+    const hasCustomShelfAssignment = Boolean(getDeskAssignedCustomShelfId(deskId))
+
+    const shouldBeCollaborative = members.some((member) => !member.is_owner)
+    const isCurrentlyCollaborative = Boolean(targetDesk.is_collaborative)
+
+    if (isCurrentlyCollaborative !== shouldBeCollaborative) {
+      setDesks((prev) =>
+        prev.map((desk) =>
+          desk.id === deskId ? { ...desk, is_collaborative: shouldBeCollaborative } : desk
+        )
+      )
+
+      if (!hasCustomShelfAssignment) {
+        const nextBuiltInShelfId = shouldBeCollaborative ? '__sharing' : '__private'
+        setExpandedDeskShelves((prev) => ({ ...prev, [nextBuiltInShelfId]: true }))
+      }
+    }
+
+    const { error } = await supabase
+      .from('desks')
+      .update({ is_collaborative: shouldBeCollaborative })
+      .eq('id', deskId)
+      .eq('user_id', user.id)
+
+    if (error && !isMissingColumnError(error, 'is_collaborative')) {
+      console.error('Failed to sync desk collaborative state:', error)
+    }
   }
 
   function openConfirmDialog({ title, message, confirmLabel = 'Confirm', tone = 'danger', onConfirm }) {
@@ -1063,13 +1098,13 @@ function Desk({ user }) {
   async function fetchDeskMembers(deskId) {
     if (!deskId) {
       setDeskMembers([])
-      return
+      return []
     }
 
     const desk = desks.find((entry) => entry.id === deskId)
     if (!desk) {
       setDeskMembers([])
-      return
+      return []
     }
 
     setDeskMembersLoading(true)
@@ -1092,7 +1127,7 @@ function Desk({ user }) {
 
       if (memberIds.length === 0) {
         setDeskMembers([])
-        return
+        return []
       }
 
       const { data: profileRows, error: profileError } = await supabase
@@ -1128,10 +1163,12 @@ function Desk({ user }) {
       })
 
       setDeskMembers(sortedMembers)
+      return sortedMembers
     } catch (error) {
       console.error('Failed to fetch desk members:', error)
       setDeskMembersError(error?.message || 'Could not load desk members.')
       setDeskMembers([])
+      return []
     } finally {
       setDeskMembersLoading(false)
     }
@@ -1250,7 +1287,8 @@ function Desk({ user }) {
     }
 
     setDeskMembersMessage('Member added.')
-    await fetchDeskMembers(selectedDeskId)
+    const updatedMembers = await fetchDeskMembers(selectedDeskId)
+    await syncOwnedDeskCollaborativeState(selectedDeskId, updatedMembers)
     setDeskMemberActionLoadingId(null)
   }
 
@@ -1275,7 +1313,8 @@ function Desk({ user }) {
     }
 
     setDeskMembersMessage('Member removed.')
-    await fetchDeskMembers(selectedDeskId)
+    const updatedMembers = await fetchDeskMembers(selectedDeskId)
+    await syncOwnedDeskCollaborativeState(selectedDeskId, updatedMembers)
     setDeskMemberActionLoadingId(null)
   }
 
@@ -1364,10 +1403,13 @@ function Desk({ user }) {
     }
 
     setDeskMembersMessage(nextStatus === 'approved' ? 'Request approved and member added.' : 'Request declined.')
-    await Promise.all([
+    const [updatedMembers] = await Promise.all([
       fetchDeskMembers(selectedDeskId),
       fetchDeskMemberRequests(selectedDeskId)
     ])
+    if (nextStatus === 'approved') {
+      await syncOwnedDeskCollaborativeState(selectedDeskId, updatedMembers)
+    }
     setDeskMemberActionLoadingId(null)
   }
 
