@@ -70,14 +70,14 @@ export default function DeskModals({
     return leftName.localeCompare(rightName)
   })
 
-  const ownerUserId = deskMembers.find((member) => member.is_owner)?.user_id || null
+  const deskMemberUserIds = new Set(deskMembers.map((member) => member.user_id).filter(Boolean))
   const sortedInvitableFriends = friends
     .filter((friend) => friend.id !== currentUserId)
     .sort((left, right) => {
-      const leftIsOwner = ownerUserId && left.id === ownerUserId
-      const rightIsOwner = ownerUserId && right.id === ownerUserId
-      if (leftIsOwner && !rightIsOwner) return -1
-      if (!leftIsOwner && rightIsOwner) return 1
+      const leftAlreadyAdded = deskMemberUserIds.has(left.id)
+      const rightAlreadyAdded = deskMemberUserIds.has(right.id)
+      if (leftAlreadyAdded && !rightAlreadyAdded) return -1
+      if (!leftAlreadyAdded && rightAlreadyAdded) return 1
 
       const leftName = (left.preferred_name || left.email || '').trim().toLowerCase()
       const rightName = (right.preferred_name || right.email || '').trim().toLowerCase()

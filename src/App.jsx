@@ -2113,7 +2113,7 @@ function Desk({ user }) {
 
       if (existingRow.status === 'pending') {
         if (existingRow.receiver_id === user.id) {
-          return { ok: false, errorMessage: 'This user already sent you a request. Accept it below.' }
+          return { ok: false, errorMessage: 'This user already sent you a request. Accept it in the Friends tab.' }
         }
         return { ok: false, errorMessage: 'Friend request already sent.' }
       }
