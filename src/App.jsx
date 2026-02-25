@@ -92,6 +92,9 @@ function Desk({ user }) {
   const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [editSaveError, setEditSaveError] = useState('')
   const [backgroundMode, setBackgroundMode] = useState('desk1')
+  const [customBackgroundUrl, setCustomBackgroundUrl] = useState('')
+  const [customBackgroundInput, setCustomBackgroundInput] = useState('')
+  const [backgroundMenuError, setBackgroundMenuError] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const [friends, setFriends] = useState([])
   const [incomingFriendRequests, setIncomingFriendRequests] = useState([])
@@ -141,11 +144,13 @@ function Desk({ user }) {
 
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
   const lastDeskStorageKey = `doodledesk:lastDesk:${user.id}`
+  const safeCustomBackgroundUrl = customBackgroundUrl.replace(/"/g, '\\"')
   const backgroundLayers = Array.from({ length: sectionCount }, (_, index) => {
     if (backgroundMode === 'desk1') return "url('/brownDesk.png')"
     if (backgroundMode === 'desk2') return "url('/grayDesk.png')"
     if (backgroundMode === 'desk3') return "url('/leavesDesk.jpg')"
     if (backgroundMode === 'desk4') return "url('/flowersDesk.png')"
+    if (backgroundMode === 'custom' && safeCustomBackgroundUrl) return `url("${safeCustomBackgroundUrl}")`
     return "url('/brownDesk.png')"
   })
   const backgroundImage = backgroundLayers.join(', ')
@@ -308,11 +313,41 @@ function Desk({ user }) {
   }, [showNewNoteMenu, showDeskMenu, showProfileMenu])
 
   function getDeskBackgroundValue(desk) {
-    const nextMode = desk?.background_mode || desk?.background
+    const modeFromColumn = typeof desk?.background_mode === 'string' ? desk.background_mode.trim() : ''
+    const modeFromFallback = typeof desk?.background === 'string' ? desk.background.trim() : ''
+    const nextMode = modeFromColumn || modeFromFallback
     if (nextMode === 'desk1' || nextMode === 'desk2' || nextMode === 'desk3' || nextMode === 'desk4') {
       return nextMode
     }
+
+    const customUrl = getDeskCustomBackgroundUrl(desk)
+    if ((nextMode === 'custom' && customUrl) || customUrl) {
+      return 'custom'
+    }
+
     return 'desk1'
+  }
+
+  function normalizeHttpUrl(value) {
+    const raw = typeof value === 'string' ? value.trim() : ''
+    if (!raw) return ''
+
+    try {
+      const parsed = new URL(raw)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return ''
+      return parsed.toString()
+    } catch {
+      return ''
+    }
+  }
+
+  function getDeskCustomBackgroundUrl(desk) {
+    const candidates = [desk?.custom_background_url, desk?.background_url, desk?.background]
+    for (const candidate of candidates) {
+      const normalized = normalizeHttpUrl(candidate)
+      if (normalized) return normalized
+    }
+    return ''
   }
 
   function getDeskNameValue(desk) {
@@ -389,7 +424,12 @@ function Desk({ user }) {
       const nextDesk = loadedDesks.find((desk) => desk.id === prev)
         || loadedDesks.find((desk) => desk.id === lastDeskId)
         || loadedDesks[0]
-      setBackgroundMode(getDeskBackgroundValue(nextDesk))
+      const nextBackgroundMode = getDeskBackgroundValue(nextDesk)
+      const nextCustomBackground = getDeskCustomBackgroundUrl(nextDesk)
+      setBackgroundMode(nextBackgroundMode)
+      setCustomBackgroundUrl(nextBackgroundMode === 'custom' ? nextCustomBackground : '')
+      setCustomBackgroundInput(nextBackgroundMode === 'custom' ? nextCustomBackground : '')
+      setBackgroundMenuError('')
       return nextDesk.id
     })
   }
@@ -456,6 +496,9 @@ function Desk({ user }) {
     setDesks((prev) => [...prev, createdDesk])
     setSelectedDeskId(createdDesk.id)
     setBackgroundMode(getDeskBackgroundValue(createdDesk))
+    setCustomBackgroundUrl('')
+    setCustomBackgroundInput('')
+    setBackgroundMenuError('')
     setShowDeskMenu(false)
     await incrementUserStat('desks_created', 1)
     return { ok: true }
@@ -490,11 +533,16 @@ function Desk({ user }) {
     if (remainingDesks.length === 0) {
       setSelectedDeskId(null)
       setBackgroundMode('desk1')
+      setCustomBackgroundUrl('')
+      setCustomBackgroundInput('')
       setNotes([])
     } else {
       const nextDesk = remainingDesks[0]
       setSelectedDeskId(nextDesk.id)
-      setBackgroundMode(getDeskBackgroundValue(nextDesk))
+      const nextBackgroundMode = getDeskBackgroundValue(nextDesk)
+      setBackgroundMode(nextBackgroundMode)
+      setCustomBackgroundUrl(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
+      setCustomBackgroundInput(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
     }
 
     setShowDeskMenu(false)
@@ -530,11 +578,16 @@ function Desk({ user }) {
     if (remainingDesks.length === 0) {
       setSelectedDeskId(null)
       setBackgroundMode('desk1')
+      setCustomBackgroundUrl('')
+      setCustomBackgroundInput('')
       setNotes([])
     } else {
       const nextDesk = remainingDesks[0]
       setSelectedDeskId(nextDesk.id)
-      setBackgroundMode(getDeskBackgroundValue(nextDesk))
+      const nextBackgroundMode = getDeskBackgroundValue(nextDesk)
+      setBackgroundMode(nextBackgroundMode)
+      setCustomBackgroundUrl(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
+      setCustomBackgroundInput(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(nextDesk) : '')
     }
 
     setShowDeskMenu(false)
@@ -764,7 +817,7 @@ function Desk({ user }) {
 
     const { error: backgroundModeError } = await supabase
       .from('desks')
-      .update({ background_mode: mode })
+      .update({ background_mode: mode, background: mode })
       .eq('id', selectedDeskId)
       .eq('user_id', user.id)
 
@@ -779,16 +832,66 @@ function Desk({ user }) {
 
     if (updateError) {
       console.error('Failed to update desk background:', updateError)
+      setBackgroundMenuError(updateError?.message || 'Could not update background.')
       return
     }
 
     setBackgroundMode(mode)
+    setCustomBackgroundUrl('')
+    setCustomBackgroundInput('')
+    setBackgroundMenuError('')
     setDesks((prev) =>
       prev.map((desk) =>
         desk.id === selectedDeskId ? { ...desk, background_mode: mode, background: mode } : desk
       )
     )
     setShowDeskMenu(false)
+  }
+
+  async function setCurrentDeskCustomBackground(urlInput) {
+    if (!selectedDeskId) return
+
+    const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
+    if (!currentDesk || currentDesk.user_id !== user.id) return
+
+    const normalizedUrl = normalizeHttpUrl(urlInput)
+    if (!normalizedUrl) {
+      setBackgroundMenuError('Please paste a valid http(s) image URL.')
+      return
+    }
+
+    let updateError = null
+
+    const { error: customModeError } = await supabase
+      .from('desks')
+      .update({ background_mode: 'custom', background: normalizedUrl })
+      .eq('id', selectedDeskId)
+      .eq('user_id', user.id)
+
+    if (customModeError) {
+      const { error: fallbackError } = await supabase
+        .from('desks')
+        .update({ background: normalizedUrl })
+        .eq('id', selectedDeskId)
+        .eq('user_id', user.id)
+      updateError = fallbackError
+    }
+
+    if (updateError) {
+      console.error('Failed to set custom background:', updateError)
+      setBackgroundMenuError(updateError?.message || 'Could not set custom image.')
+      return
+    }
+
+    setBackgroundMode('custom')
+    setCustomBackgroundUrl(normalizedUrl)
+    setCustomBackgroundInput(normalizedUrl)
+    setBackgroundMenuError('')
+    setDesks((prev) =>
+      prev.map((desk) =>
+        desk.id === selectedDeskId ? { ...desk, background_mode: 'custom', background: normalizedUrl } : desk
+      )
+    )
   }
 
   function handleSelectDesk(desk) {
@@ -798,7 +901,11 @@ function Desk({ user }) {
     }
 
     setSelectedDeskId(desk.id)
-    setBackgroundMode(getDeskBackgroundValue(desk))
+    const nextBackgroundMode = getDeskBackgroundValue(desk)
+    setBackgroundMode(nextBackgroundMode)
+    setCustomBackgroundUrl(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(desk) : '')
+    setCustomBackgroundInput(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(desk) : '')
+    setBackgroundMenuError('')
     setEditingId(null)
     setEditValue('')
     setChecklistEditItems([])
@@ -2078,6 +2185,48 @@ function Desk({ user }) {
                 >
                   Flowers Desk
                 </button>
+                </div>
+              )}
+
+              {currentDesk && isCurrentDeskOwner && (
+                <div style={{ padding: '0 8px 8px' }}>
+                  <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 4 }}>Custom Image URL</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      value={customBackgroundInput}
+                      onChange={(e) => {
+                        setBackgroundMenuError('')
+                        setCustomBackgroundInput(e.target.value)
+                      }}
+                      placeholder="https://..."
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        borderRadius: 4,
+                        border: '1px solid #ccc',
+                        padding: '5px 7px',
+                        fontSize: 12
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCurrentDeskCustomBackground(customBackgroundInput)}
+                      style={{
+                        border: 'none',
+                        borderRadius: 4,
+                        background: '#4285F4',
+                        color: '#fff',
+                        padding: '5px 8px',
+                        fontSize: 12,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                  {backgroundMenuError && (
+                    <div style={{ marginTop: 4, color: '#d32f2f', fontSize: 11 }}>{backgroundMenuError}</div>
+                  )}
                 </div>
               )}
             </div>
