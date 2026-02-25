@@ -181,7 +181,8 @@ create policy "owners can delete desk memberships"
 	on public.desk_members for delete
 	to authenticated
 	using (
-		exists (
+		auth.uid() = user_id
+		or exists (
 			select 1
 			from public.desks d
 			where d.id = desk_members.desk_id

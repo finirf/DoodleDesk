@@ -500,6 +500,45 @@ function Desk({ user }) {
     await incrementUserStat('desks_deleted', 1)
   }
 
+  async function leaveCurrentDesk() {
+    const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
+    if (!currentDesk || currentDesk.user_id === user.id) return
+
+    const shouldLeave = window.confirm(`Leave "${getDeskNameValue(currentDesk)}"?`)
+    if (!shouldLeave) return
+
+    const { error } = await supabase
+      .from('desk_members')
+      .delete()
+      .eq('desk_id', currentDesk.id)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error('Failed to leave desk:', error)
+      return
+    }
+
+    const savedDeskId = localStorage.getItem(lastDeskStorageKey)
+    if (savedDeskId && savedDeskId === String(currentDesk.id)) {
+      localStorage.removeItem(lastDeskStorageKey)
+    }
+
+    const remainingDesks = desks.filter((desk) => desk.id !== currentDesk.id)
+    setDesks(remainingDesks)
+
+    if (remainingDesks.length === 0) {
+      setSelectedDeskId(null)
+      setBackgroundMode('desk1')
+      setNotes([])
+    } else {
+      const nextDesk = remainingDesks[0]
+      setSelectedDeskId(nextDesk.id)
+      setBackgroundMode(getDeskBackgroundValue(nextDesk))
+    }
+
+    setShowDeskMenu(false)
+  }
+
   async function renameCurrentDesk(nextNameInput) {
     const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
     if (!currentDesk) {
@@ -1867,6 +1906,26 @@ function Desk({ user }) {
                   }}
                 >
                   Delete Desk
+                </button>
+              )}
+
+              {currentDesk && !isCurrentDeskOwner && (
+                <button
+                  type="button"
+                  onClick={leaveCurrentDesk}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '7px 10px',
+                    border: 'none',
+                    borderRadius: 4,
+                    background: '#fff',
+                    color: '#d32f2f',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Leave Desk
                 </button>
               )}
 
