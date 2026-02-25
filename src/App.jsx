@@ -141,6 +141,12 @@ function Desk({ user }) {
     { label: 'Courier New', value: '"Courier New", monospace' },
     { label: 'Trebuchet MS', value: '"Trebuchet MS", sans-serif' }
   ]
+  const DECORATION_OPTIONS = [
+    { key: 'mug', label: 'Mug', emoji: '☕' },
+    { key: 'pen', label: 'Pen', emoji: '🖊️' },
+    { key: 'pencil', label: 'Pencil', emoji: '✏️' },
+    { key: 'plant', label: 'Plant', emoji: '🪴' }
+  ]
 
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
   const lastDeskStorageKey = `doodledesk:lastDesk:${user.id}`
@@ -168,7 +174,16 @@ function Desk({ user }) {
     return item.item_type === 'checklist'
   }
 
+  function isDecorationItem(item) {
+    return item.item_type === 'decoration'
+  }
+
+  function getDecorationOption(kind) {
+    return DECORATION_OPTIONS.find((option) => option.key === kind) || { key: 'custom', label: 'Decoration', emoji: '📌' }
+  }
+
   function getDefaultItemColor(itemType) {
+    if (itemType === 'decoration') return 'transparent'
     return itemType === 'checklist' ? '#ffffff' : '#fff59d'
   }
 
@@ -185,7 +200,13 @@ function Desk({ user }) {
 
   function getItemWidth(item) {
     const value = Number(item?.width)
-    return Number.isFinite(value) && value > 0 ? value : 200
+    if (Number.isFinite(value) && value > 0) return value
+    if (isDecorationItem(item)) return 88
+    return 200
+  }
+
+  function getAutoDecorationHeight() {
+    return 88
   }
 
   function getAutoChecklistHeight(item) {
@@ -207,13 +228,24 @@ function Desk({ user }) {
       if (isChecklistItem(item) && value === 160) {
         return getAutoChecklistHeight(item)
       }
+      if (isDecorationItem(item)) {
+        return value
+      }
       if (!isChecklistItem(item) && value === 120) {
         return getAutoNoteHeight(item)
       }
       return value
     }
 
-    return isChecklistItem(item) ? getAutoChecklistHeight(item) : getAutoNoteHeight(item)
+    if (isChecklistItem(item)) return getAutoChecklistHeight(item)
+    if (isDecorationItem(item)) return getAutoDecorationHeight()
+    return getAutoNoteHeight(item)
+  }
+
+  function getItemTableName(item) {
+    if (isChecklistItem(item)) return 'checklists'
+    if (isDecorationItem(item)) return 'decorations'
+    return 'notes'
   }
 
   function clampScale(value) {
@@ -920,9 +952,14 @@ function Desk({ user }) {
       return
     }
 
-    const [{ data: notesData, error: notesError }, { data: checklistsData, error: checklistsError }] = await Promise.all([
+    const [
+      { data: notesData, error: notesError },
+      { data: checklistsData, error: checklistsError },
+      { data: decorationsData, error: decorationsError }
+    ] = await Promise.all([
       supabase.from('notes').select('*').eq('desk_id', deskId),
-      supabase.from('checklists').select('*').eq('desk_id', deskId)
+      supabase.from('checklists').select('*').eq('desk_id', deskId),
+      supabase.from('decorations').select('*').eq('desk_id', deskId)
     ])
 
     if (notesError) {
@@ -930,6 +967,9 @@ function Desk({ user }) {
     }
     if (checklistsError) {
       console.error('Failed to fetch checklists:', checklistsError)
+    }
+    if (decorationsError) {
+      console.error('Failed to fetch decorations:', decorationsError)
     }
 
     const checklistRows = checklistsData || []
@@ -962,8 +1002,9 @@ function Desk({ user }) {
       item_type: 'checklist',
       items: checklistItemsMap.get(checklist.id) || []
     }))
+    const mappedDecorations = (decorationsData || []).map((decoration) => ({ ...decoration, item_type: 'decoration' }))
 
-    const combined = [...mappedNotes, ...mappedChecklists]
+    const combined = [...mappedNotes, ...mappedChecklists, ...mappedDecorations]
     setNotes(combined)
 
     const maxNoteBottom = combined.reduce((maxY, item) => {
@@ -1032,6 +1073,28 @@ function Desk({ user }) {
     ])
 
     await fetchDeskItems(selectedDeskId)
+
+    setShowNewNoteMenu(false)
+  }
+
+  async function addDecoration(kind) {
+    if (!selectedDeskId) return
+
+    const option = getDecorationOption(kind)
+    const { data, error } = await supabase
+      .from('decorations')
+      .insert([{ desk_id: selectedDeskId, kind: option.key, x: 110, y: 110, rotation: 0, width: 88, height: 88 }])
+      .select()
+
+    const createdDecoration = data?.[0]
+
+    if (createdDecoration) {
+      setNotes((prev) => [...prev, { ...createdDecoration, item_type: 'decoration' }])
+      await fetchDeskItems(selectedDeskId)
+    } else {
+      console.error('Failed to create decoration:', error)
+      setEditSaveError(error?.message || 'Failed to create decoration.')
+    }
 
     setShowNewNoteMenu(false)
   }
@@ -1397,7 +1460,7 @@ function Desk({ user }) {
     if (!item) return null
 
     const storedRotation = toStoredRotation(rotationValue)
-    const table = isChecklistItem(item) ? 'checklists' : 'notes'
+    const table = getItemTableName(item)
     const { error } = await supabase
       .from(table)
       .update({ rotation: storedRotation, desk_id: selectedDeskId })
@@ -1416,7 +1479,7 @@ function Desk({ user }) {
     const item = notesRef.current.find((row) => getItemKey(row) === itemKey)
     if (!item) return
 
-    const table = isChecklistItem(item) ? 'checklists' : 'notes'
+    const table = getItemTableName(item)
     await supabase
       .from(table)
       .update({ x, y, desk_id: selectedDeskId })
@@ -1428,7 +1491,7 @@ function Desk({ user }) {
     const item = notesRef.current.find((row) => getItemKey(row) === itemKey)
     if (!item) return
 
-    const table = isChecklistItem(item) ? 'checklists' : 'notes'
+    const table = getItemTableName(item)
     const { error } = await supabase
       .from(table)
       .update({ width, height, desk_id: selectedDeskId })
@@ -1785,6 +1848,13 @@ function Desk({ user }) {
         .eq('id', item.id)
         .eq('desk_id', selectedDeskId)
       error = checklistError
+    } else if (isDecorationItem(item)) {
+      const { error: decorationError } = await supabase
+        .from('decorations')
+        .delete()
+        .eq('id', item.id)
+        .eq('desk_id', selectedDeskId)
+      error = decorationError
     } else {
       const { error: noteError } = await supabase
         .from('notes')
@@ -2513,6 +2583,21 @@ function Desk({ user }) {
               )}
 
               <div style={{ borderTop: '1px solid #eee', marginTop: 12, paddingTop: 10 }}>
+                <a
+                  href="/privacy.html"
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '7px 2px',
+                    color: '#555',
+                    fontSize: 13,
+                    textDecoration: 'underline',
+                    marginBottom: 4
+                  }}
+                >
+                  Privacy Policy
+                </a>
                 <button
                   type="button"
                   onClick={handleLogout}
@@ -2597,6 +2682,29 @@ function Desk({ user }) {
             >
               Checklist
             </button>
+
+            <div style={{ borderTop: '1px solid #eee', marginTop: 2, paddingTop: 2 }}>
+              <div style={{ padding: '6px 12px', fontSize: 12, color: '#666' }}>Decorations</div>
+              {DECORATION_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => addDecoration(option.key)}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '8px 12px',
+                    border: 'none',
+                    background: '#fff',
+                    color: '#222',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {option.emoji} {option.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -2610,6 +2718,8 @@ function Desk({ user }) {
       {notes.map((item) => {
         const itemKey = getItemKey(item)
         const isChecklist = isChecklistItem(item)
+        const isDecoration = isDecorationItem(item)
+        const decorationOption = isDecoration ? getDecorationOption(item.kind) : null
 
         return (
           <div
@@ -2621,17 +2731,35 @@ function Desk({ user }) {
               left: item.x,
               top: item.y,
               transform: `rotate(${item.rotation || 0}deg)`,
-              background: editingId === itemKey ? editColor : getItemColor(item),
-              padding: 20,
+              background: isDecoration ? 'transparent' : (editingId === itemKey ? editColor : getItemColor(item)),
+              padding: isDecoration ? 8 : 20,
               width: getItemWidth(item),
               minHeight: getItemHeight(item),
-              boxShadow: '3px 3px 10px rgba(0,0,0,0.3)',
+              boxShadow: isDecoration ? 'none' : '3px 3px 10px rgba(0,0,0,0.3)',
               fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
-              cursor: editingId ? 'text' : draggedId === itemKey ? 'grabbing' : 'grab',
+              cursor: draggedId === itemKey ? 'grabbing' : 'grab',
               zIndex: draggedId === itemKey ? 100 : 1
             }}
           >
-            {editingId === itemKey ? (
+            {isDecoration ? (
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'column',
+                  userSelect: 'none',
+                  pointerEvents: 'none'
+                }}
+              >
+                <div style={{ fontSize: 40, lineHeight: 1 }}>{decorationOption?.emoji || '📌'}</div>
+                <div style={{ marginTop: 4, fontSize: 11, color: '#333', fontWeight: 600 }}>
+                  {decorationOption?.label || 'Decoration'}
+                </div>
+              </div>
+            ) : editingId === itemKey ? (
               <form
                 onSubmit={async (e) => {
                   e.preventDefault()
@@ -2979,6 +3107,7 @@ function Desk({ user }) {
             ) : (
               <div
                 onClick={() => {
+                  if (isDecoration) return
                   setIsSavingEdit(false)
                   setEditSaveError('')
                   setEditingId(itemKey)
@@ -3001,7 +3130,7 @@ function Desk({ user }) {
                 style={{
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
-                  cursor: 'pointer',
+                  cursor: isDecoration ? 'grab' : 'pointer',
                   minHeight: 40,
                   color: '#222',
                   fontFamily: getItemFontFamily(item)
@@ -3029,6 +3158,13 @@ function Desk({ user }) {
                         </label>
                       ))
                     )}
+                  </>
+                ) : isDecoration ? (
+                  <>
+                    <div style={{ fontSize: 40, lineHeight: 1, textAlign: 'center' }}>{decorationOption?.emoji || '📌'}</div>
+                    <div style={{ marginTop: 4, fontSize: 11, color: '#333', fontWeight: 600, textAlign: 'center' }}>
+                      {decorationOption?.label || 'Decoration'}
+                    </div>
                   </>
                 ) : (
                   item.content
@@ -3417,28 +3553,6 @@ function Desk({ user }) {
           </span>
         </div>
       )}
-
-      <Footer />
     </div>
-  )
-}
-
-// ------------------- Footer -------------------
-function Footer() {
-  return (
-    <footer
-      style={{
-        position: 'fixed',
-        bottom: 10,
-        width: '100%',
-        textAlign: 'center',
-        fontSize: 14,
-        color: '#555'
-      }}
-    >
-      <a href="/privacy.html" style={{ color: '#555', textDecoration: 'underline' }}>
-        Privacy Policy
-      </a>
-    </footer>
   )
 }
