@@ -1123,24 +1123,48 @@ create unique index if not exists desk_member_requests_pending_unique
 
 alter table public.desk_member_requests enable row level security;
 
+create or replace function public.is_desk_owner(_desk_id uuid, _uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+	select exists (
+		select 1
+		from public.desks d
+		where d.id = _desk_id
+			and d.user_id = _uid
+	);
+$$;
+
+create or replace function public.is_desk_member(_desk_id uuid, _uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+	select exists (
+		select 1
+		from public.desk_members dm
+		where dm.desk_id = _desk_id
+			and dm.user_id = _uid
+	);
+$$;
+
+revoke all on function public.is_desk_owner(uuid, uuid) from public;
+grant execute on function public.is_desk_owner(uuid, uuid) to authenticated;
+revoke all on function public.is_desk_member(uuid, uuid) from public;
+grant execute on function public.is_desk_member(uuid, uuid) to authenticated;
+
 drop policy if exists "owner and members can read desk memberships" on public.desk_members;
-create policy "owner and members can read desk memberships"
+drop policy if exists "members can read desk memberships" on public.desk_members;
+create policy "members and owners can read desk memberships"
 	on public.desk_members for select
 	to authenticated
 	using (
 		auth.uid() = user_id
-		or exists (
-			select 1
-			from public.desks d
-			where d.id = desk_members.desk_id
-				and d.user_id = auth.uid()
-		)
-		or exists (
-			select 1
-			from public.desk_members dm
-			where dm.desk_id = desk_members.desk_id
-				and dm.user_id = auth.uid()
-		)
+		or public.is_desk_owner(desk_id, auth.uid())
+		or public.is_desk_member(desk_id, auth.uid())
 	);
 
 drop policy if exists "owners and requesters can read member requests" on public.desk_member_requests;
@@ -1182,4 +1206,15 @@ create policy "owners can update member requests"
 	to authenticated
 	using (auth.uid() = owner_id)
 	with check (auth.uid() = owner_id);
+
+-- One-time migration for legacy shared desks created before is_collaborative was used.
+-- Marks any desk that already has members as collaborative.
+update public.desks d
+set is_collaborative = true
+where coalesce(d.is_collaborative, false) = false
+	and exists (
+		select 1
+		from public.desk_members dm
+		where dm.desk_id = d.id
+	);
 ```

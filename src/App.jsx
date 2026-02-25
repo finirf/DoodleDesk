@@ -2214,6 +2214,57 @@ function Desk({ user }) {
     }
   }
 
+  async function sendFriendRequestToUser(targetUserId, targetEmail) {
+    if (!targetUserId) {
+      return { ok: false, errorMessage: 'Could not resolve target user.' }
+    }
+
+    if (targetUserId === user.id) {
+      return { ok: false, errorMessage: 'You cannot add yourself as a friend.' }
+    }
+
+    const safeTargetEmail = (targetEmail || '').trim().toLowerCase()
+
+    await ensureCurrentUserProfile()
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from('friend_requests')
+      .select('id, status, sender_id, receiver_id')
+      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},receiver_id.eq.${user.id})`)
+      .limit(1)
+
+    if (existingError) {
+      return { ok: false, errorMessage: existingError?.message || 'Could not check existing friend requests.' }
+    }
+
+    const existingRow = existingRows?.[0]
+    if (existingRow) {
+      if (existingRow.status === 'accepted') {
+        return { ok: false, errorMessage: 'You are already friends with this user.' }
+      }
+
+      if (existingRow.status === 'pending') {
+        if (existingRow.receiver_id === user.id) {
+          return { ok: false, errorMessage: 'This user already sent you a request. Accept it below.' }
+        }
+        return { ok: false, errorMessage: 'Friend request already sent.' }
+      }
+    }
+
+    const { error: insertError } = await supabase
+      .from('friend_requests')
+      .insert([{ sender_id: user.id, receiver_id: targetUserId, status: 'pending' }])
+
+    if (insertError) {
+      return { ok: false, errorMessage: insertError?.message || 'Could not send friend request.' }
+    }
+
+    return {
+      ok: true,
+      successMessage: `Friend request sent${safeTargetEmail ? ` to ${safeTargetEmail}` : ''}.`
+    }
+  }
+
   async function handleSendFriendRequest(e) {
     e.preventDefault()
 
@@ -2233,8 +2284,6 @@ function Desk({ user }) {
     setFriendMessage('')
 
     try {
-      await ensureCurrentUserProfile()
-
       const { data: targetProfiles, error: targetError } = await supabase
         .from('profiles')
         .select('id, email')
@@ -2251,44 +2300,13 @@ function Desk({ user }) {
         return
       }
 
-      const otherUserId = targetProfile.id
-
-      const { data: existingRows, error: existingError } = await supabase
-        .from('friend_requests')
-        .select('id, status, sender_id, receiver_id')
-        .or(`and(sender_id.eq.${user.id},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${user.id})`)
-        .limit(1)
-
-      if (existingError) {
-        throw existingError
+      const sendResult = await sendFriendRequestToUser(targetProfile.id, targetEmail)
+      if (!sendResult.ok) {
+        setFriendError(sendResult.errorMessage || 'Could not send friend request.')
+        return
       }
 
-      const existingRow = existingRows?.[0]
-      if (existingRow) {
-        if (existingRow.status === 'accepted') {
-          setFriendError('You are already friends with this user.')
-          return
-        }
-
-        if (existingRow.status === 'pending') {
-          if (existingRow.receiver_id === user.id) {
-            setFriendError('This user already sent you a request. Accept it below.')
-          } else {
-            setFriendError('Friend request already sent.')
-          }
-          return
-        }
-      }
-
-      const { error: insertError } = await supabase
-        .from('friend_requests')
-        .insert([{ sender_id: user.id, receiver_id: otherUserId, status: 'pending' }])
-
-      if (insertError) {
-        throw insertError
-      }
-
-      setFriendMessage(`Friend request sent to ${targetEmail}.`)
+      setFriendMessage(sendResult.successMessage || `Friend request sent to ${targetEmail}.`)
       setFriendEmailInput('')
       await fetchFriends()
     } catch (error) {
@@ -2297,6 +2315,25 @@ function Desk({ user }) {
     } finally {
       setFriendSubmitting(false)
     }
+  }
+
+  async function sendFriendRequestToDeskMember(memberUserId, memberEmail) {
+    setDeskMembersError('')
+    setDeskMembersMessage('')
+
+    const loadingKey = `friend-request:${memberUserId}`
+    setDeskMemberActionLoadingId(loadingKey)
+
+    const sendResult = await sendFriendRequestToUser(memberUserId, memberEmail)
+    if (!sendResult.ok) {
+      setDeskMembersError(sendResult.errorMessage || 'Could not send friend request.')
+      setDeskMemberActionLoadingId(null)
+      return
+    }
+
+    setDeskMembersMessage(sendResult.successMessage || 'Friend request sent.')
+    await fetchFriends()
+    setDeskMemberActionLoadingId(null)
   }
 
   async function respondToFriendRequest(requestId, nextStatus) {
@@ -3626,7 +3663,7 @@ function Desk({ user }) {
                 </button>
               )}
 
-              {currentDesk && (isCurrentDeskOwner || isDeskCollaborative(currentDesk)) && (
+              {currentDesk && (isCurrentDeskOwner || isDeskCollaborative(currentDesk) || currentDesk.user_id !== user.id) && (
                 <button
                   type="button"
                   onClick={openDeskMembersDialog}
@@ -5098,6 +5135,11 @@ function Desk({ user }) {
         deskMemberActionLoadingId={deskMemberActionLoadingId}
         removeDeskMember={removeDeskMember}
         addDeskMember={addDeskMember}
+        sendFriendRequestToDeskMember={sendFriendRequestToDeskMember}
+        currentUserId={user.id}
+        friendIds={friends.map((friend) => friend.id)}
+        outgoingFriendRequestUserIds={outgoingFriendRequests.map((request) => request.receiver_id)}
+        incomingFriendRequestUserIds={incomingFriendRequests.map((request) => request.sender_id)}
         requestDeskMemberAdd={requestDeskMemberAdd}
         respondDeskMemberRequest={respondDeskMemberRequest}
         isCurrentDeskOwner={isCurrentDeskOwner}

@@ -35,6 +35,11 @@ export default function DeskModals({
   deskMemberActionLoadingId,
   removeDeskMember,
   addDeskMember,
+  sendFriendRequestToDeskMember,
+  currentUserId,
+  friendIds,
+  outgoingFriendRequestUserIds,
+  incomingFriendRequestUserIds,
   requestDeskMemberAdd,
   respondDeskMemberRequest,
   isCurrentDeskOwner,
@@ -367,6 +372,11 @@ export default function DeskModals({
               ) : (
                 deskMembers.map((member) => {
                   const isRemoving = deskMemberActionLoadingId === `remove:${member.user_id}`
+                  const isSelf = member.user_id === currentUserId
+                  const isFriend = friendIds.includes(member.user_id)
+                  const hasOutgoingFriendRequest = outgoingFriendRequestUserIds.includes(member.user_id)
+                  const hasIncomingFriendRequest = incomingFriendRequestUserIds.includes(member.user_id)
+                  const isFriendRequesting = deskMemberActionLoadingId === `friend-request:${member.user_id}`
                   const memberDisplay = getProfileDisplayParts(member)
                   return (
                     <div
@@ -385,26 +395,57 @@ export default function DeskModals({
                           <div style={{ fontSize: 11, color: '#666' }}>{memberDisplay.secondary}</div>
                         )}
                       </span>
-                      {isCurrentDeskOwner && (
-                        <button
-                          type="button"
-                          onClick={() => removeDeskMember(member.user_id)}
-                          disabled={isRemoving}
-                          style={{
-                            border: 'none',
-                            borderRadius: 4,
-                            padding: '4px 8px',
-                            background: '#eee',
-                            color: '#333',
-                            fontSize: 12,
-                            cursor: isRemoving ? 'not-allowed' : 'pointer',
-                            opacity: isRemoving ? 0.7 : 1,
-                            whiteSpace: 'nowrap'
-                          }}
-                        >
-                          {isRemoving ? 'Removing...' : 'Remove'}
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        {!isSelf && (
+                          <button
+                            type="button"
+                            onClick={() => sendFriendRequestToDeskMember(member.user_id, member.email)}
+                            disabled={isFriend || hasOutgoingFriendRequest || hasIncomingFriendRequest || isFriendRequesting}
+                            style={{
+                              border: 'none',
+                              borderRadius: 4,
+                              padding: '4px 8px',
+                              background: isFriend || hasOutgoingFriendRequest || hasIncomingFriendRequest ? '#eee' : '#4285F4',
+                              color: isFriend || hasOutgoingFriendRequest || hasIncomingFriendRequest ? '#777' : '#fff',
+                              fontSize: 12,
+                              cursor: isFriend || hasOutgoingFriendRequest || hasIncomingFriendRequest || isFriendRequesting ? 'not-allowed' : 'pointer',
+                              opacity: isFriendRequesting ? 0.7 : 1,
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {isFriend
+                              ? 'Friend'
+                              : hasOutgoingFriendRequest
+                                ? 'Requested'
+                                : hasIncomingFriendRequest
+                                  ? 'Respond'
+                                  : isFriendRequesting
+                                    ? 'Sending...'
+                                    : 'Add Friend'}
+                          </button>
+                        )}
+
+                        {isCurrentDeskOwner && (
+                          <button
+                            type="button"
+                            onClick={() => removeDeskMember(member.user_id)}
+                            disabled={isRemoving}
+                            style={{
+                              border: 'none',
+                              borderRadius: 4,
+                              padding: '4px 8px',
+                              background: '#eee',
+                              color: '#333',
+                              fontSize: 12,
+                              cursor: isRemoving ? 'not-allowed' : 'pointer',
+                              opacity: isRemoving ? 0.7 : 1,
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {isRemoving ? 'Removing...' : 'Remove'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )
                 })
