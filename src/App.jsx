@@ -117,6 +117,7 @@ function Desk({ user }) {
   const [profileStats, setProfileStats] = useState({ desks_created: 0, desks_deleted: 0 })
   const [profileStatsLoading, setProfileStatsLoading] = useState(false)
   const [draggedId, setDraggedId] = useState(null)
+  const [activeDecorationHandleId, setActiveDecorationHandleId] = useState(null)
   const [resizingId, setResizingId] = useState(null)
   const [resizeOverlay, setResizeOverlay] = useState(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
@@ -304,10 +305,6 @@ function Desk({ user }) {
     return 'notes'
   }
 
-  function clampScale(value) {
-    return Math.min(2.5, Math.max(0.5, value))
-  }
-
   function clampDimension(value, min, max) {
     return Math.min(max, Math.max(min, value))
   }
@@ -349,6 +346,21 @@ function Desk({ user }) {
   useEffect(() => {
     notesRef.current = notes
   }, [notes])
+
+  useEffect(() => {
+    if (!activeDecorationHandleId) return
+
+    function handleDecorationOutsideClick(e) {
+      const clickedItemElement = e.target.closest?.('[data-item-key]')
+      const clickedItemKey = clickedItemElement?.dataset?.itemKey || null
+
+      if (clickedItemKey === activeDecorationHandleId) return
+      setActiveDecorationHandleId(null)
+    }
+
+    window.addEventListener('mousedown', handleDecorationOutsideClick)
+    return () => window.removeEventListener('mousedown', handleDecorationOutsideClick)
+  }, [activeDecorationHandleId])
 
   useEffect(() => {
     function handleResize() {
@@ -1061,6 +1073,7 @@ function Desk({ user }) {
     setChecklistEditItems([])
     setNewChecklistItemText('')
     setPendingDeleteId(null)
+    setActiveDecorationHandleId(null)
     setShowDeskMenu(false)
   }
 
@@ -1659,24 +1672,40 @@ function Desk({ user }) {
     const activeItemKey = resizeStartRef.current.itemKey
     if (!activeItemKey) return
 
+    const activeItem = notesRef.current.find((item) => getItemKey(item) === activeItemKey)
+    if (!activeItem) return
+
     const deltaX = e.pageX - resizeStartRef.current.startPageX
     const deltaY = e.pageY - resizeStartRef.current.startPageY
-    const isRatioLocked = e.shiftKey
+    const isDecoration = isDecorationItem(activeItem)
+    const isRatioLocked = isDecoration || e.shiftKey
+
+    const minWidth = isDecoration ? 44 : 120
+    const minHeight = isDecoration ? 44 : 100
+    const maxWidth = isDecoration ? 360 : 700
+    const maxHeight = isDecoration ? 360 : 700
 
     let nextWidth = 0
     let nextHeight = 0
     let scale = 1
 
     if (isRatioLocked) {
-      const normalizedDelta = (deltaX + deltaY) / 220
-      scale = clampScale(1 + normalizedDelta)
-      nextWidth = Math.round(resizeStartRef.current.startWidth * scale)
-      nextHeight = Math.round(resizeStartRef.current.startHeight * scale)
+      const widthScale = (resizeStartRef.current.startWidth + deltaX) / resizeStartRef.current.startWidth
+      const heightScale = (resizeStartRef.current.startHeight + deltaY) / resizeStartRef.current.startHeight
+      scale = Math.max(0.1, (widthScale + heightScale) / 2)
+      nextWidth = clampDimension(Math.round(resizeStartRef.current.startWidth * scale), minWidth, maxWidth)
+      nextHeight = clampDimension(Math.round(resizeStartRef.current.startHeight * scale), minHeight, maxHeight)
+
+      if (isDecoration) {
+        const lockedSide = Math.min(nextWidth, nextHeight)
+        nextWidth = lockedSide
+        nextHeight = lockedSide
+      }
     } else {
       nextWidth = Math.round(resizeStartRef.current.startWidth + deltaX)
       nextHeight = Math.round(resizeStartRef.current.startHeight + deltaY)
-      nextWidth = clampDimension(nextWidth, 120, 700)
-      nextHeight = clampDimension(nextHeight, 100, 700)
+      nextWidth = clampDimension(nextWidth, minWidth, maxWidth)
+      nextHeight = clampDimension(nextHeight, minHeight, maxHeight)
 
       const widthScale = nextWidth / resizeStartRef.current.startWidth
       const heightScale = nextHeight / resizeStartRef.current.startHeight
@@ -2925,17 +2954,26 @@ function Desk({ user }) {
           <div
             key={itemKey}
             data-note-id={item.id}
+            data-item-key={itemKey}
             onMouseDown={editingId ? undefined : (e) => handleDragStart(e, item)}
+            onClick={
+              isDecoration
+                ? () => setActiveDecorationHandleId((prev) => (prev === itemKey ? null : itemKey))
+                : undefined
+            }
             style={{
               position: 'absolute',
               left: item.x,
               top: item.y,
               transform: `rotate(${item.rotation || 0}deg)`,
-              background: isDecoration ? 'transparent' : (editingId === itemKey ? editColor : getItemColor(item)),
+              background: isDecoration ? '#ffffff' : (editingId === itemKey ? editColor : getItemColor(item)),
               padding: isDecoration ? 8 : 20,
               width: getItemWidth(item),
               minHeight: getItemHeight(item),
-              boxShadow: isDecoration ? 'none' : '3px 3px 10px rgba(0,0,0,0.3)',
+              borderRadius: isDecoration ? '50%' : 0,
+              boxShadow: isDecoration ? '0 2px 8px rgba(0,0,0,0.2)' : '3px 3px 10px rgba(0,0,0,0.3)',
+              mixBlendMode: 'normal',
+              opacity: 1,
               fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
               cursor: draggedId === itemKey ? 'grabbing' : 'grab',
               zIndex: draggedId === itemKey ? 100 : 1
@@ -2951,13 +2989,46 @@ function Desk({ user }) {
                   justifyContent: 'center',
                   flexDirection: 'column',
                   userSelect: 'none',
-                  pointerEvents: 'none'
+                  pointerEvents: 'none',
+                  position: 'relative'
                 }}
               >
-                <div style={{ fontSize: 40, lineHeight: 1 }}>{decorationOption?.emoji || '📌'}</div>
-                <div style={{ marginTop: 4, fontSize: 11, color: '#333', fontWeight: 600 }}>
-                  {decorationOption?.label || 'Decoration'}
+                <div
+                  style={{
+                    fontSize: Math.max(24, Math.round(Math.min(getItemWidth(item), getItemHeight(item)) * 0.58)),
+                    lineHeight: 1
+                  }}
+                >
+                  {decorationOption?.emoji || '📌'}
                 </div>
+                {activeDecorationHandleId === itemKey && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => handleResizeMouseDown(e, item)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label="Resize decoration"
+                    title="Hold and move cursor to resize"
+                    style={{
+                      position: 'absolute',
+                      right: -6,
+                      bottom: -6,
+                      width: 22,
+                      height: 22,
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: resizingId === itemKey ? '#4285F4' : '#777',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      pointerEvents: 'auto'
+                    }}
+                  >
+                    <FourWayResizeIcon size={12} color="#fff" />
+                  </button>
+                )}
               </div>
             ) : editingId === itemKey ? (
               <form
@@ -3307,7 +3378,6 @@ function Desk({ user }) {
             ) : (
               <div
                 onClick={() => {
-                  if (isDecoration) return
                   setIsSavingEdit(false)
                   setEditSaveError('')
                   setEditingId(itemKey)
