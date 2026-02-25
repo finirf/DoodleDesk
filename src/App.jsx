@@ -1804,7 +1804,7 @@ function Desk({ user }) {
                         {desk.user_id !== user.id
                           ? '• Shared'
                           : isDeskCollaborative(desk)
-                            ? '• Collaborative'
+                            ? '• Sharing'
                             : ''}
                       </span>
                     </button>
