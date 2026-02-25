@@ -1195,6 +1195,12 @@ function Desk({ user }) {
       return
     }
 
+    const desk = desks.find((entry) => entry.id === deskId)
+    if (!desk) {
+      setDeskMembers([])
+      return
+    }
+
     setDeskMembersLoading(true)
     setDeskMembersError('')
 
@@ -1208,12 +1214,16 @@ function Desk({ user }) {
       if (membershipError) throw membershipError
 
       const memberRows = membershipRows || []
-      if (memberRows.length === 0) {
+      const memberIds = Array.from(new Set([
+        desk.user_id,
+        ...memberRows.map((row) => row.user_id)
+      ]))
+
+      if (memberIds.length === 0) {
         setDeskMembers([])
         return
       }
 
-      const memberIds = memberRows.map((row) => row.user_id)
       const { data: profileRows, error: profileError } = await supabase
         .from('profiles')
         .select('id, email, preferred_name')
@@ -1228,14 +1238,25 @@ function Desk({ user }) {
           preferred_name: row.preferred_name || ''
         }
       ]))
-      setDeskMembers(
-        memberRows.map((row) => ({
-          membership_id: row.id,
-          user_id: row.user_id,
-          email: profileById.get(row.user_id)?.email || 'Unknown user',
-          preferred_name: profileById.get(row.user_id)?.preferred_name || ''
-        }))
-      )
+      const membershipByUserId = new Map(memberRows.map((row) => [row.user_id, row]))
+      const normalizedMembers = memberIds.map((memberId) => {
+        const membershipRow = membershipByUserId.get(memberId)
+        return {
+          membership_id: membershipRow?.id || null,
+          user_id: memberId,
+          email: profileById.get(memberId)?.email || 'Unknown user',
+          preferred_name: profileById.get(memberId)?.preferred_name || '',
+          is_owner: memberId === desk.user_id
+        }
+      })
+
+      const sortedMembers = normalizedMembers.sort((left, right) => {
+        if (left.is_owner && !right.is_owner) return -1
+        if (!left.is_owner && right.is_owner) return 1
+        return left.email.localeCompare(right.email)
+      })
+
+      setDeskMembers(sortedMembers)
     } catch (error) {
       console.error('Failed to fetch desk members:', error)
       setDeskMembersError(error?.message || 'Could not load desk members.')

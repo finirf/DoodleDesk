@@ -372,6 +372,7 @@ export default function DeskModals({
               ) : (
                 deskMembers.map((member) => {
                   const isRemoving = deskMemberActionLoadingId === `remove:${member.user_id}`
+                  const isOwnerRow = Boolean(member.is_owner)
                   const isSelf = member.user_id === currentUserId
                   const isFriend = friendIds.includes(member.user_id)
                   const hasOutgoingFriendRequest = outgoingFriendRequestUserIds.includes(member.user_id)
@@ -391,6 +392,9 @@ export default function DeskModals({
                     >
                       <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {memberDisplay.primary}
+                        {isOwnerRow && (
+                          <div style={{ fontSize: 11, color: '#1a73e8' }}>Desk owner</div>
+                        )}
                         {memberDisplay.secondary && (
                           <div style={{ fontSize: 11, color: '#666' }}>{memberDisplay.secondary}</div>
                         )}
@@ -425,7 +429,7 @@ export default function DeskModals({
                           </button>
                         )}
 
-                        {isCurrentDeskOwner && (
+                        {isCurrentDeskOwner && !isOwnerRow && (
                           <button
                             type="button"
                             onClick={() => removeDeskMember(member.user_id)}
