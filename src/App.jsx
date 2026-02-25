@@ -1849,7 +1849,6 @@ function Desk({ user }) {
                       type="button"
                       onClick={() => handleSelectDesk(desk)}
                       style={{
-                        display: 'block',
                         width: '100%',
                         padding: '8px 10px',
                         border: 'none',
