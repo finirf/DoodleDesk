@@ -101,6 +101,7 @@ function Desk({ user }) {
   const [friendError, setFriendError] = useState('')
   const [friendsLoading, setFriendsLoading] = useState(false)
   const [friendSubmitting, setFriendSubmitting] = useState(false)
+  const [friendActionLoadingId, setFriendActionLoadingId] = useState(null)
   const [profileStats, setProfileStats] = useState({ desks_created: 0, desks_deleted: 0 })
   const [profileStatsLoading, setProfileStatsLoading] = useState(false)
   const [draggedId, setDraggedId] = useState(null)
@@ -1246,6 +1247,30 @@ function Desk({ user }) {
     await fetchFriends()
   }
 
+  async function removeFriend(friendId) {
+    if (!friendId) return
+
+    setFriendActionLoadingId(friendId)
+    setFriendError('')
+    setFriendMessage('')
+
+    const { error } = await supabase
+      .from('friend_requests')
+      .delete()
+      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friendId},status.eq.accepted),and(sender_id.eq.${friendId},receiver_id.eq.${user.id},status.eq.accepted)`)
+
+    if (error) {
+      console.error('Failed to remove friend:', error)
+      setFriendError(error?.message || 'Could not remove friend.')
+      setFriendActionLoadingId(null)
+      return
+    }
+
+    setFriendMessage('Friend removed.')
+    await fetchFriends()
+    setFriendActionLoadingId(null)
+  }
+
   function normalizeRotation(value) {
     return ((value % 360) + 360) % 360
   }
@@ -2262,8 +2287,35 @@ function Desk({ user }) {
                       <div style={{ fontSize: 12, opacity: 0.75 }}>No friends yet</div>
                     ) : (
                       friends.map((friend) => (
-                        <div key={friend.id} style={{ fontSize: 13, marginBottom: 4 }}>
-                          {friend.email}
+                        <div
+                          key={friend.id}
+                          style={{
+                            marginBottom: 6,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: 8
+                          }}
+                        >
+                          <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>{friend.email}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeFriend(friend.id)}
+                            disabled={friendActionLoadingId === friend.id}
+                            style={{
+                              border: 'none',
+                              borderRadius: 4,
+                              padding: '4px 8px',
+                              background: '#eee',
+                              color: '#333',
+                              fontSize: 12,
+                              cursor: friendActionLoadingId === friend.id ? 'not-allowed' : 'pointer',
+                              opacity: friendActionLoadingId === friend.id ? 0.7 : 1,
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {friendActionLoadingId === friend.id ? 'Removing...' : 'Remove'}
+                          </button>
                         </div>
                       ))
                     )}
