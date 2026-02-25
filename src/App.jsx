@@ -135,6 +135,7 @@ function Desk({ user }) {
   const [preferredNameSaving, setPreferredNameSaving] = useState(false)
   const [preferredNameError, setPreferredNameError] = useState('')
   const [preferredNameMessage, setPreferredNameMessage] = useState('')
+  const [deleteAccountError, setDeleteAccountError] = useState('')
   const [draggedId, setDraggedId] = useState(null)
   const [activeDecorationHandleId, setActiveDecorationHandleId] = useState(null)
   const [rotatingId, setRotatingId] = useState(null)
@@ -639,6 +640,28 @@ function Desk({ user }) {
 
   useEffect(() => {
     fetchDesks()
+  }, [user.id])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`desk-members-live:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'desk_members',
+          filter: `user_id=eq.${user.id}`
+        },
+        () => {
+          fetchDesks()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [user.id])
 
   useEffect(() => {
@@ -1830,6 +1853,45 @@ function Desk({ user }) {
 
   async function handleLogout() {
     await supabase.auth.signOut()
+  }
+
+  async function handleDeleteAccount() {
+    const confirmationText = window.prompt('Type DELETE to confirm account deletion.')
+    if (confirmationText === null) return
+
+    if (confirmationText.trim().toUpperCase() !== 'DELETE') {
+      setDeleteAccountError('Confirmation text did not match. Account deletion canceled.')
+      return
+    }
+
+    setDeleteAccountError('')
+
+    openConfirmDialog({
+      title: 'Delete Account',
+      message: 'This permanently deletes your DoodleDesk profile data, desks, shelves, and friend data. This action cannot be undone.',
+      confirmLabel: 'Delete Account',
+      tone: 'danger',
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase.functions.invoke('delete-account')
+          if (error) {
+            const message = `${error?.message || ''}`.toLowerCase()
+            if (message.includes('function') || message.includes('404')) {
+              throw new Error('Delete-account function is not deployed yet. Deploy the Supabase Edge Function first.')
+            }
+            throw error
+          }
+
+          localStorage.removeItem(lastDeskStorageKey)
+          localStorage.removeItem(shelfPrefsStorageKey)
+
+          await supabase.auth.signOut()
+        } catch (error) {
+          console.error('Failed to delete account data:', error)
+          setDeleteAccountError(error?.message || 'Could not delete account data.')
+        }
+      }
+    })
   }
 
   async function ensureCurrentUserProfile() {
@@ -3746,6 +3808,29 @@ function Desk({ user }) {
                   >
                     {profileStatsLoading ? 'Refreshing...' : 'Refresh stats'}
                   </button>
+
+                  <div style={{ borderTop: '1px solid #eee', marginTop: 12, paddingTop: 10 }}>
+                    <button
+                      type="button"
+                      onClick={handleDeleteAccount}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '7px 8px',
+                        borderRadius: 4,
+                        border: '1px solid #ef9a9a',
+                        background: '#fff5f5',
+                        color: '#b71c1c',
+                        fontSize: 12,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Delete account
+                    </button>
+                    {deleteAccountError && (
+                      <div style={{ marginTop: 6, color: '#d32f2f', fontSize: 12 }}>{deleteAccountError}</div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div>

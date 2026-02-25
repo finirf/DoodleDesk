@@ -988,3 +988,46 @@ create policy "users can delete own desk shelf assignments"
 	to authenticated
 	using (auth.uid() = user_id);
 ```
+
+## Full account deletion (including auth.users)
+
+The Profile → Delete account button now calls a Supabase Edge Function named `delete-account`.
+That function verifies the caller JWT and then uses the service role to delete the caller from `auth.users`.
+
+### 1) SQL policy (run once)
+
+```sql
+alter table public.profiles enable row level security;
+
+drop policy if exists "users can delete own profile" on public.profiles;
+create policy "users can delete own profile"
+	on public.profiles for delete
+	to authenticated
+	using (auth.uid() = id);
+```
+
+### 2) Deploy the Edge Function
+
+The function file is already in this repo at:
+
+- `supabase/functions/delete-account/index.ts`
+
+Deploy it with Supabase CLI:
+
+```bash
+supabase functions deploy delete-account
+```
+
+If you run functions outside hosted Supabase defaults, make sure these secrets are available:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Set secrets (if needed):
+
+```bash
+supabase secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=... SUPABASE_SERVICE_ROLE_KEY=...
+```
+
+After deployment, deleting an account removes the auth user and cascades related app data via your foreign keys.
