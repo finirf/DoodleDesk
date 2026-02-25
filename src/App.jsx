@@ -78,6 +78,7 @@ function Desk({ user }) {
   const [showFolderHierarchyTools, setShowFolderHierarchyTools] = useState(false)
   const [deskFolders, setDeskFolders] = useState([])
   const [deskFolderAssignments, setDeskFolderAssignments] = useState({})
+  const [folderPrefsHydrated, setFolderPrefsHydrated] = useState(false)
   const [expandedDeskFolders, setExpandedDeskFolders] = useState({
     __private: true,
     __shared: true,
@@ -161,7 +162,8 @@ function Desk({ user }) {
   const newNoteMenuRef = useRef(null)
   const deskMenuRef = useRef(null)
   const profileMenuRef = useRef(null)
-  const folderPrefsLoadedRef = useRef(false)
+  const folderSupabaseSyncEnabledRef = useRef(true)
+  const folderSyncTimeoutRef = useRef(null)
 
   const growThreshold = 180
   const FONT_OPTIONS = [
@@ -380,6 +382,16 @@ function Desk({ user }) {
     setNewChecklistItemText('')
   }
 
+  function isMissingFolderStorageTableError(error) {
+    const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase()
+    const code = `${error?.code || ''}`.toLowerCase()
+    return code === '42p01'
+      || (
+        (message.includes('desk_folders') || message.includes('desk_folder_assignments'))
+        && (message.includes('does not exist') || message.includes('relation') || message.includes('not found'))
+      )
+  }
+
   function getDeskGroupLabel(desk) {
     if (!desk) return 'Private'
     if (desk.user_id !== user.id) return 'Shared'
@@ -445,7 +457,9 @@ function Desk({ user }) {
     }
 
     const nextFolder = {
-      id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
       name,
       parent_id: newFolderParentId || null
     }
@@ -550,57 +564,215 @@ function Desk({ user }) {
     })
   }
 
+  async function syncDeskFolderPrefsToSupabase(foldersSnapshot, assignmentsSnapshot) {
+    if (!folderSupabaseSyncEnabledRef.current) return
+
+    const sanitizedFolders = foldersSnapshot
+      .filter((folder) => folder && typeof folder.id === 'string' && typeof folder.name === 'string')
+      .map((folder) => ({
+        id: folder.id,
+        user_id: user.id,
+        name: folder.name,
+        parent_id: folder.parent_id || null
+      }))
+
+    const validFolderIds = new Set(sanitizedFolders.map((folder) => folder.id))
+    const sanitizedAssignments = Object.entries(assignmentsSnapshot)
+      .filter(([deskId, folderId]) => typeof deskId === 'string' && typeof folderId === 'string' && validFolderIds.has(folderId))
+      .map(([deskId, folderId]) => ({ desk_id: deskId, folder_id: folderId, user_id: user.id }))
+
+    const [existingFoldersResult, existingAssignmentsResult] = await Promise.all([
+      supabase.from('desk_folders').select('id').eq('user_id', user.id),
+      supabase.from('desk_folder_assignments').select('desk_id').eq('user_id', user.id)
+    ])
+
+    if (existingFoldersResult.error) throw existingFoldersResult.error
+    if (existingAssignmentsResult.error) throw existingAssignmentsResult.error
+
+    const existingFolderIds = new Set((existingFoldersResult.data || []).map((row) => row.id))
+    const nextFolderIds = new Set(sanitizedFolders.map((folder) => folder.id))
+
+    const foldersToDelete = [...existingFolderIds].filter((folderId) => !nextFolderIds.has(folderId))
+
+    if (sanitizedFolders.length > 0) {
+      const { error: upsertFoldersError } = await supabase
+        .from('desk_folders')
+        .upsert(sanitizedFolders, { onConflict: 'id' })
+      if (upsertFoldersError) throw upsertFoldersError
+    } else if (existingFolderIds.size > 0) {
+      const { error: clearFoldersError } = await supabase
+        .from('desk_folders')
+        .delete()
+        .eq('user_id', user.id)
+      if (clearFoldersError) throw clearFoldersError
+    }
+
+    if (foldersToDelete.length > 0) {
+      const { error: deleteFoldersError } = await supabase
+        .from('desk_folders')
+        .delete()
+        .eq('user_id', user.id)
+        .in('id', foldersToDelete)
+      if (deleteFoldersError) throw deleteFoldersError
+    }
+
+    const existingAssignmentDeskIds = new Set((existingAssignmentsResult.data || []).map((row) => String(row.desk_id)))
+    const nextAssignmentDeskIds = new Set(sanitizedAssignments.map((row) => String(row.desk_id)))
+    const assignmentsToDelete = [...existingAssignmentDeskIds].filter((deskId) => !nextAssignmentDeskIds.has(deskId))
+
+    if (sanitizedAssignments.length > 0) {
+      const { error: upsertAssignmentsError } = await supabase
+        .from('desk_folder_assignments')
+        .upsert(sanitizedAssignments, { onConflict: 'user_id,desk_id' })
+      if (upsertAssignmentsError) throw upsertAssignmentsError
+    }
+
+    if (assignmentsToDelete.length > 0) {
+      const { error: deleteAssignmentsError } = await supabase
+        .from('desk_folder_assignments')
+        .delete()
+        .eq('user_id', user.id)
+        .in('desk_id', assignmentsToDelete)
+      if (deleteAssignmentsError) throw deleteAssignmentsError
+    }
+  }
+
   useEffect(() => {
     fetchDesks()
   }, [user.id])
 
   useEffect(() => {
-    try {
-      const rawValue = localStorage.getItem(folderPrefsStorageKey)
-      if (!rawValue) {
-        setDeskFolders([])
-        setDeskFolderAssignments({})
-        setExpandedDeskFolders({ __private: true, __shared: true, __sharing: true, __custom_root: true })
-        folderPrefsLoadedRef.current = true
+    if (folderSyncTimeoutRef.current) {
+      clearTimeout(folderSyncTimeoutRef.current)
+      folderSyncTimeoutRef.current = null
+    }
+
+    setFolderPrefsHydrated(false)
+    let isCancelled = false
+
+    const defaultExpanded = { __private: true, __shared: true, __sharing: true, __custom_root: true }
+
+    const loadFromLocalStorage = () => {
+      try {
+        const rawValue = localStorage.getItem(folderPrefsStorageKey)
+        if (!rawValue) {
+          return {
+            folders: [],
+            assignments: {},
+            expanded: defaultExpanded
+          }
+        }
+
+        const parsed = JSON.parse(rawValue)
+        const parsedFolders = Array.isArray(parsed?.folders)
+          ? parsed.folders.filter((folder) => folder && typeof folder.id === 'string' && typeof folder.name === 'string')
+          : []
+        const parsedAssignments = parsed?.assignments && typeof parsed.assignments === 'object'
+          ? Object.fromEntries(
+              Object.entries(parsed.assignments).filter((entry) => {
+                const [deskId, folderId] = entry
+                return typeof deskId === 'string' && typeof folderId === 'string'
+              })
+            )
+          : {}
+        const parsedExpanded = parsed?.expanded && typeof parsed.expanded === 'object'
+          ? Object.fromEntries(
+              Object.entries(parsed.expanded).filter((entry) => {
+                const [folderId, expanded] = entry
+                return typeof folderId === 'string' && typeof expanded === 'boolean'
+              })
+            )
+          : {}
+
+        return {
+          folders: parsedFolders,
+          assignments: parsedAssignments,
+          expanded: { ...defaultExpanded, ...parsedExpanded }
+        }
+      } catch (error) {
+        console.error('Failed to load local desk folder preferences:', error)
+        return {
+          folders: [],
+          assignments: {},
+          expanded: defaultExpanded
+        }
+      }
+    }
+
+    const applyLoadedState = (loadedState) => {
+      if (isCancelled) return
+      setDeskFolders(loadedState.folders)
+      setDeskFolderAssignments(loadedState.assignments)
+      setExpandedDeskFolders(loadedState.expanded)
+      setFolderPrefsHydrated(true)
+    }
+
+    async function loadFolderPrefs() {
+      const localState = loadFromLocalStorage()
+
+      if (!folderSupabaseSyncEnabledRef.current) {
+        applyLoadedState(localState)
         return
       }
 
-      const parsed = JSON.parse(rawValue)
-      const parsedFolders = Array.isArray(parsed?.folders)
-        ? parsed.folders.filter((folder) => folder && typeof folder.id === 'string' && typeof folder.name === 'string')
-        : []
-      const parsedAssignments = parsed?.assignments && typeof parsed.assignments === 'object'
-        ? Object.fromEntries(
-            Object.entries(parsed.assignments).filter((entry) => {
-              const [deskId, folderId] = entry
-              return typeof deskId === 'string' && typeof folderId === 'string'
-            })
-          )
-        : {}
-      const parsedExpanded = parsed?.expanded && typeof parsed.expanded === 'object'
-        ? Object.fromEntries(
-            Object.entries(parsed.expanded).filter((entry) => {
-              const [folderId, expanded] = entry
-              return typeof folderId === 'string' && typeof expanded === 'boolean'
-            })
-          )
-        : {}
+      try {
+        const [foldersResult, assignmentsResult] = await Promise.all([
+          supabase
+            .from('desk_folders')
+            .select('id, name, parent_id')
+            .eq('user_id', user.id),
+          supabase
+            .from('desk_folder_assignments')
+            .select('desk_id, folder_id')
+            .eq('user_id', user.id)
+        ])
 
-      setDeskFolders(parsedFolders)
-      setDeskFolderAssignments(parsedAssignments)
-      setExpandedDeskFolders({ __private: true, __shared: true, __sharing: true, __custom_root: true, ...parsedExpanded })
-      folderPrefsLoadedRef.current = true
-    } catch (error) {
-      console.error('Failed to load desk folder preferences:', error)
-      setDeskFolders([])
-      setDeskFolderAssignments({})
-      setExpandedDeskFolders({ __private: true, __shared: true, __sharing: true, __custom_root: true })
-      folderPrefsLoadedRef.current = true
+        if (foldersResult.error) throw foldersResult.error
+        if (assignmentsResult.error) throw assignmentsResult.error
+
+        const supabaseFolders = (foldersResult.data || [])
+          .filter((folder) => folder && typeof folder.id === 'string' && typeof folder.name === 'string')
+          .map((folder) => ({ id: folder.id, name: folder.name, parent_id: folder.parent_id || null }))
+
+        const validFolderIds = new Set(supabaseFolders.map((folder) => folder.id))
+        const supabaseAssignments = Object.fromEntries(
+          (assignmentsResult.data || [])
+            .filter((row) => {
+              const deskId = String(row?.desk_id || '')
+              const folderId = typeof row?.folder_id === 'string' ? row.folder_id : ''
+              return deskId.length > 0 && validFolderIds.has(folderId)
+            })
+            .map((row) => [String(row.desk_id), row.folder_id])
+        )
+
+        applyLoadedState({
+          folders: supabaseFolders,
+          assignments: supabaseAssignments,
+          expanded: localState.expanded
+        })
+      } catch (error) {
+        if (isMissingFolderStorageTableError(error)) {
+          folderSupabaseSyncEnabledRef.current = false
+        } else {
+          console.error('Failed loading desk folders from Supabase, using local fallback:', error)
+        }
+        applyLoadedState(localState)
+      }
+    }
+
+    loadFolderPrefs()
+
+    return () => {
+      isCancelled = true
+      if (folderSyncTimeoutRef.current) {
+        clearTimeout(folderSyncTimeoutRef.current)
+        folderSyncTimeoutRef.current = null
+      }
     }
   }, [folderPrefsStorageKey])
 
   useEffect(() => {
-    if (!folderPrefsLoadedRef.current) return
+    if (!folderPrefsHydrated) return
     try {
       localStorage.setItem(
         folderPrefsStorageKey,
@@ -613,9 +785,41 @@ function Desk({ user }) {
     } catch (error) {
       console.error('Failed to persist desk folder preferences:', error)
     }
-  }, [folderPrefsStorageKey, deskFolders, deskFolderAssignments, expandedDeskFolders])
+
+    if (!folderSupabaseSyncEnabledRef.current) return
+
+    if (folderSyncTimeoutRef.current) {
+      clearTimeout(folderSyncTimeoutRef.current)
+      folderSyncTimeoutRef.current = null
+    }
+
+    const foldersSnapshot = [...deskFolders]
+    const assignmentsSnapshot = { ...deskFolderAssignments }
+
+    folderSyncTimeoutRef.current = setTimeout(async () => {
+      try {
+        await syncDeskFolderPrefsToSupabase(foldersSnapshot, assignmentsSnapshot)
+      } catch (error) {
+        if (isMissingFolderStorageTableError(error)) {
+          folderSupabaseSyncEnabledRef.current = false
+          return
+        }
+        console.error('Failed to sync desk folder preferences to Supabase:', error)
+      }
+    }, 250)
+
+    return () => {
+      if (folderSyncTimeoutRef.current) {
+        clearTimeout(folderSyncTimeoutRef.current)
+        folderSyncTimeoutRef.current = null
+      }
+    }
+  }, [folderPrefsHydrated, folderPrefsStorageKey, deskFolders, deskFolderAssignments, expandedDeskFolders])
 
   useEffect(() => {
+    if (!folderPrefsHydrated) return
+    if (desks.length === 0) return
+
     const validDeskIds = new Set(desks.map((desk) => String(desk.id)))
     const validFolderIds = new Set(deskFolders.map((folder) => folder.id))
 
@@ -624,7 +828,7 @@ function Desk({ user }) {
       const didChange = nextEntries.length !== Object.keys(prev).length
       return didChange ? Object.fromEntries(nextEntries) : prev
     })
-  }, [desks, deskFolders])
+  }, [folderPrefsHydrated, desks, deskFolders])
 
   useEffect(() => {
     fetchFriends()
@@ -2817,7 +3021,10 @@ function Desk({ user }) {
           gap: 10
         }}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+          {desk.id === selectedDeskId && (
+            <span aria-hidden="true" style={{ fontSize: 12, lineHeight: 1 }}>📍</span>
+          )}
           {getDeskNameValue(desk)}
         </span>
         <span
@@ -3044,10 +3251,10 @@ function Desk({ user }) {
                     width: '100%',
                     textAlign: 'left',
                     padding: '7px 10px',
-                    border: '1px solid #d2d7e0',
+                    border: '1px solid #d8c6a8',
                     borderRadius: 4,
-                    background: '#e8f0fe',
-                    color: '#1f3b75',
+                    background: '#f3e7d3',
+                    color: '#6c4f2c',
                     cursor: 'pointer',
                     fontSize: 12,
                     fontWeight: 700,

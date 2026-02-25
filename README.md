@@ -663,3 +663,162 @@ alter table public.checklists
 alter table public.checklists
 	add column if not exists font_size integer not null default 16;
 ```
+
+## Folder hierarchy persistence (Supabase)
+
+To persist the Shelf Organizer folder hierarchy and desk-to-folder assignments across devices/sessions,
+run this SQL in Supabase:
+
+```sql
+create table if not exists public.desk_folders (
+	id uuid primary key,
+	user_id uuid not null references public.profiles(id) on delete cascade,
+	name text not null,
+	parent_id uuid null references public.desk_folders(id) on delete set null,
+	created_at timestamptz not null default now(),
+	updated_at timestamptz not null default now()
+);
+
+create table if not exists public.desk_folder_assignments (
+	user_id uuid not null references public.profiles(id) on delete cascade,
+	desk_id uuid not null references public.desks(id) on delete cascade,
+	folder_id uuid not null references public.desk_folders(id) on delete cascade,
+	created_at timestamptz not null default now(),
+	updated_at timestamptz not null default now(),
+	primary key (user_id, desk_id)
+);
+
+-- Migration-safe: ensure older tables have required columns
+alter table public.desk_folders
+	add column if not exists user_id uuid references public.profiles(id) on delete cascade;
+
+alter table public.desk_folders
+	add column if not exists name text;
+
+alter table public.desk_folders
+	add column if not exists parent_id uuid;
+
+alter table public.desk_folders
+	add column if not exists created_at timestamptz not null default now();
+
+alter table public.desk_folders
+	add column if not exists updated_at timestamptz not null default now();
+
+alter table public.desk_folder_assignments
+	add column if not exists user_id uuid references public.profiles(id) on delete cascade;
+
+alter table public.desk_folder_assignments
+	add column if not exists desk_id uuid references public.desks(id) on delete cascade;
+
+alter table public.desk_folder_assignments
+	add column if not exists folder_id uuid references public.desk_folders(id) on delete cascade;
+
+alter table public.desk_folder_assignments
+	add column if not exists created_at timestamptz not null default now();
+
+alter table public.desk_folder_assignments
+	add column if not exists updated_at timestamptz not null default now();
+
+-- Align legacy text columns to uuid when needed (safe for existing uuid columns)
+alter table public.desk_folders
+	alter column parent_id type uuid using nullif(parent_id::text, '')::uuid;
+
+alter table public.desk_folder_assignments
+	alter column folder_id type uuid using nullif(folder_id::text, '')::uuid;
+
+-- Rebuild FK constraints safely for existing tables
+alter table public.desk_folders
+	drop constraint if exists desk_folders_parent_id_fkey;
+
+alter table public.desk_folders
+	add constraint desk_folders_parent_id_fkey
+	foreign key (parent_id) references public.desk_folders(id) on delete set null;
+
+alter table public.desk_folder_assignments
+	drop constraint if exists desk_folder_assignments_folder_id_fkey;
+
+alter table public.desk_folder_assignments
+	add constraint desk_folder_assignments_folder_id_fkey
+	foreign key (folder_id) references public.desk_folders(id) on delete cascade;
+
+create index if not exists desk_folders_user_idx
+	on public.desk_folders(user_id);
+
+create index if not exists desk_folders_parent_idx
+	on public.desk_folders(parent_id);
+
+create index if not exists desk_folder_assignments_user_idx
+	on public.desk_folder_assignments(user_id);
+
+create index if not exists desk_folder_assignments_folder_idx
+	on public.desk_folder_assignments(folder_id);
+
+alter table public.desk_folders enable row level security;
+alter table public.desk_folder_assignments enable row level security;
+
+drop policy if exists "users can read own desk folders" on public.desk_folders;
+create policy "users can read own desk folders"
+	on public.desk_folders for select
+	to authenticated
+	using (auth.uid() = user_id);
+
+drop policy if exists "users can insert own desk folders" on public.desk_folders;
+create policy "users can insert own desk folders"
+	on public.desk_folders for insert
+	to authenticated
+	with check (auth.uid() = user_id);
+
+drop policy if exists "users can update own desk folders" on public.desk_folders;
+create policy "users can update own desk folders"
+	on public.desk_folders for update
+	to authenticated
+	using (auth.uid() = user_id)
+	with check (auth.uid() = user_id);
+
+drop policy if exists "users can delete own desk folders" on public.desk_folders;
+create policy "users can delete own desk folders"
+	on public.desk_folders for delete
+	to authenticated
+	using (auth.uid() = user_id);
+
+drop policy if exists "users can read own desk folder assignments" on public.desk_folder_assignments;
+create policy "users can read own desk folder assignments"
+	on public.desk_folder_assignments for select
+	to authenticated
+	using (auth.uid() = user_id);
+
+drop policy if exists "users can insert own desk folder assignments" on public.desk_folder_assignments;
+create policy "users can insert own desk folder assignments"
+	on public.desk_folder_assignments for insert
+	to authenticated
+	with check (
+		auth.uid() = user_id
+		and exists (
+			select 1
+			from public.desk_folders f
+			where f.id = desk_folder_assignments.folder_id
+				and f.user_id = auth.uid()
+		)
+	);
+
+drop policy if exists "users can update own desk folder assignments" on public.desk_folder_assignments;
+create policy "users can update own desk folder assignments"
+	on public.desk_folder_assignments for update
+	to authenticated
+	using (auth.uid() = user_id)
+	with check (
+		auth.uid() = user_id
+		and exists (
+			select 1
+			from public.desk_folders f
+			where f.id = desk_folder_assignments.folder_id
+				and f.user_id = auth.uid()
+		)
+	);
+
+drop policy if exists "users can delete own desk folder assignments" on public.desk_folder_assignments;
+create policy "users can delete own desk folder assignments"
+	on public.desk_folder_assignments for delete
+	to authenticated
+	using (auth.uid() = user_id);
+```
