@@ -306,6 +306,13 @@ function Desk({ user }) {
     return 'notes'
   }
 
+  function getItemCreatorLabel(item) {
+    const creatorEmail = typeof item?.created_by_email === 'string' ? item.created_by_email.trim() : ''
+    if (creatorEmail) return creatorEmail
+    if (item?.user_id && item.user_id === user.id) return 'You'
+    return 'A collaborator'
+  }
+
   function clampDimension(value, min, max) {
     return Math.min(max, Math.max(min, value))
   }
@@ -1136,7 +1143,34 @@ function Desk({ user }) {
     }))
     const mappedDecorations = (decorationsData || []).map((decoration) => ({ ...decoration, item_type: 'decoration' }))
 
-    const combined = [...mappedNotes, ...mappedChecklists, ...mappedDecorations]
+    const creatorIds = Array.from(
+      new Set(
+        [...mappedNotes, ...mappedChecklists]
+          .map((item) => item.user_id)
+          .filter((value) => Boolean(value))
+      )
+    )
+
+    let creatorEmailById = new Map()
+    if (creatorIds.length > 0) {
+      const { data: profileRows, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .in('id', creatorIds)
+
+      if (profileError) {
+        console.error('Failed to fetch item creator profiles:', profileError)
+      } else {
+        creatorEmailById = new Map((profileRows || []).map((row) => [row.id, row.email || '']))
+      }
+    }
+
+    const combined = [...mappedNotes, ...mappedChecklists, ...mappedDecorations].map((item) => {
+      if (isDecorationItem(item)) return item
+      const creatorEmail = creatorEmailById.get(item.user_id) || ''
+      if (!creatorEmail) return item
+      return { ...item, created_by_email: creatorEmail }
+    })
     setNotes(combined)
 
     const maxNoteBottom = combined.reduce((maxY, item) => {
@@ -1151,10 +1185,26 @@ function Desk({ user }) {
   async function addStickyNote() {
     if (!selectedDeskId) return
 
-    const { data, error } = await supabase
+    let data = null
+    let error = null
+
+    const withUserResult = await supabase
       .from('notes')
-      .insert([{ desk_id: selectedDeskId, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
+      .insert([{ desk_id: selectedDeskId, user_id: user.id, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
       .select()
+
+    data = withUserResult.data
+    error = withUserResult.error
+
+    if (error) {
+      const fallbackResult = await supabase
+        .from('notes')
+        .insert([{ desk_id: selectedDeskId, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
+        .select()
+
+      data = fallbackResult.data
+      error = fallbackResult.error
+    }
 
     const createdNote = data?.[0]
 
@@ -1172,10 +1222,26 @@ function Desk({ user }) {
   async function addChecklistNote() {
     if (!selectedDeskId) return
 
-    const { data, error } = await supabase
+    let data = null
+    let error = null
+
+    const withUserResult = await supabase
       .from('checklists')
-      .insert([{ desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
+      .insert([{ desk_id: selectedDeskId, user_id: user.id, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
       .select()
+
+    data = withUserResult.data
+    error = withUserResult.error
+
+    if (error) {
+      const fallbackResult = await supabase
+        .from('checklists')
+        .insert([{ desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
+        .select()
+
+      data = fallbackResult.data
+      error = fallbackResult.error
+    }
 
     const createdChecklist = data?.[0]
 
@@ -1637,6 +1703,24 @@ function Desk({ user }) {
     if (error) {
       console.error('Failed to save item size:', error)
     }
+  }
+
+  function moveItemLayer(itemKey, direction) {
+    setNotes((prev) => {
+      const currentIndex = prev.findIndex((entry) => getItemKey(entry) === itemKey)
+      if (currentIndex === -1) return prev
+
+      const nextItems = [...prev]
+      const [target] = nextItems.splice(currentIndex, 1)
+
+      if (direction === 'front') {
+        nextItems.push(target)
+      } else {
+        nextItems.unshift(target)
+      }
+
+      return nextItems
+    })
   }
 
   function handleResizeMouseDown(e, item) {
@@ -2948,11 +3032,14 @@ function Desk({ user }) {
         </div>
       )}
 
-      {notes.map((item) => {
+      {notes.map((item, index) => {
         const itemKey = getItemKey(item)
         const isChecklist = isChecklistItem(item)
         const isDecoration = isDecorationItem(item)
         const decorationOption = isDecoration ? getDecorationOption(item.kind) : null
+        const shouldShowCreatorLabel = Boolean(currentDesk && isDeskCollaborative(currentDesk) && !isDecoration)
+        const creatorLabel = shouldShowCreatorLabel ? getItemCreatorLabel(item) : ''
+        const baseZIndex = index + 1
 
         return (
           <div
@@ -2980,7 +3067,9 @@ function Desk({ user }) {
               opacity: 1,
               fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
               cursor: draggedId === itemKey ? 'grabbing' : 'grab',
-              zIndex: draggedId === itemKey ? 100 : 1
+              zIndex: draggedId === itemKey
+                ? 3000
+                : (editingId === itemKey || (isDecoration && activeDecorationHandleId === itemKey) ? 2500 : baseZIndex)
             }}
           >
             {isDecoration ? (
@@ -3042,6 +3131,76 @@ function Desk({ user }) {
                       }}
                     >
                       ×
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        moveItemLayer(itemKey, 'back')
+                      }}
+                      aria-label="Send decoration to back"
+                      title="Send to back"
+                      style={{
+                        position: 'absolute',
+                        left: -6,
+                        top: -6,
+                        width: 22,
+                        height: 22,
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: '#777',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        pointerEvents: 'auto',
+                        fontSize: 10,
+                        lineHeight: 1,
+                        fontWeight: 700
+                      }}
+                    >
+                      B
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        moveItemLayer(itemKey, 'front')
+                      }}
+                      aria-label="Send decoration to front"
+                      title="Send to front"
+                      style={{
+                        position: 'absolute',
+                        left: 18,
+                        top: -6,
+                        width: 22,
+                        height: 22,
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: '#777',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        pointerEvents: 'auto',
+                        fontSize: 10,
+                        lineHeight: 1,
+                        fontWeight: 700
+                      }}
+                    >
+                      F
                     </button>
                     <button
                       type="button"
@@ -3155,6 +3314,68 @@ function Desk({ user }) {
                   >
                     <FourWayResizeIcon size={14} color="#fff" />
                   </button>
+                  {!isChecklist && (
+                    <>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                        }}
+                        onClick={() => moveItemLayer(itemKey, 'back')}
+                        aria-label="Send note to back"
+                        title="Send to back"
+                        style={{
+                          width: 24,
+                          height: 24,
+                          marginLeft: 6,
+                          padding: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 10,
+                          lineHeight: 1,
+                          borderRadius: 4,
+                          border: 'none',
+                          background: '#777',
+                          color: '#fff',
+                          cursor: 'pointer',
+                          fontWeight: 700
+                        }}
+                      >
+                        B
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                        }}
+                        onClick={() => moveItemLayer(itemKey, 'front')}
+                        aria-label="Send note to front"
+                        title="Send to front"
+                        style={{
+                          width: 24,
+                          height: 24,
+                          marginLeft: 6,
+                          padding: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 10,
+                          lineHeight: 1,
+                          borderRadius: 4,
+                          border: 'none',
+                          background: '#777',
+                          color: '#fff',
+                          cursor: 'pointer',
+                          fontWeight: 700
+                        }}
+                      >
+                        F
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {isChecklist ? (
@@ -3498,6 +3719,11 @@ function Desk({ user }) {
                         </label>
                       ))
                     )}
+                    {shouldShowCreatorLabel && (
+                      <div style={{ marginTop: 8, fontSize: 10, color: '#444', textAlign: 'right' }}>
+                        Added by {creatorLabel}
+                      </div>
+                    )}
                   </>
                 ) : isDecoration ? (
                   <>
@@ -3507,7 +3733,14 @@ function Desk({ user }) {
                     </div>
                   </>
                 ) : (
-                  item.content
+                  <>
+                    <div>{item.content}</div>
+                    {shouldShowCreatorLabel && (
+                      <div style={{ marginTop: 8, fontSize: 10, color: '#444', textAlign: 'right' }}>
+                        Added by {creatorLabel}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
