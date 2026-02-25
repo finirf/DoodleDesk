@@ -75,19 +75,19 @@ function Desk({ user }) {
   const [showNewNoteMenu, setShowNewNoteMenu] = useState(false)
   const [showDeskMenu, setShowDeskMenu] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
-  const [showFolderHierarchyTools, setShowFolderHierarchyTools] = useState(false)
-  const [deskFolders, setDeskFolders] = useState([])
-  const [deskFolderAssignments, setDeskFolderAssignments] = useState({})
-  const [folderPrefsHydrated, setFolderPrefsHydrated] = useState(false)
-  const [expandedDeskFolders, setExpandedDeskFolders] = useState({
+  const [showShelfHierarchyTools, setShowShelfHierarchyTools] = useState(false)
+  const [deskShelves, setDeskShelves] = useState([])
+  const [deskShelfAssignments, setDeskShelfAssignments] = useState({})
+  const [shelfPrefsHydrated, setShelfPrefsHydrated] = useState(false)
+  const [expandedDeskShelves, setExpandedDeskShelves] = useState({
     __private: true,
     __shared: true,
     __sharing: true,
     __custom_root: true
   })
-  const [newFolderNameInput, setNewFolderNameInput] = useState('')
-  const [newFolderParentId, setNewFolderParentId] = useState('')
-  const [folderActionError, setFolderActionError] = useState('')
+  const [newShelfNameInput, setNewShelfNameInput] = useState('')
+  const [newShelfParentId, setNewShelfParentId] = useState('')
+  const [shelfActionError, setShelfActionError] = useState('')
   const [profileTab, setProfileTab] = useState('profile')
   const [deskNameDialog, setDeskNameDialog] = useState({
     isOpen: false,
@@ -162,8 +162,8 @@ function Desk({ user }) {
   const newNoteMenuRef = useRef(null)
   const deskMenuRef = useRef(null)
   const profileMenuRef = useRef(null)
-  const folderSupabaseSyncEnabledRef = useRef(true)
-  const folderSyncTimeoutRef = useRef(null)
+  const shelfSupabaseSyncEnabledRef = useRef(true)
+  const shelfSyncTimeoutRef = useRef(null)
 
   const growThreshold = 180
   const FONT_OPTIONS = [
@@ -182,8 +182,8 @@ function Desk({ user }) {
 
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
   const lastDeskStorageKey = `doodledesk:lastDesk:${user.id}`
-  const folderPrefsStorageKey = `doodledesk:deskFolders:${user.id}`
-  const BUILT_IN_FOLDERS = [
+  const shelfPrefsStorageKey = `doodledesk:deskShelves:${user.id}`
+  const BUILT_IN_SHELVES = [
     { id: '__private', label: 'Private' },
     { id: '__shared', label: 'Shared' },
     { id: '__sharing', label: 'Sharing' }
@@ -382,12 +382,12 @@ function Desk({ user }) {
     setNewChecklistItemText('')
   }
 
-  function isMissingFolderStorageTableError(error) {
+  function isMissingShelfStorageTableError(error) {
     const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase()
     const code = `${error?.code || ''}`.toLowerCase()
     return code === '42p01'
       || (
-        (message.includes('desk_folders') || message.includes('desk_folder_assignments'))
+        (message.includes('desk_shelves') || message.includes('desk_shelf_assignments'))
         && (message.includes('does not exist') || message.includes('relation') || message.includes('not found'))
       )
   }
@@ -398,154 +398,154 @@ function Desk({ user }) {
     return isDeskCollaborative(desk) ? 'Sharing' : 'Private'
   }
 
-  function getDeskDefaultFolderId(desk) {
+  function getDeskDefaultShelfId(desk) {
     if (!desk) return '__private'
     if (desk.user_id !== user.id) return '__shared'
     return isDeskCollaborative(desk) ? '__sharing' : '__private'
   }
 
-  function getDeskAssignedCustomFolderId(deskId) {
-    const assignment = deskFolderAssignments[String(deskId)]
+  function getDeskAssignedCustomShelfId(deskId) {
+    const assignment = deskShelfAssignments[String(deskId)]
     if (!assignment) return ''
-    return deskFolders.some((folder) => folder.id === assignment) ? assignment : ''
+    return deskShelves.some((shelf) => shelf.id === assignment) ? assignment : ''
   }
 
-  function getDeskEffectiveFolderId(desk) {
-    const customAssignment = getDeskAssignedCustomFolderId(desk.id)
+  function getDeskEffectiveShelfId(desk) {
+    const customAssignment = getDeskAssignedCustomShelfId(desk.id)
     if (customAssignment) return customAssignment
-    return getDeskDefaultFolderId(desk)
+    return getDeskDefaultShelfId(desk)
   }
 
-  function getChildDeskFolders(parentId) {
+  function getChildDeskShelves(parentId) {
     const normalizedParent = parentId || null
-    return deskFolders
-      .filter((folder) => (folder.parent_id || null) === normalizedParent)
+    return deskShelves
+      .filter((shelf) => (shelf.parent_id || null) === normalizedParent)
       .sort((left, right) => left.name.localeCompare(right.name))
   }
 
-  function getCustomFolderOptions(parentId = '', depth = 0) {
-    const children = getChildDeskFolders(parentId)
-    return children.flatMap((folder) => [
-      { id: folder.id, name: folder.name, depth },
-      ...getCustomFolderOptions(folder.id, depth + 1)
+  function getCustomShelfOptions(parentId = '', depth = 0) {
+    const children = getChildDeskShelves(parentId)
+    return children.flatMap((shelf) => [
+      { id: shelf.id, name: shelf.name, depth },
+      ...getCustomShelfOptions(shelf.id, depth + 1)
     ])
   }
 
-  function toggleDeskFolderExpanded(folderId) {
-    setExpandedDeskFolders((prev) => ({ ...prev, [folderId]: !prev[folderId] }))
+  function toggleDeskShelfExpanded(shelfId) {
+    setExpandedDeskShelves((prev) => ({ ...prev, [shelfId]: !prev[shelfId] }))
   }
 
-  function createDeskFolder() {
-    const name = newFolderNameInput.trim()
+  function createDeskShelf() {
+    const name = newShelfNameInput.trim()
     if (!name) {
-      setFolderActionError('Folder name is required.')
+      setShelfActionError('Shelf name is required.')
       return
     }
 
-    if (newFolderParentId && !deskFolders.some((folder) => folder.id === newFolderParentId)) {
-      setFolderActionError('Selected parent folder no longer exists.')
+    if (newShelfParentId && !deskShelves.some((shelf) => shelf.id === newShelfParentId)) {
+      setShelfActionError('Selected parent shelf no longer exists.')
       return
     }
 
-    const siblingNameExists = deskFolders.some((folder) =>
-      (folder.parent_id || null) === (newFolderParentId || null)
-      && folder.name.trim().toLowerCase() === name.toLowerCase()
+    const siblingNameExists = deskShelves.some((shelf) =>
+      (shelf.parent_id || null) === (newShelfParentId || null)
+      && shelf.name.trim().toLowerCase() === name.toLowerCase()
     )
     if (siblingNameExists) {
-      setFolderActionError('A folder with that name already exists at this level.')
+      setShelfActionError('A shelf with that name already exists at this level.')
       return
     }
 
-    const nextFolder = {
+    const nextShelf = {
       id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
       name,
-      parent_id: newFolderParentId || null
+      parent_id: newShelfParentId || null
     }
 
-    setDeskFolders((prev) => [...prev, nextFolder])
-    setExpandedDeskFolders((prev) => ({ ...prev, [nextFolder.id]: true, __custom_root: true }))
-    setNewFolderNameInput('')
-    setNewFolderParentId('')
-    setFolderActionError('')
+    setDeskShelves((prev) => [...prev, nextShelf])
+    setExpandedDeskShelves((prev) => ({ ...prev, [nextShelf.id]: true, __custom_root: true }))
+    setNewShelfNameInput('')
+    setNewShelfParentId('')
+    setShelfActionError('')
   }
 
-  function setSelectedDeskCustomFolder(folderId) {
+  function setSelectedDeskCustomShelf(shelfId) {
     if (!selectedDeskId) return
 
-    setDeskFolderAssignments((prev) => {
+    setDeskShelfAssignments((prev) => {
       const nextAssignments = { ...prev }
-      if (!folderId) {
+      if (!shelfId) {
         delete nextAssignments[String(selectedDeskId)]
       } else {
-        nextAssignments[String(selectedDeskId)] = folderId
+        nextAssignments[String(selectedDeskId)] = shelfId
       }
       return nextAssignments
     })
-    setFolderActionError('')
+    setShelfActionError('')
   }
 
-  function renameDeskFolder(folderId) {
-    const currentFolder = deskFolders.find((folder) => folder.id === folderId)
-    if (!currentFolder) return
+  function renameDeskShelf(shelfId) {
+    const currentShelf = deskShelves.find((shelf) => shelf.id === shelfId)
+    if (!currentShelf) return
 
-    const nextNameInput = window.prompt('Rename folder', currentFolder.name)
+    const nextNameInput = window.prompt('Rename shelf', currentShelf.name)
     if (nextNameInput === null) return
 
     const nextName = nextNameInput.trim()
     if (!nextName) {
-      setFolderActionError('Folder name is required.')
+      setShelfActionError('Shelf name is required.')
       return
     }
 
-    const siblingNameExists = deskFolders.some((folder) =>
-      folder.id !== folderId
-      && (folder.parent_id || null) === (currentFolder.parent_id || null)
-      && folder.name.trim().toLowerCase() === nextName.toLowerCase()
+    const siblingNameExists = deskShelves.some((shelf) =>
+      shelf.id !== shelfId
+      && (shelf.parent_id || null) === (currentShelf.parent_id || null)
+      && shelf.name.trim().toLowerCase() === nextName.toLowerCase()
     )
     if (siblingNameExists) {
-      setFolderActionError('A sibling folder already uses that name.')
+      setShelfActionError('A sibling shelf already uses that name.')
       return
     }
 
-    setDeskFolders((prev) => prev.map((folder) => (
-      folder.id === folderId ? { ...folder, name: nextName } : folder
+    setDeskShelves((prev) => prev.map((shelf) => (
+      shelf.id === shelfId ? { ...shelf, name: nextName } : shelf
     )))
-    setFolderActionError('')
+    setShelfActionError('')
   }
 
-  function deleteDeskFolder(folderId) {
-    const currentFolder = deskFolders.find((folder) => folder.id === folderId)
-    if (!currentFolder) return
+  function deleteDeskShelf(shelfId) {
+    const currentShelf = deskShelves.find((shelf) => shelf.id === shelfId)
+    if (!currentShelf) return
 
-    const childFolderCount = deskFolders.filter((folder) => (folder.parent_id || null) === folderId).length
-    const assignedDeskCount = Object.values(deskFolderAssignments).filter((assignedFolderId) => assignedFolderId === folderId).length
+    const childShelfCount = deskShelves.filter((shelf) => (shelf.parent_id || null) === shelfId).length
+    const assignedDeskCount = Object.values(deskShelfAssignments).filter((assignedShelfId) => assignedShelfId === shelfId).length
 
     openConfirmDialog({
-      title: 'Delete Folder',
-      message: `Delete "${currentFolder.name}"? ${childFolderCount > 0 ? `${childFolderCount} child folder(s) will move up. ` : ''}${assignedDeskCount > 0 ? `${assignedDeskCount} desk assignment(s) will be moved safely.` : ''}`,
+      title: 'Delete Shelf',
+      message: `Delete "${currentShelf.name}"? ${childShelfCount > 0 ? `${childShelfCount} child shelf(s) will move up. ` : ''}${assignedDeskCount > 0 ? `${assignedDeskCount} desk assignment(s) will be moved safely.` : ''}`,
       confirmLabel: 'Delete',
       tone: 'danger',
       onConfirm: async () => {
-        const parentFolderId = currentFolder.parent_id || null
+        const parentShelfId = currentShelf.parent_id || null
 
-        setDeskFolders((prev) =>
+        setDeskShelves((prev) =>
           prev
-            .filter((folder) => folder.id !== folderId)
-            .map((folder) => (
-              (folder.parent_id || null) === folderId
-                ? { ...folder, parent_id: parentFolderId }
-                : folder
+            .filter((shelf) => shelf.id !== shelfId)
+            .map((shelf) => (
+              (shelf.parent_id || null) === shelfId
+                ? { ...shelf, parent_id: parentShelfId }
+                : shelf
             ))
         )
 
-        setDeskFolderAssignments((prev) => {
+        setDeskShelfAssignments((prev) => {
           const nextAssignments = { ...prev }
-          Object.entries(nextAssignments).forEach(([deskId, assignedFolderId]) => {
-            if (assignedFolderId !== folderId) return
-            if (parentFolderId) {
-              nextAssignments[deskId] = parentFolderId
+          Object.entries(nextAssignments).forEach(([deskId, assignedShelfId]) => {
+            if (assignedShelfId !== shelfId) return
+            if (parentShelfId) {
+              nextAssignments[deskId] = parentShelfId
             } else {
               delete nextAssignments[deskId]
             }
@@ -553,67 +553,67 @@ function Desk({ user }) {
           return nextAssignments
         })
 
-        setExpandedDeskFolders((prev) => {
+        setExpandedDeskShelves((prev) => {
           const nextExpanded = { ...prev }
-          delete nextExpanded[folderId]
+          delete nextExpanded[shelfId]
           return nextExpanded
         })
 
-        setFolderActionError('')
+        setShelfActionError('')
       }
     })
   }
 
-  async function syncDeskFolderPrefsToSupabase(foldersSnapshot, assignmentsSnapshot) {
-    if (!folderSupabaseSyncEnabledRef.current) return
+  async function syncDeskShelfPrefsToSupabase(shelvesSnapshot, assignmentsSnapshot) {
+    if (!shelfSupabaseSyncEnabledRef.current) return
 
-    const sanitizedFolders = foldersSnapshot
-      .filter((folder) => folder && typeof folder.id === 'string' && typeof folder.name === 'string')
-      .map((folder) => ({
-        id: folder.id,
+    const sanitizedShelves = shelvesSnapshot
+      .filter((shelf) => shelf && typeof shelf.id === 'string' && typeof shelf.name === 'string')
+      .map((shelf) => ({
+        id: shelf.id,
         user_id: user.id,
-        name: folder.name,
-        parent_id: folder.parent_id || null
+        name: shelf.name,
+        parent_id: shelf.parent_id || null
       }))
 
-    const validFolderIds = new Set(sanitizedFolders.map((folder) => folder.id))
+    const validShelfIds = new Set(sanitizedShelves.map((shelf) => shelf.id))
     const sanitizedAssignments = Object.entries(assignmentsSnapshot)
-      .filter(([deskId, folderId]) => typeof deskId === 'string' && typeof folderId === 'string' && validFolderIds.has(folderId))
-      .map(([deskId, folderId]) => ({ desk_id: deskId, folder_id: folderId, user_id: user.id }))
+      .filter(([deskId, shelfId]) => typeof deskId === 'string' && typeof shelfId === 'string' && validShelfIds.has(shelfId))
+      .map(([deskId, shelfId]) => ({ desk_id: deskId, shelf_id: shelfId, user_id: user.id }))
 
-    const [existingFoldersResult, existingAssignmentsResult] = await Promise.all([
-      supabase.from('desk_folders').select('id').eq('user_id', user.id),
-      supabase.from('desk_folder_assignments').select('desk_id').eq('user_id', user.id)
+    const [existingShelvesResult, existingAssignmentsResult] = await Promise.all([
+      supabase.from('desk_shelves').select('id').eq('user_id', user.id),
+      supabase.from('desk_shelf_assignments').select('desk_id').eq('user_id', user.id)
     ])
 
-    if (existingFoldersResult.error) throw existingFoldersResult.error
+    if (existingShelvesResult.error) throw existingShelvesResult.error
     if (existingAssignmentsResult.error) throw existingAssignmentsResult.error
 
-    const existingFolderIds = new Set((existingFoldersResult.data || []).map((row) => row.id))
-    const nextFolderIds = new Set(sanitizedFolders.map((folder) => folder.id))
+    const existingShelfIds = new Set((existingShelvesResult.data || []).map((row) => row.id))
+    const nextShelfIds = new Set(sanitizedShelves.map((shelf) => shelf.id))
 
-    const foldersToDelete = [...existingFolderIds].filter((folderId) => !nextFolderIds.has(folderId))
+    const shelvesToDelete = [...existingShelfIds].filter((shelfId) => !nextShelfIds.has(shelfId))
 
-    if (sanitizedFolders.length > 0) {
-      const { error: upsertFoldersError } = await supabase
-        .from('desk_folders')
-        .upsert(sanitizedFolders, { onConflict: 'id' })
-      if (upsertFoldersError) throw upsertFoldersError
-    } else if (existingFolderIds.size > 0) {
-      const { error: clearFoldersError } = await supabase
-        .from('desk_folders')
+    if (sanitizedShelves.length > 0) {
+      const { error: upsertShelvesError } = await supabase
+        .from('desk_shelves')
+        .upsert(sanitizedShelves, { onConflict: 'id' })
+      if (upsertShelvesError) throw upsertShelvesError
+    } else if (existingShelfIds.size > 0) {
+      const { error: clearShelvesError } = await supabase
+        .from('desk_shelves')
         .delete()
         .eq('user_id', user.id)
-      if (clearFoldersError) throw clearFoldersError
+      if (clearShelvesError) throw clearShelvesError
     }
 
-    if (foldersToDelete.length > 0) {
-      const { error: deleteFoldersError } = await supabase
-        .from('desk_folders')
+    if (shelvesToDelete.length > 0) {
+      const { error: deleteShelvesError } = await supabase
+        .from('desk_shelves')
         .delete()
         .eq('user_id', user.id)
-        .in('id', foldersToDelete)
-      if (deleteFoldersError) throw deleteFoldersError
+        .in('id', shelvesToDelete)
+      if (deleteShelvesError) throw deleteShelvesError
     }
 
     const existingAssignmentDeskIds = new Set((existingAssignmentsResult.data || []).map((row) => String(row.desk_id)))
@@ -622,14 +622,14 @@ function Desk({ user }) {
 
     if (sanitizedAssignments.length > 0) {
       const { error: upsertAssignmentsError } = await supabase
-        .from('desk_folder_assignments')
+        .from('desk_shelf_assignments')
         .upsert(sanitizedAssignments, { onConflict: 'user_id,desk_id' })
       if (upsertAssignmentsError) throw upsertAssignmentsError
     }
 
     if (assignmentsToDelete.length > 0) {
       const { error: deleteAssignmentsError } = await supabase
-        .from('desk_folder_assignments')
+        .from('desk_shelf_assignments')
         .delete()
         .eq('user_id', user.id)
         .in('desk_id', assignmentsToDelete)
@@ -642,57 +642,57 @@ function Desk({ user }) {
   }, [user.id])
 
   useEffect(() => {
-    if (folderSyncTimeoutRef.current) {
-      clearTimeout(folderSyncTimeoutRef.current)
-      folderSyncTimeoutRef.current = null
+    if (shelfSyncTimeoutRef.current) {
+      clearTimeout(shelfSyncTimeoutRef.current)
+      shelfSyncTimeoutRef.current = null
     }
 
-    setFolderPrefsHydrated(false)
+    setShelfPrefsHydrated(false)
     let isCancelled = false
 
     const defaultExpanded = { __private: true, __shared: true, __sharing: true, __custom_root: true }
 
     const loadFromLocalStorage = () => {
       try {
-        const rawValue = localStorage.getItem(folderPrefsStorageKey)
+        const rawValue = localStorage.getItem(shelfPrefsStorageKey)
         if (!rawValue) {
           return {
-            folders: [],
+            shelves: [],
             assignments: {},
             expanded: defaultExpanded
           }
         }
 
         const parsed = JSON.parse(rawValue)
-        const parsedFolders = Array.isArray(parsed?.folders)
-          ? parsed.folders.filter((folder) => folder && typeof folder.id === 'string' && typeof folder.name === 'string')
+        const parsedShelves = Array.isArray(parsed?.shelves)
+          ? parsed.shelves.filter((shelf) => shelf && typeof shelf.id === 'string' && typeof shelf.name === 'string')
           : []
         const parsedAssignments = parsed?.assignments && typeof parsed.assignments === 'object'
           ? Object.fromEntries(
               Object.entries(parsed.assignments).filter((entry) => {
-                const [deskId, folderId] = entry
-                return typeof deskId === 'string' && typeof folderId === 'string'
+                const [deskId, shelfId] = entry
+                return typeof deskId === 'string' && typeof shelfId === 'string'
               })
             )
           : {}
         const parsedExpanded = parsed?.expanded && typeof parsed.expanded === 'object'
           ? Object.fromEntries(
               Object.entries(parsed.expanded).filter((entry) => {
-                const [folderId, expanded] = entry
-                return typeof folderId === 'string' && typeof expanded === 'boolean'
+                const [shelfId, expanded] = entry
+                return typeof shelfId === 'string' && typeof expanded === 'boolean'
               })
             )
           : {}
 
         return {
-          folders: parsedFolders,
+          shelves: parsedShelves,
           assignments: parsedAssignments,
           expanded: { ...defaultExpanded, ...parsedExpanded }
         }
       } catch (error) {
-        console.error('Failed to load local desk folder preferences:', error)
+        console.error('Failed to load local desk shelf preferences:', error)
         return {
-          folders: [],
+          shelves: [],
           assignments: {},
           expanded: defaultExpanded
         }
@@ -701,134 +701,134 @@ function Desk({ user }) {
 
     const applyLoadedState = (loadedState) => {
       if (isCancelled) return
-      setDeskFolders(loadedState.folders)
-      setDeskFolderAssignments(loadedState.assignments)
-      setExpandedDeskFolders(loadedState.expanded)
-      setFolderPrefsHydrated(true)
+      setDeskShelves(loadedState.shelves)
+      setDeskShelfAssignments(loadedState.assignments)
+      setExpandedDeskShelves(loadedState.expanded)
+      setShelfPrefsHydrated(true)
     }
 
-    async function loadFolderPrefs() {
+    async function loadShelfPrefs() {
       const localState = loadFromLocalStorage()
 
-      if (!folderSupabaseSyncEnabledRef.current) {
+      if (!shelfSupabaseSyncEnabledRef.current) {
         applyLoadedState(localState)
         return
       }
 
       try {
-        const [foldersResult, assignmentsResult] = await Promise.all([
+        const [shelvesResult, assignmentsResult] = await Promise.all([
           supabase
-            .from('desk_folders')
+            .from('desk_shelves')
             .select('id, name, parent_id')
             .eq('user_id', user.id),
           supabase
-            .from('desk_folder_assignments')
-            .select('desk_id, folder_id')
+            .from('desk_shelf_assignments')
+            .select('desk_id, shelf_id')
             .eq('user_id', user.id)
         ])
 
-        if (foldersResult.error) throw foldersResult.error
+        if (shelvesResult.error) throw shelvesResult.error
         if (assignmentsResult.error) throw assignmentsResult.error
 
-        const supabaseFolders = (foldersResult.data || [])
-          .filter((folder) => folder && typeof folder.id === 'string' && typeof folder.name === 'string')
-          .map((folder) => ({ id: folder.id, name: folder.name, parent_id: folder.parent_id || null }))
+        const supabaseShelves = (shelvesResult.data || [])
+          .filter((shelf) => shelf && typeof shelf.id === 'string' && typeof shelf.name === 'string')
+          .map((shelf) => ({ id: shelf.id, name: shelf.name, parent_id: shelf.parent_id || null }))
 
-        const validFolderIds = new Set(supabaseFolders.map((folder) => folder.id))
+        const validShelfIds = new Set(supabaseShelves.map((shelf) => shelf.id))
         const supabaseAssignments = Object.fromEntries(
           (assignmentsResult.data || [])
             .filter((row) => {
               const deskId = String(row?.desk_id || '')
-              const folderId = typeof row?.folder_id === 'string' ? row.folder_id : ''
-              return deskId.length > 0 && validFolderIds.has(folderId)
+              const shelfId = typeof row?.shelf_id === 'string' ? row.shelf_id : ''
+              return deskId.length > 0 && validShelfIds.has(shelfId)
             })
-            .map((row) => [String(row.desk_id), row.folder_id])
+            .map((row) => [String(row.desk_id), row.shelf_id])
         )
 
         applyLoadedState({
-          folders: supabaseFolders,
+          shelves: supabaseShelves,
           assignments: supabaseAssignments,
           expanded: localState.expanded
         })
       } catch (error) {
-        if (isMissingFolderStorageTableError(error)) {
-          folderSupabaseSyncEnabledRef.current = false
+        if (isMissingShelfStorageTableError(error)) {
+          shelfSupabaseSyncEnabledRef.current = false
         } else {
-          console.error('Failed loading desk folders from Supabase, using local fallback:', error)
+          console.error('Failed loading desk shelves from Supabase, using local fallback:', error)
         }
         applyLoadedState(localState)
       }
     }
 
-    loadFolderPrefs()
+    loadShelfPrefs()
 
     return () => {
       isCancelled = true
-      if (folderSyncTimeoutRef.current) {
-        clearTimeout(folderSyncTimeoutRef.current)
-        folderSyncTimeoutRef.current = null
+      if (shelfSyncTimeoutRef.current) {
+        clearTimeout(shelfSyncTimeoutRef.current)
+        shelfSyncTimeoutRef.current = null
       }
     }
-  }, [folderPrefsStorageKey])
+  }, [shelfPrefsStorageKey])
 
   useEffect(() => {
-    if (!folderPrefsHydrated) return
+    if (!shelfPrefsHydrated) return
     try {
       localStorage.setItem(
-        folderPrefsStorageKey,
+        shelfPrefsStorageKey,
         JSON.stringify({
-          folders: deskFolders,
-          assignments: deskFolderAssignments,
-          expanded: expandedDeskFolders
+          shelves: deskShelves,
+          assignments: deskShelfAssignments,
+          expanded: expandedDeskShelves
         })
       )
     } catch (error) {
-      console.error('Failed to persist desk folder preferences:', error)
+      console.error('Failed to persist desk shelf preferences:', error)
     }
 
-    if (!folderSupabaseSyncEnabledRef.current) return
+    if (!shelfSupabaseSyncEnabledRef.current) return
 
-    if (folderSyncTimeoutRef.current) {
-      clearTimeout(folderSyncTimeoutRef.current)
-      folderSyncTimeoutRef.current = null
+    if (shelfSyncTimeoutRef.current) {
+      clearTimeout(shelfSyncTimeoutRef.current)
+      shelfSyncTimeoutRef.current = null
     }
 
-    const foldersSnapshot = [...deskFolders]
-    const assignmentsSnapshot = { ...deskFolderAssignments }
+    const shelvesSnapshot = [...deskShelves]
+    const assignmentsSnapshot = { ...deskShelfAssignments }
 
-    folderSyncTimeoutRef.current = setTimeout(async () => {
+    shelfSyncTimeoutRef.current = setTimeout(async () => {
       try {
-        await syncDeskFolderPrefsToSupabase(foldersSnapshot, assignmentsSnapshot)
+        await syncDeskShelfPrefsToSupabase(shelvesSnapshot, assignmentsSnapshot)
       } catch (error) {
-        if (isMissingFolderStorageTableError(error)) {
-          folderSupabaseSyncEnabledRef.current = false
+        if (isMissingShelfStorageTableError(error)) {
+          shelfSupabaseSyncEnabledRef.current = false
           return
         }
-        console.error('Failed to sync desk folder preferences to Supabase:', error)
+        console.error('Failed to sync desk shelf preferences to Supabase:', error)
       }
     }, 250)
 
     return () => {
-      if (folderSyncTimeoutRef.current) {
-        clearTimeout(folderSyncTimeoutRef.current)
-        folderSyncTimeoutRef.current = null
+      if (shelfSyncTimeoutRef.current) {
+        clearTimeout(shelfSyncTimeoutRef.current)
+        shelfSyncTimeoutRef.current = null
       }
     }
-  }, [folderPrefsHydrated, folderPrefsStorageKey, deskFolders, deskFolderAssignments, expandedDeskFolders])
+  }, [shelfPrefsHydrated, shelfPrefsStorageKey, deskShelves, deskShelfAssignments, expandedDeskShelves])
 
   useEffect(() => {
-    if (!folderPrefsHydrated) return
+    if (!shelfPrefsHydrated) return
     if (desks.length === 0) return
 
     const validDeskIds = new Set(desks.map((desk) => String(desk.id)))
-    const validFolderIds = new Set(deskFolders.map((folder) => folder.id))
+    const validShelfIds = new Set(deskShelves.map((shelf) => shelf.id))
 
-    setDeskFolderAssignments((prev) => {
-      const nextEntries = Object.entries(prev).filter(([deskId, folderId]) => validDeskIds.has(deskId) && validFolderIds.has(folderId))
+    setDeskShelfAssignments((prev) => {
+      const nextEntries = Object.entries(prev).filter(([deskId, shelfId]) => validDeskIds.has(deskId) && validShelfIds.has(shelfId))
       const didChange = nextEntries.length !== Object.keys(prev).length
       return didChange ? Object.fromEntries(nextEntries) : prev
     })
-  }, [folderPrefsHydrated, desks, deskFolders])
+  }, [shelfPrefsHydrated, desks, deskShelves])
 
   useEffect(() => {
     fetchFriends()
@@ -2990,13 +2990,13 @@ function Desk({ user }) {
   const totalItemsCount = notes.length
   const joinDate = formatDate(user.created_at)
   const sortedDesks = [...desks].sort((left, right) => getDeskNameValue(left).localeCompare(getDeskNameValue(right)))
-  const desksByFolderId = sortedDesks.reduce((accumulator, desk) => {
-    const folderId = getDeskEffectiveFolderId(desk)
-    if (!accumulator[folderId]) accumulator[folderId] = []
-    accumulator[folderId].push(desk)
+  const desksByShelfId = sortedDesks.reduce((accumulator, desk) => {
+    const shelfId = getDeskEffectiveShelfId(desk)
+    if (!accumulator[shelfId]) accumulator[shelfId] = []
+    accumulator[shelfId].push(desk)
     return accumulator
   }, {})
-  const customFolderOptions = getCustomFolderOptions()
+  const customShelfOptions = getCustomShelfOptions()
 
   function renderDeskRow(desk, depth = 0) {
     return (
@@ -3021,10 +3021,7 @@ function Desk({ user }) {
           gap: 10
         }}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
-          {desk.id === selectedDeskId && (
-            <span aria-hidden="true" style={{ fontSize: 12, lineHeight: 1 }}>📍</span>
-          )}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {getDeskNameValue(desk)}
         </span>
         <span
@@ -3042,13 +3039,13 @@ function Desk({ user }) {
     )
   }
 
-  function renderCustomFolderTree(folder, depth = 1) {
-    const folderDesks = desksByFolderId[folder.id] || []
-    const childFolders = getChildDeskFolders(folder.id)
-    const isExpanded = expandedDeskFolders[folder.id] ?? true
+  function renderCustomShelfTree(shelf, depth = 1) {
+    const shelfDesks = desksByShelfId[shelf.id] || []
+    const childShelves = getChildDeskShelves(shelf.id)
+    const isExpanded = expandedDeskShelves[shelf.id] ?? true
 
     return (
-      <div key={folder.id}>
+      <div key={shelf.id}>
         <div
           style={{
             display: 'flex',
@@ -3059,7 +3056,7 @@ function Desk({ user }) {
         >
           <button
             type="button"
-            onClick={() => toggleDeskFolderExpanded(folder.id)}
+            onClick={() => toggleDeskShelfExpanded(shelf.id)}
             style={{
               flex: 1,
               textAlign: 'left',
@@ -3074,15 +3071,15 @@ function Desk({ user }) {
               fontWeight: 600
             }}
           >
-            {isExpanded ? '▼' : '▶'} {folder.name}
+            {isExpanded ? '▼' : '▶'} {shelf.name}
           </button>
-          {showFolderHierarchyTools && (
+          {showShelfHierarchyTools && (
             <>
               <button
                 type="button"
-                onClick={() => renameDeskFolder(folder.id)}
-                aria-label={`Rename folder ${folder.name}`}
-                title="Rename folder"
+                onClick={() => renameDeskShelf(shelf.id)}
+                aria-label={`Rename shelf ${shelf.name}`}
+                title="Rename shelf"
                 style={{
                   border: 'none',
                   borderRadius: 4,
@@ -3098,9 +3095,9 @@ function Desk({ user }) {
               </button>
               <button
                 type="button"
-                onClick={() => deleteDeskFolder(folder.id)}
-                aria-label={`Delete folder ${folder.name}`}
-                title="Delete folder"
+                onClick={() => deleteDeskShelf(shelf.id)}
+                aria-label={`Delete shelf ${shelf.name}`}
+                title="Delete shelf"
                 style={{
                   border: 'none',
                   borderRadius: 4,
@@ -3119,8 +3116,8 @@ function Desk({ user }) {
         </div>
         {isExpanded && (
           <>
-            {folderDesks.map((desk) => renderDeskRow(desk, depth + 1))}
-            {childFolders.map((childFolder) => renderCustomFolderTree(childFolder, depth + 1))}
+            {shelfDesks.map((desk) => renderDeskRow(desk, depth + 1))}
+            {childShelves.map((childShelf) => renderCustomShelfTree(childShelf, depth + 1))}
           </>
         )}
       </div>
@@ -3180,19 +3177,19 @@ function Desk({ user }) {
               }}
             >
               <div style={{ maxHeight: 180, overflowY: 'auto', borderBottom: '1px solid #eee', marginBottom: 6 }}>
-                {desks.length === 0 && deskFolders.length === 0 ? (
+                {desks.length === 0 && deskShelves.length === 0 ? (
                   <div style={{ padding: '8px 10px', fontSize: 13, opacity: 0.75 }}>No desks yet</div>
                 ) : (
                   <>
-                    {BUILT_IN_FOLDERS.map((folderDef) => {
-                      const isExpanded = expandedDeskFolders[folderDef.id] ?? true
-                      const folderDesks = desksByFolderId[folderDef.id] || []
+                    {BUILT_IN_SHELVES.map((shelfDef) => {
+                      const isExpanded = expandedDeskShelves[shelfDef.id] ?? true
+                      const shelfDesks = desksByShelfId[shelfDef.id] || []
 
                       return (
-                        <div key={folderDef.id}>
+                        <div key={shelfDef.id}>
                           <button
                             type="button"
-                            onClick={() => toggleDeskFolderExpanded(folderDef.id)}
+                            onClick={() => toggleDeskShelfExpanded(shelfDef.id)}
                             style={{
                               width: '100%',
                               textAlign: 'left',
@@ -3207,9 +3204,9 @@ function Desk({ user }) {
                               marginBottom: 2
                             }}
                           >
-                            {isExpanded ? '▼' : '▶'} {folderDef.label}
+                            {isExpanded ? '▼' : '▶'} {shelfDef.label}
                           </button>
-                          {isExpanded && folderDesks.map((desk) => renderDeskRow(desk, 1))}
+                          {isExpanded && shelfDesks.map((desk) => renderDeskRow(desk, 1))}
                         </div>
                       )
                     })}
@@ -3217,7 +3214,7 @@ function Desk({ user }) {
                     <div>
                       <button
                         type="button"
-                        onClick={() => toggleDeskFolderExpanded('__custom_root')}
+                        onClick={() => toggleDeskShelfExpanded('__custom_root')}
                         style={{
                           width: '100%',
                           textAlign: 'left',
@@ -3232,10 +3229,10 @@ function Desk({ user }) {
                           marginBottom: 2
                         }}
                       >
-                        {(expandedDeskFolders.__custom_root ?? true) ? '▼' : '▶'} Custom Folders
+                        {(expandedDeskShelves.__custom_root ?? true) ? '▼' : '▶'} Custom Shelves
                       </button>
-                      {(expandedDeskFolders.__custom_root ?? true) && (
-                        getChildDeskFolders(null).map((folder) => renderCustomFolderTree(folder, 1))
+                      {(expandedDeskShelves.__custom_root ?? true) && (
+                        getChildDeskShelves(null).map((shelf) => renderCustomShelfTree(shelf, 1))
                       )}
                     </div>
                   </>
@@ -3245,7 +3242,7 @@ function Desk({ user }) {
               <div style={{ padding: '0 8px 8px', borderBottom: '1px solid #eee', marginBottom: 6 }}>
                 <button
                   type="button"
-                  onClick={() => setShowFolderHierarchyTools((prev) => !prev)}
+                  onClick={() => setShowShelfHierarchyTools((prev) => !prev)}
                   style={{
                     display: 'block',
                     width: '100%',
@@ -3262,20 +3259,20 @@ function Desk({ user }) {
                     marginBottom: 2
                   }}
                 >
-                  {showFolderHierarchyTools ? '▼' : '▶'} Shelf Organizer
+                  {showShelfHierarchyTools ? '▼' : '▶'} Shelf Organizer
                 </button>
 
-                {showFolderHierarchyTools && (
+                {showShelfHierarchyTools && (
                   <>
-                    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6, marginBottom: 4 }}>Folder Hierarchy</div>
+                    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6, marginBottom: 4 }}>Shelf Hierarchy</div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <input
-                        value={newFolderNameInput}
+                        value={newShelfNameInput}
                         onChange={(e) => {
-                          setFolderActionError('')
-                          setNewFolderNameInput(e.target.value)
+                          setShelfActionError('')
+                          setNewShelfNameInput(e.target.value)
                         }}
-                        placeholder="New folder name"
+                        placeholder="New shelf name"
                         style={{
                           flex: 1,
                           minWidth: 0,
@@ -3287,7 +3284,7 @@ function Desk({ user }) {
                       />
                       <button
                         type="button"
-                        onClick={createDeskFolder}
+                        onClick={createDeskShelf}
                         style={{
                           border: 'none',
                           borderRadius: 4,
@@ -3304,10 +3301,10 @@ function Desk({ user }) {
 
                     <div style={{ marginTop: 6 }}>
                       <select
-                        value={newFolderParentId}
+                        value={newShelfParentId}
                         onChange={(e) => {
-                          setFolderActionError('')
-                          setNewFolderParentId(e.target.value)
+                          setShelfActionError('')
+                          setNewShelfParentId(e.target.value)
                         }}
                         style={{
                           width: '100%',
@@ -3319,10 +3316,10 @@ function Desk({ user }) {
                           color: '#222'
                         }}
                       >
-                        <option value="">Top-level custom folder</option>
-                        {customFolderOptions.map((folderOption) => (
-                          <option key={folderOption.id} value={folderOption.id}>
-                            {'· '.repeat(folderOption.depth)}{folderOption.name}
+                        <option value="">Top-level custom shelf</option>
+                        {customShelfOptions.map((shelfOption) => (
+                          <option key={shelfOption.id} value={shelfOption.id}>
+                            {'· '.repeat(shelfOption.depth)}{shelfOption.name}
                           </option>
                         ))}
                       </select>
@@ -3332,8 +3329,8 @@ function Desk({ user }) {
                       <div style={{ marginTop: 6 }}>
                         <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>Move current desk</div>
                         <select
-                          value={getDeskAssignedCustomFolderId(currentDesk.id)}
-                          onChange={(e) => setSelectedDeskCustomFolder(e.target.value)}
+                          value={getDeskAssignedCustomShelfId(currentDesk.id)}
+                          onChange={(e) => setSelectedDeskCustomShelf(e.target.value)}
                           style={{
                             width: '100%',
                             borderRadius: 4,
@@ -3345,17 +3342,17 @@ function Desk({ user }) {
                           }}
                         >
                           <option value="">Auto ({getDeskGroupLabel(currentDesk)})</option>
-                          {customFolderOptions.map((folderOption) => (
-                            <option key={folderOption.id} value={folderOption.id}>
-                              {'· '.repeat(folderOption.depth)}{folderOption.name}
+                          {customShelfOptions.map((shelfOption) => (
+                            <option key={shelfOption.id} value={shelfOption.id}>
+                              {'· '.repeat(shelfOption.depth)}{shelfOption.name}
                             </option>
                           ))}
                         </select>
                       </div>
                     )}
 
-                    {folderActionError && (
-                      <div style={{ marginTop: 4, color: '#d32f2f', fontSize: 11 }}>{folderActionError}</div>
+                    {shelfActionError && (
+                      <div style={{ marginTop: 4, color: '#d32f2f', fontSize: 11 }}>{shelfActionError}</div>
                     )}
                   </>
                 )}
