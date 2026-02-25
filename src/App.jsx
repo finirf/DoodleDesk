@@ -118,6 +118,7 @@ function Desk({ user }) {
   const [profileStatsLoading, setProfileStatsLoading] = useState(false)
   const [draggedId, setDraggedId] = useState(null)
   const [activeDecorationHandleId, setActiveDecorationHandleId] = useState(null)
+  const [rotatingId, setRotatingId] = useState(null)
   const [resizingId, setResizingId] = useState(null)
   const [resizeOverlay, setResizeOverlay] = useState(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
@@ -1921,7 +1922,9 @@ function Desk({ user }) {
     const currentRotation = Number(item.rotation) || 0
     const pointerAngle = getPointerAngleFromCenter(e.pageX, e.pageY)
     rotationOffsetRef.current = currentRotation - pointerAngle
-    rotatingNoteIdRef.current = getItemKey(item)
+    const itemKey = getItemKey(item)
+    rotatingNoteIdRef.current = itemKey
+    setRotatingId(itemKey)
 
     window.addEventListener('mousemove', handleRotateMouseMove)
     window.addEventListener('mouseup', handleRotateMouseUp)
@@ -1945,6 +1948,7 @@ function Desk({ user }) {
     const activeRotatingId = rotatingNoteIdRef.current
 
     rotatingNoteIdRef.current = null
+    setRotatingId(null)
     window.removeEventListener('mousemove', handleRotateMouseMove)
     window.removeEventListener('mouseup', handleRotateMouseUp)
 
@@ -2966,12 +2970,12 @@ function Desk({ user }) {
               left: item.x,
               top: item.y,
               transform: `rotate(${item.rotation || 0}deg)`,
-              background: isDecoration ? '#ffffff' : (editingId === itemKey ? editColor : getItemColor(item)),
+              background: isDecoration ? 'transparent' : (editingId === itemKey ? editColor : getItemColor(item)),
               padding: isDecoration ? 8 : 20,
               width: getItemWidth(item),
               minHeight: getItemHeight(item),
-              borderRadius: isDecoration ? '50%' : 0,
-              boxShadow: isDecoration ? '0 2px 8px rgba(0,0,0,0.2)' : '3px 3px 10px rgba(0,0,0,0.3)',
+              borderRadius: 0,
+              boxShadow: isDecoration ? 'none' : '3px 3px 10px rgba(0,0,0,0.3)',
               mixBlendMode: 'normal',
               opacity: 1,
               fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
@@ -2996,38 +3000,104 @@ function Desk({ user }) {
                 <div
                   style={{
                     fontSize: Math.max(24, Math.round(Math.min(getItemWidth(item), getItemHeight(item)) * 0.58)),
-                    lineHeight: 1
+                    lineHeight: 1,
+                    filter: 'saturate(1.2) contrast(1.08)',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.35)'
                   }}
                 >
                   {decorationOption?.emoji || '📌'}
                 </div>
                 {activeDecorationHandleId === itemKey && (
-                  <button
-                    type="button"
-                    onMouseDown={(e) => handleResizeMouseDown(e, item)}
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label="Resize decoration"
-                    title="Hold and move cursor to resize"
-                    style={{
-                      position: 'absolute',
-                      right: -6,
-                      bottom: -6,
-                      width: 22,
-                      height: 22,
-                      padding: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: '50%',
-                      border: 'none',
-                      background: resizingId === itemKey ? '#4285F4' : '#777',
-                      color: '#fff',
-                      cursor: 'pointer',
-                      pointerEvents: 'auto'
-                    }}
-                  >
-                    <FourWayResizeIcon size={12} color="#fff" />
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        requestDeleteNote(itemKey)
+                      }}
+                      aria-label="Delete decoration"
+                      title="Delete decoration"
+                      style={{
+                        position: 'absolute',
+                        right: -6,
+                        top: -6,
+                        width: 22,
+                        height: 22,
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: '#d32f2f',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        pointerEvents: 'auto',
+                        fontSize: 14,
+                        lineHeight: 1
+                      }}
+                    >
+                      ×
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => handleRotateMouseDown(e, item)}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label="Rotate decoration"
+                      title="Hold and drag to rotate"
+                      style={{
+                        position: 'absolute',
+                        left: -6,
+                        bottom: -6,
+                        width: 22,
+                        height: 22,
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: rotatingId === itemKey ? '#4285F4' : '#777',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        pointerEvents: 'auto',
+                        fontSize: 14,
+                        lineHeight: 1
+                      }}
+                    >
+                      ↻
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => handleResizeMouseDown(e, item)}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label="Resize decoration"
+                      title="Hold and move cursor to resize"
+                      style={{
+                        position: 'absolute',
+                        right: -6,
+                        bottom: -6,
+                        width: 22,
+                        height: 22,
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: resizingId === itemKey ? '#4285F4' : '#777',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        pointerEvents: 'auto'
+                      }}
+                    >
+                      <FourWayResizeIcon size={12} color="#fff" />
+                    </button>
+                  </>
                 )}
               </div>
             ) : editingId === itemKey ? (
@@ -3054,7 +3124,7 @@ function Desk({ user }) {
                       lineHeight: 1,
                       borderRadius: 4,
                       border: 'none',
-                      background: '#777',
+                      background: rotatingId === itemKey ? '#4285F4' : '#777',
                       color: '#fff',
                       cursor: 'pointer'
                     }}
