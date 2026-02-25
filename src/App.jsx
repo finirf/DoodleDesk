@@ -97,6 +97,9 @@ function Desk({ user }) {
   const [deskMembersDialogOpen, setDeskMembersDialogOpen] = useState(false)
   const [deskMembers, setDeskMembers] = useState([])
   const [deskMembersLoading, setDeskMembersLoading] = useState(false)
+  const [deskMemberRequests, setDeskMemberRequests] = useState([])
+  const [deskMemberRequestsLoading, setDeskMemberRequestsLoading] = useState(false)
+  const [deskMemberRequestsError, setDeskMemberRequestsError] = useState('')
   const [deskMembersError, setDeskMembersError] = useState('')
   const [deskMembersMessage, setDeskMembersMessage] = useState('')
   const [deskMemberActionLoadingId, setDeskMemberActionLoadingId] = useState(null)
@@ -143,6 +146,7 @@ function Desk({ user }) {
   const [resizingId, setResizingId] = useState(null)
   const [resizeOverlay, setResizeOverlay] = useState(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth || 1280)
   const [sectionHeight, setSectionHeight] = useState(() => window.innerHeight || 800)
   const [canvasHeight, setCanvasHeight] = useState(() => {
     const initialHeight = window.innerHeight || 800
@@ -741,13 +745,15 @@ function Desk({ user }) {
       setActiveDecorationHandleId(null)
     }
 
-    window.addEventListener('mousedown', handleDecorationOutsideClick)
-    return () => window.removeEventListener('mousedown', handleDecorationOutsideClick)
+    window.addEventListener('pointerdown', handleDecorationOutsideClick)
+    return () => window.removeEventListener('pointerdown', handleDecorationOutsideClick)
   }, [activeDecorationHandleId])
 
   useEffect(() => {
     function handleResize() {
       const nextSectionHeight = window.innerHeight || 800
+      const nextViewportWidth = window.innerWidth || 1280
+      setViewportWidth(nextViewportWidth)
       setSectionHeight(nextSectionHeight)
       setCanvasHeight((prev) => Math.max(prev, nextSectionHeight * 2))
     }
@@ -1239,20 +1245,96 @@ function Desk({ user }) {
     }
   }
 
+  async function fetchDeskMemberRequests(deskId) {
+    if (!deskId) {
+      setDeskMemberRequests([])
+      return
+    }
+
+    const desk = desks.find((entry) => entry.id === deskId)
+    if (!desk) {
+      setDeskMemberRequests([])
+      return
+    }
+
+    const isOwnerView = desk.user_id === user.id
+
+    setDeskMemberRequestsLoading(true)
+    setDeskMemberRequestsError('')
+
+    try {
+      let query = supabase
+        .from('desk_member_requests')
+        .select('id, desk_id, requester_id, target_friend_id, owner_id, status, created_at')
+        .eq('desk_id', deskId)
+        .order('created_at', { ascending: false })
+
+      if (isOwnerView) {
+        query = query.eq('status', 'pending')
+      } else {
+        query = query.eq('requester_id', user.id).eq('status', 'pending')
+      }
+
+      const { data: requestRows, error: requestError } = await query
+      if (requestError) throw requestError
+
+      const rows = requestRows || []
+      if (rows.length === 0) {
+        setDeskMemberRequests([])
+        return
+      }
+
+      const profileIds = Array.from(new Set(rows.flatMap((row) => [row.requester_id, row.target_friend_id]).filter(Boolean)))
+      const { data: profileRows, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, email, preferred_name')
+        .in('id', profileIds)
+
+      if (profileError) throw profileError
+
+      const profileById = new Map((profileRows || []).map((row) => [
+        row.id,
+        {
+          email: row.email || 'Unknown user',
+          preferred_name: row.preferred_name || ''
+        }
+      ]))
+
+      setDeskMemberRequests(rows.map((row) => ({
+        ...row,
+        requester_email: profileById.get(row.requester_id)?.email || 'Unknown user',
+        requester_preferred_name: profileById.get(row.requester_id)?.preferred_name || '',
+        target_friend_email: profileById.get(row.target_friend_id)?.email || 'Unknown user',
+        target_friend_preferred_name: profileById.get(row.target_friend_id)?.preferred_name || ''
+      })))
+    } catch (error) {
+      console.error('Failed to fetch desk member requests:', error)
+      setDeskMemberRequestsError(error?.message || 'Could not load desk member requests.')
+      setDeskMemberRequests([])
+    } finally {
+      setDeskMemberRequestsLoading(false)
+    }
+  }
+
   async function openDeskMembersDialog() {
     const desk = desks.find((entry) => entry.id === selectedDeskId)
-    if (!desk || desk.user_id !== user.id) return
+    if (!desk) return
 
     setDeskMembersDialogOpen(true)
     setDeskMembersMessage('')
     setDeskMembersError('')
+    setDeskMemberRequestsError('')
     setDeskMemberActionLoadingId(null)
-    await fetchDeskMembers(desk.id)
+    await Promise.all([
+      fetchDeskMembers(desk.id),
+      fetchDeskMemberRequests(desk.id)
+    ])
   }
 
   function closeDeskMembersDialog() {
     setDeskMembersDialogOpen(false)
     setDeskMembersError('')
+    setDeskMemberRequestsError('')
     setDeskMembersMessage('')
     setDeskMemberActionLoadingId(null)
   }
@@ -1302,6 +1384,98 @@ function Desk({ user }) {
 
     setDeskMembersMessage('Member removed.')
     await fetchDeskMembers(selectedDeskId)
+    setDeskMemberActionLoadingId(null)
+  }
+
+  async function requestDeskMemberAdd(friendId) {
+    if (!selectedDeskId || !friendId) return
+
+    const desk = desks.find((entry) => entry.id === selectedDeskId)
+    if (!desk) return
+
+    if (desk.user_id === user.id) {
+      await addDeskMember(friendId)
+      return
+    }
+
+    const alreadyMember = deskMembers.some((member) => member.user_id === friendId)
+    if (alreadyMember) {
+      setDeskMembersMessage('This friend is already in the desk.')
+      return
+    }
+
+    const alreadyRequested = deskMemberRequests.some((request) => request.target_friend_id === friendId && request.status === 'pending')
+    if (alreadyRequested) {
+      setDeskMembersMessage('You already requested this friend.')
+      return
+    }
+
+    setDeskMemberActionLoadingId(`request:${friendId}`)
+    setDeskMembersError('')
+    setDeskMemberRequestsError('')
+    setDeskMembersMessage('')
+
+    const { error } = await supabase
+      .from('desk_member_requests')
+      .insert([{
+        desk_id: selectedDeskId,
+        requester_id: user.id,
+        target_friend_id: friendId,
+        owner_id: desk.user_id,
+        status: 'pending'
+      }])
+
+    if (error) {
+      console.error('Failed to create desk member request:', error)
+      setDeskMembersError(error?.message || 'Could not send request to owner.')
+      setDeskMemberActionLoadingId(null)
+      return
+    }
+
+    setDeskMembersMessage('Request sent to desk owner.')
+    await fetchDeskMemberRequests(selectedDeskId)
+    setDeskMemberActionLoadingId(null)
+  }
+
+  async function respondDeskMemberRequest(request, nextStatus) {
+    if (!request?.id || !selectedDeskId) return
+
+    const actionKey = `${nextStatus}:${request.id}`
+    setDeskMemberActionLoadingId(actionKey)
+    setDeskMembersError('')
+    setDeskMemberRequestsError('')
+    setDeskMembersMessage('')
+
+    if (nextStatus === 'approved') {
+      const { error: addError } = await supabase
+        .from('desk_members')
+        .insert([{ desk_id: selectedDeskId, user_id: request.target_friend_id }], { ignoreDuplicates: true })
+
+      if (addError) {
+        console.error('Failed to add approved desk member:', addError)
+        setDeskMembersError(addError?.message || 'Could not add approved member.')
+        setDeskMemberActionLoadingId(null)
+        return
+      }
+    }
+
+    const { error: updateError } = await supabase
+      .from('desk_member_requests')
+      .update({ status: nextStatus })
+      .eq('id', request.id)
+
+    if (updateError) {
+      console.error('Failed to update desk member request:', updateError)
+      setDeskMembersError(updateError?.message || 'Could not update request.')
+      setDeskMemberActionLoadingId(null)
+      return
+    }
+
+    setDeskMembersMessage(nextStatus === 'approved' ? 'Request approved and member added.' : 'Request declined.')
+    await Promise.all([
+      fetchDeskMembers(selectedDeskId),
+      fetchDeskMemberRequests(selectedDeskId)
+    ])
     setDeskMemberActionLoadingId(null)
   }
 
@@ -2995,6 +3169,7 @@ function Desk({ user }) {
   }
 
   const currentDesk = desks.find((desk) => desk.id === selectedDeskId) || null
+  const isMobileLayout = viewportWidth <= 820
   const isCurrentDeskOwner = Boolean(currentDesk && currentDesk.user_id === user.id)
   const pendingFriendRequestCount = incomingFriendRequests.length
   const totalItemsCount = notes.length
@@ -3139,7 +3314,7 @@ function Desk({ user }) {
       style={{
         position: 'relative',
         minHeight: canvasHeight,
-        padding: 20,
+        padding: isMobileLayout ? 12 : 20,
         backgroundColor,
         backgroundImage,
         backgroundSize,
@@ -3150,19 +3325,22 @@ function Desk({ user }) {
       <div
         style={{
           position: 'absolute',
-          top: 20,
-          right: 20,
+          top: isMobileLayout ? 12 : 20,
+          right: isMobileLayout ? 12 : 20,
+          left: isMobileLayout ? 12 : 'auto',
           display: 'flex',
+          flexDirection: isMobileLayout ? 'column' : 'row',
           gap: 8,
-          alignItems: 'flex-start'
+          alignItems: 'stretch'
         }}
       >
-        <div ref={deskMenuRef} style={{ position: 'relative' }}>
+        <div ref={deskMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto' }}>
           <button
             onClick={() => setShowDeskMenu((prev) => !prev)}
             style={{
-              padding: '8px 16px',
-              fontSize: 14,
+              width: isMobileLayout ? '100%' : 'auto',
+              padding: isMobileLayout ? '10px 12px' : '8px 16px',
+              fontSize: isMobileLayout ? 13 : 14,
               cursor: 'pointer'
             }}
           >
@@ -3174,7 +3352,8 @@ function Desk({ user }) {
               style={{
                 position: 'absolute',
                 top: '100%',
-                right: 0,
+                right: isMobileLayout ? 'auto' : 0,
+                left: isMobileLayout ? 0 : 'auto',
                 marginTop: 6,
                 background: '#fff',
                 border: '1px solid #ddd',
@@ -3182,7 +3361,8 @@ function Desk({ user }) {
                 boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
                 color: '#222',
                 zIndex: 220,
-                minWidth: 200,
+                minWidth: isMobileLayout ? 0 : 200,
+                width: isMobileLayout ? '100%' : 'auto',
                 padding: 6
               }}
             >
@@ -3446,7 +3626,7 @@ function Desk({ user }) {
                 </button>
               )}
 
-              {currentDesk && isCurrentDeskOwner && (
+              {currentDesk && (isCurrentDeskOwner || isDeskCollaborative(currentDesk)) && (
                 <button
                   type="button"
                   onClick={openDeskMembersDialog}
@@ -3470,13 +3650,13 @@ function Desk({ user }) {
                 <div style={{ padding: '7px 10px', fontSize: 12, opacity: 0.8 }}>Change Background</div>
               )}
               {currentDesk && isCurrentDeskOwner && (
-                <div style={{ display: 'flex', gap: 4, padding: '0 8px 6px' }}>
+                <div style={{ display: 'flex', flexWrap: isMobileLayout ? 'wrap' : 'nowrap', gap: 4, padding: '0 8px 6px' }}>
                 <button
                   type="button"
                   onClick={() => setCurrentDeskBackground('desk1')}
                   disabled={!currentDesk || !isCurrentDeskOwner}
                   style={{
-                    flex: 1,
+                    flex: isMobileLayout ? '1 1 calc(50% - 2px)' : 1,
                     padding: '6px 6px',
                     fontSize: 12,
                     borderRadius: 4,
@@ -3498,7 +3678,7 @@ function Desk({ user }) {
                   onClick={() => setCurrentDeskBackground('desk2')}
                   disabled={!currentDesk || !isCurrentDeskOwner}
                   style={{
-                    flex: 1,
+                    flex: isMobileLayout ? '1 1 calc(50% - 2px)' : 1,
                     padding: '6px 6px',
                     fontSize: 12,
                     borderRadius: 4,
@@ -3520,7 +3700,7 @@ function Desk({ user }) {
                   onClick={() => setCurrentDeskBackground('desk3')}
                   disabled={!currentDesk || !isCurrentDeskOwner}
                   style={{
-                    flex: 1,
+                    flex: isMobileLayout ? '1 1 calc(50% - 2px)' : 1,
                     padding: '6px 6px',
                     fontSize: 12,
                     borderRadius: 4,
@@ -3542,7 +3722,7 @@ function Desk({ user }) {
                   onClick={() => setCurrentDeskBackground('desk4')}
                   disabled={!currentDesk || !isCurrentDeskOwner}
                   style={{
-                    flex: 1,
+                    flex: isMobileLayout ? '1 1 calc(50% - 2px)' : 1,
                     padding: '6px 6px',
                     fontSize: 12,
                     borderRadius: 4,
@@ -3607,7 +3787,7 @@ function Desk({ user }) {
           )}
         </div>
 
-        <div ref={profileMenuRef} style={{ position: 'relative' }}>
+        <div ref={profileMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto' }}>
           <button
             type="button"
             onClick={() => {
@@ -3620,8 +3800,9 @@ function Desk({ user }) {
               }
             }}
             style={{
-              padding: '8px 16px',
-              fontSize: 14,
+              width: isMobileLayout ? '100%' : 'auto',
+              padding: isMobileLayout ? '10px 12px' : '8px 16px',
+              fontSize: isMobileLayout ? 13 : 14,
               cursor: 'pointer'
             }}
           >
@@ -3633,7 +3814,8 @@ function Desk({ user }) {
               style={{
                 position: 'absolute',
                 top: '100%',
-                right: 0,
+                right: isMobileLayout ? 'auto' : 0,
+                left: isMobileLayout ? 0 : 'auto',
                 marginTop: 6,
                 background: '#fff',
                 border: '1px solid #ddd',
@@ -3641,9 +3823,9 @@ function Desk({ user }) {
                 boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
                 color: '#222',
                 zIndex: 230,
-                width: 340,
+                width: isMobileLayout ? '100%' : 340,
                 padding: 10,
-                maxHeight: 500,
+                maxHeight: isMobileLayout ? 420 : 500,
                 overflowY: 'auto'
               }}
             >
@@ -4910,9 +5092,15 @@ function Desk({ user }) {
         deskMembersError={deskMembersError}
         deskMembersLoading={deskMembersLoading}
         deskMembers={deskMembers}
+        deskMemberRequests={deskMemberRequests}
+        deskMemberRequestsLoading={deskMemberRequestsLoading}
+        deskMemberRequestsError={deskMemberRequestsError}
         deskMemberActionLoadingId={deskMemberActionLoadingId}
         removeDeskMember={removeDeskMember}
         addDeskMember={addDeskMember}
+        requestDeskMemberAdd={requestDeskMemberAdd}
+        respondDeskMemberRequest={respondDeskMemberRequest}
+        isCurrentDeskOwner={isCurrentDeskOwner}
         closeDeskMembersDialog={closeDeskMembersDialog}
         resizeOverlay={resizeOverlay}
         ResizeIconComponent={FourWayResizeIcon}

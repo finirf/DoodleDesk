@@ -29,9 +29,15 @@ export default function DeskModals({
   deskMembersError,
   deskMembersLoading,
   deskMembers,
+  deskMemberRequests,
+  deskMemberRequestsLoading,
+  deskMemberRequestsError,
   deskMemberActionLoadingId,
   removeDeskMember,
   addDeskMember,
+  requestDeskMemberAdd,
+  respondDeskMemberRequest,
+  isCurrentDeskOwner,
   closeDeskMembersDialog,
   resizeOverlay,
   ResizeIconComponent,
@@ -348,6 +354,9 @@ export default function DeskModals({
             {deskMembersError && (
               <div style={{ color: '#d32f2f', fontSize: 12, marginBottom: 8 }}>{deskMembersError}</div>
             )}
+            {deskMemberRequestsError && (
+              <div style={{ color: '#d32f2f', fontSize: 12, marginBottom: 8 }}>{deskMemberRequestsError}</div>
+            )}
 
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Current members</div>
@@ -376,38 +385,113 @@ export default function DeskModals({
                           <div style={{ fontSize: 11, color: '#666' }}>{memberDisplay.secondary}</div>
                         )}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => removeDeskMember(member.user_id)}
-                        disabled={isRemoving}
-                        style={{
-                          border: 'none',
-                          borderRadius: 4,
-                          padding: '4px 8px',
-                          background: '#eee',
-                          color: '#333',
-                          fontSize: 12,
-                          cursor: isRemoving ? 'not-allowed' : 'pointer',
-                          opacity: isRemoving ? 0.7 : 1,
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        {isRemoving ? 'Removing...' : 'Remove'}
-                      </button>
+                      {isCurrentDeskOwner && (
+                        <button
+                          type="button"
+                          onClick={() => removeDeskMember(member.user_id)}
+                          disabled={isRemoving}
+                          style={{
+                            border: 'none',
+                            borderRadius: 4,
+                            padding: '4px 8px',
+                            background: '#eee',
+                            color: '#333',
+                            fontSize: 12,
+                            cursor: isRemoving ? 'not-allowed' : 'pointer',
+                            opacity: isRemoving ? 0.7 : 1,
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {isRemoving ? 'Removing...' : 'Remove'}
+                        </button>
+                      )}
                     </div>
                   )
                 })
               )}
             </div>
 
+            {isCurrentDeskOwner && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Pending member requests</div>
+                {deskMemberRequestsLoading ? (
+                  <div style={{ fontSize: 12, color: '#777' }}>Loading requests...</div>
+                ) : deskMemberRequests.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#777' }}>No pending requests</div>
+                ) : (
+                  deskMemberRequests.map((request) => {
+                    const requester = {
+                      email: request.requester_email,
+                      preferred_name: request.requester_preferred_name
+                    }
+                    const targetFriend = {
+                      email: request.target_friend_email,
+                      preferred_name: request.target_friend_preferred_name
+                    }
+                    const requesterDisplay = getProfileDisplayParts(requester)
+                    const targetDisplay = getProfileDisplayParts(targetFriend)
+                    const isApproving = deskMemberActionLoadingId === `approved:${request.id}`
+                    const isDeclining = deskMemberActionLoadingId === `declined:${request.id}`
+
+                    return (
+                      <div key={request.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #f0f0f0' }}>
+                        <div style={{ fontSize: 12, marginBottom: 6, color: '#333' }}>
+                          {requesterDisplay.primary} requested adding {targetDisplay.primary}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() => respondDeskMemberRequest(request, 'approved')}
+                            disabled={isApproving || isDeclining}
+                            style={{
+                              border: 'none',
+                              borderRadius: 4,
+                              padding: '4px 8px',
+                              background: '#4285F4',
+                              color: '#fff',
+                              fontSize: 12,
+                              cursor: isApproving || isDeclining ? 'not-allowed' : 'pointer',
+                              opacity: isApproving || isDeclining ? 0.7 : 1
+                            }}
+                          >
+                            {isApproving ? 'Approving...' : 'Approve'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => respondDeskMemberRequest(request, 'declined')}
+                            disabled={isApproving || isDeclining}
+                            style={{
+                              border: 'none',
+                              borderRadius: 4,
+                              padding: '4px 8px',
+                              background: '#eee',
+                              color: '#333',
+                              fontSize: 12,
+                              cursor: isApproving || isDeclining ? 'not-allowed' : 'pointer',
+                              opacity: isApproving || isDeclining ? 0.7 : 1
+                            }}
+                          >
+                            {isDeclining ? 'Declining...' : 'Decline'}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            )}
+
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Add friends</div>
+              <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>
+                {isCurrentDeskOwner ? 'Add friends' : 'Request to add your friends'}
+              </div>
               {friends.length === 0 ? (
                 <div style={{ fontSize: 12, color: '#777' }}>No friends available</div>
               ) : (
                 friends.map((friend) => {
                   const alreadyMember = deskMembers.some((member) => member.user_id === friend.id)
-                  const isAdding = deskMemberActionLoadingId === `add:${friend.id}`
+                  const hasPendingRequest = deskMemberRequests.some((request) => request.target_friend_id === friend.id && request.status === 'pending')
+                  const isAdding = deskMemberActionLoadingId === `add:${friend.id}` || deskMemberActionLoadingId === `request:${friend.id}`
                   const friendDisplay = getProfileDisplayParts(friend)
                   return (
                     <div
@@ -428,21 +512,27 @@ export default function DeskModals({
                       </span>
                       <button
                         type="button"
-                        onClick={() => addDeskMember(friend.id)}
-                        disabled={alreadyMember || isAdding}
+                        onClick={() => (isCurrentDeskOwner ? addDeskMember(friend.id) : requestDeskMemberAdd(friend.id))}
+                        disabled={alreadyMember || hasPendingRequest || isAdding}
                         style={{
                           border: 'none',
                           borderRadius: 4,
                           padding: '4px 8px',
-                          background: alreadyMember ? '#eee' : '#4285F4',
-                          color: alreadyMember ? '#777' : '#fff',
+                          background: alreadyMember || hasPendingRequest ? '#eee' : '#4285F4',
+                          color: alreadyMember || hasPendingRequest ? '#777' : '#fff',
                           fontSize: 12,
-                          cursor: alreadyMember || isAdding ? 'not-allowed' : 'pointer',
+                          cursor: alreadyMember || hasPendingRequest || isAdding ? 'not-allowed' : 'pointer',
                           opacity: isAdding ? 0.7 : 1,
                           whiteSpace: 'nowrap'
                         }}
                       >
-                        {alreadyMember ? 'Added' : isAdding ? 'Adding...' : 'Add'}
+                        {alreadyMember
+                          ? 'Added'
+                          : hasPendingRequest
+                            ? 'Requested'
+                            : isAdding
+                              ? (isCurrentDeskOwner ? 'Adding...' : 'Requesting...')
+                              : (isCurrentDeskOwner ? 'Add' : 'Request')}
                       </button>
                     </div>
                   )

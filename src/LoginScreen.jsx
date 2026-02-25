@@ -10,6 +10,13 @@ export default function LoginScreen() {
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
+  function setModeWithCleanup(nextMode) {
+    if (nextMode === 'forgot') {
+      setPassword('')
+    }
+    setMode(nextMode)
+  }
+
   async function handleEmailAuth(e) {
     e.preventDefault()
     setError('')
@@ -85,7 +92,7 @@ export default function LoginScreen() {
                   onClick={() => {
                     setError('')
                     setSuccess('')
-                    setMode('forgot')
+                    setModeWithCleanup('forgot')
                   }}
                   className="auth-link-button"
                 >
@@ -130,7 +137,7 @@ export default function LoginScreen() {
               <span>Don&apos;t have an account? </span>
               <button
                 type="button"
-                onClick={() => setMode('signup')}
+                onClick={() => setModeWithCleanup('signup')}
                 className="auth-link-button"
               >
                 Sign up
@@ -141,7 +148,7 @@ export default function LoginScreen() {
               <span>Already have an account? </span>
               <button
                 type="button"
-                onClick={() => setMode('login')}
+                onClick={() => setModeWithCleanup('login')}
                 className="auth-link-button"
               >
                 Login
@@ -152,7 +159,7 @@ export default function LoginScreen() {
               <span>Remembered your password? </span>
               <button
                 type="button"
-                onClick={() => setMode('login')}
+                onClick={() => setModeWithCleanup('login')}
                 className="auth-link-button"
               >
                 Back to login

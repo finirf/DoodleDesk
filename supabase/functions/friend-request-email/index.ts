@@ -17,11 +17,30 @@ type WebhookPayload = {
   old_record?: FriendRequestRow | null
 }
 
+type ProfileRow = {
+  id: string
+  email: string
+  preferred_name?: string | null
+}
+
 function jsonResponse(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' }
   })
+}
+
+function isValidUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 Deno.serve(async (request) => {
@@ -45,9 +64,15 @@ Deno.serve(async (request) => {
       return jsonResponse(400, { error: 'Missing webhook record payload' })
     }
 
-    if (payload.type !== 'INSERT' || row.status !== 'pending') {
-      return jsonResponse(200, { skipped: true, reason: 'Not a new pending request' })
+    if (payload.schema !== 'public' || payload.table !== 'friend_requests') {
+      return jsonResponse(200, { skipped: true, reason: 'Unsupported webhook source table' })
     }
+
+    if (!isValidUuid(row.sender_id) || !isValidUuid(row.receiver_id)) {
+      return jsonResponse(400, { error: 'Invalid sender_id/receiver_id in payload' })
+    }
+
+    const oldRow = payload?.old_record || null
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -63,35 +88,59 @@ Deno.serve(async (request) => {
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey)
 
-    const { data: sender, error: senderError } = await adminClient
-      .from('profiles')
-      .select('id, email, preferred_name')
-      .eq('id', row.sender_id)
-      .single()
+    const isNewPendingRequest = payload.type === 'INSERT' && row.status === 'pending'
+    const isAcceptedUpdate = payload.type === 'UPDATE'
+      && row.status === 'accepted'
+      && oldRow?.status !== 'accepted'
 
-    if (senderError || !sender) {
-      return jsonResponse(500, { error: senderError?.message || 'Could not load sender profile' })
+    if (!isNewPendingRequest && !isAcceptedUpdate) {
+      return jsonResponse(200, { skipped: true, reason: 'Not a notifiable friend request event' })
     }
 
-    const { data: receiver, error: receiverError } = await adminClient
-      .from('profiles')
-      .select('id, email, preferred_name')
-      .eq('id', row.receiver_id)
-      .single()
+    async function getProfile(profileId: string): Promise<ProfileRow> {
+      const { data, error } = await adminClient
+        .from('profiles')
+        .select('id, email, preferred_name')
+        .eq('id', profileId)
+        .single()
 
-    if (receiverError || !receiver?.email) {
-      return jsonResponse(500, { error: receiverError?.message || 'Could not load receiver profile email' })
+      if (error || !data) {
+        throw new Error(error?.message || `Could not load profile ${profileId}`)
+      }
+
+      if (!data.email) {
+        throw new Error(`Profile ${profileId} is missing email`)
+      }
+
+      return data
     }
 
-    const senderName = (sender.preferred_name || '').trim() || sender.email
+    const sender = await getProfile(row.sender_id)
+    const receiver = await getProfile(row.receiver_id)
+    const senderNameRaw = (sender.preferred_name || '').trim() || sender.email
+    const receiverNameRaw = (receiver.preferred_name || '').trim() || receiver.email
+    const senderName = escapeHtml(senderNameRaw)
+    const receiverName = escapeHtml(receiverNameRaw)
     const inboxLink = `${appUrl.replace(/\/$/, '')}/`
 
-    const subject = `${senderName} sent you a friend request on DoodleDesk`
-    const html = `
+    const toEmail = isNewPendingRequest ? receiver.email : sender.email
+    const subject = isNewPendingRequest
+      ? `${senderName} sent you a friend request on DoodleDesk`
+      : `${receiverName} accepted your friend request on DoodleDesk`
+    const html = isNewPendingRequest
+      ? `
       <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
         <h2 style="margin: 0 0 12px;">New friend request</h2>
         <p style="margin: 0 0 12px;"><strong>${senderName}</strong> sent you a friend request on DoodleDesk.</p>
         <p style="margin: 0 0 16px;">Open DoodleDesk and accept or decline it from your profile.</p>
+        <a href="${inboxLink}" style="display:inline-block;padding:10px 14px;border-radius:8px;background:#2563eb;color:#fff;text-decoration:none;">Open DoodleDesk</a>
+      </div>
+    `
+      : `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
+        <h2 style="margin: 0 0 12px;">Friend request accepted</h2>
+        <p style="margin: 0 0 12px;"><strong>${receiverName}</strong> accepted your friend request on DoodleDesk.</p>
+        <p style="margin: 0 0 16px;">Open DoodleDesk to start collaborating.</p>
         <a href="${inboxLink}" style="display:inline-block;padding:10px 14px;border-radius:8px;background:#2563eb;color:#fff;text-decoration:none;">Open DoodleDesk</a>
       </div>
     `
@@ -104,7 +153,7 @@ Deno.serve(async (request) => {
       },
       body: JSON.stringify({
         from: fromEmail,
-        to: [receiver.email],
+        to: [toEmail],
         subject,
         html
       })
@@ -119,7 +168,12 @@ Deno.serve(async (request) => {
       })
     }
 
-    return jsonResponse(200, { success: true, requestId: row.id, sentTo: receiver.email })
+    return jsonResponse(200, {
+      success: true,
+      requestId: row.id,
+      notificationType: isNewPendingRequest ? 'request_created' : 'request_accepted',
+      sentTo: toEmail
+    })
   } catch (error) {
     return jsonResponse(500, {
       error: error instanceof Error ? error.message : 'Unexpected error'
