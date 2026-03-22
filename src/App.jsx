@@ -203,7 +203,6 @@ function Desk({ user }) {
 
   const growThreshold = 180
   const gridSize = 20
-  const dragReleaseDeadZonePx = 10
   const menuLayerZIndex = 6000
   const menuPanelZIndex = menuLayerZIndex + 1
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
@@ -4799,7 +4798,9 @@ function Desk({ user }) {
     let nextPosition = null
     const lastPosition = dragLastPositionRef.current
 
-    if (e) {
+    if (lastPosition) {
+      nextPosition = lastPosition
+    } else if (e) {
       const { pageX, pageY } = getEventPosition(e)
       const nextX = pageX - dragOffsetRef.current.x
       const nextY = pageY - dragOffsetRef.current.y
@@ -4808,21 +4809,10 @@ function Desk({ user }) {
       const maxX = Math.max(0, canvasWidth - getItemWidth(activeItem))
       const boundedX = Math.min(Math.max(0, nextX), maxX)
       const boundedY = Math.max(0, nextY)
-      const releasePosition = {
+      nextPosition = {
         x: snapToGrid ? Math.min(Math.max(0, Math.round(boundedX / gridSize) * gridSize), maxX) : boundedX,
         y: snapToGrid ? Math.max(0, Math.round(boundedY / gridSize) * gridSize) : boundedY
       }
-
-      if (!lastPosition) {
-        nextPosition = releasePosition
-      } else {
-        const dx = releasePosition.x - lastPosition.x
-        const dy = releasePosition.y - lastPosition.y
-        const distanceFromLast = Math.hypot(dx, dy)
-        nextPosition = distanceFromLast <= dragReleaseDeadZonePx ? lastPosition : releasePosition
-      }
-    } else if (lastPosition) {
-      nextPosition = lastPosition
     } else {
       const itemToPersist = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
       if (!itemToPersist) return
