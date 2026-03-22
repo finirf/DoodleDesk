@@ -270,6 +270,23 @@ function Desk({ user }) {
     setNewChecklistItemText('')
   }
 
+  // Utility: wrap a promise with a timeout to prevent indefinite hangs
+  async function withTimeout(promise, timeoutMs) {
+    let timeoutId = null
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(
+        () => reject(new Error(`Query timeout after ${timeoutMs}ms`)),
+        timeoutMs
+      )
+    })
+
+    try {
+      return await Promise.race([promise, timeoutPromise])
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId)
+    }
+  }
+
   function normalizeChecklistReminderValue(value) {
     if (!value) return null
     const parsedDate = new Date(value)
@@ -488,12 +505,15 @@ function Desk({ user }) {
     setActivityLoading(true)
 
     try {
-      const { data: rows, error } = await supabase
-        .from('desk_activity')
-        .select('*')
-        .eq('desk_id', deskId)
-        .order('created_at', { ascending: false })
-        .limit(40)
+      const { data: rows, error } = await withTimeout(
+        supabase
+          .from('desk_activity')
+          .select('*')
+          .eq('desk_id', deskId)
+          .order('created_at', { ascending: false })
+          .limit(40),
+        8000
+      )
 
       if (error) throw error
 
@@ -506,12 +526,15 @@ function Desk({ user }) {
           .select('id, email, preferred_name')
           .in('id', actorIds)
 
-        if (profileError) throw profileError
-
-        actorProfilesById = new Map((actorProfiles || []).map((row) => [
-          row.id,
-          row.preferred_name?.trim() || row.email || 'Unknown user'
-        ]))
+        // Allow partial failure: if profile fetch fails, show activity feed without resolved names
+        if (profileError) {
+          console.warn('Failed to load activity feed actor profiles, using fallback labels:', profileError)
+        } else if (actorProfiles) {
+          actorProfilesById = new Map((actorProfiles || []).map((row) => [
+            row.id,
+            row.preferred_name?.trim() || row.email || 'Unknown user'
+          ]))
+        }
       }
 
       const hydratedRows = (rows || []).map((row) => ({
@@ -1674,6 +1697,10 @@ function Desk({ user }) {
   useEffect(() => {
     return () => {
       clearAutoSaveStatusTimeout()
+      if (shelfSyncTimeoutRef.current) {
+        clearTimeout(shelfSyncTimeoutRef.current)
+        shelfSyncTimeoutRef.current = null
+      }
     }
   }, [])
 
@@ -1902,8 +1929,32 @@ function Desk({ user }) {
 
         if (invitedMemberInsertError) {
           console.error('Failed to add collaborators:', invitedMemberInsertError)
-          await supabase.from('desk_members').delete().eq('desk_id', createdDesk.id)
-          await supabase.from('desks').delete().eq('id', createdDesk.id).eq('user_id', user.id)
+          
+          // Rollback: delete members (if any were partially inserted)
+          const { error: rollbackMembersError } = await supabase
+            .from('desk_members')
+            .delete()
+            .eq('desk_id', createdDesk.id)
+          
+          if (rollbackMembersError) {
+            console.error('Failed to rollback desk members during desk creation:', rollbackMembersError)
+          }
+          
+          // Rollback: delete desk
+          const { error: rollbackDeskError } = await supabase
+            .from('desks')
+            .delete()
+            .eq('id', createdDesk.id)
+            .eq('user_id', user.id)
+          
+          if (rollbackDeskError) {
+            console.error('Failed to rollback desk during creation:', rollbackDeskError)
+            return { 
+              ok: false, 
+              errorMessage: 'Inviting collaborators failed and desk cleanup was incomplete. Please check your desk list.' 
+            }
+          }
+          
           return { ok: false, errorMessage: invitedMemberInsertError?.message || 'Failed to invite collaborators.' }
         }
       }
@@ -3042,15 +3093,19 @@ function Desk({ user }) {
       return
     }
 
-    const [
-      { data: notesData, error: notesError },
-      { data: checklistsData, error: checklistsError },
-      { data: decorationsData, error: decorationsError }
-    ] = await Promise.all([
-      supabase.from('notes').select('*').eq('desk_id', deskId),
-      supabase.from('checklists').select('*').eq('desk_id', deskId),
-      supabase.from('decorations').select('*').eq('desk_id', deskId)
-    ])
+    try {
+      const [
+        { data: notesData, error: notesError },
+        { data: checklistsData, error: checklistsError },
+        { data: decorationsData, error: decorationsError }
+      ] = await withTimeout(
+        Promise.all([
+          supabase.from('notes').select('*').eq('desk_id', deskId),
+          supabase.from('checklists').select('*').eq('desk_id', deskId),
+          supabase.from('decorations').select('*').eq('desk_id', deskId)
+        ]),
+        10000
+      )
 
     if (notesError) {
       console.error('Failed to fetch notes:', notesError)
@@ -3141,6 +3196,13 @@ function Desk({ user }) {
     const requiredHeight = maxNoteBottom + growThreshold
     const requiredSections = Math.max(2, Math.ceil(requiredHeight / sectionHeight))
     setCanvasHeight((prev) => Math.max(prev, requiredSections * sectionHeight))
+    } catch (error) {
+      console.error('Failed to fetch desk items:', error)
+      if (error?.message?.includes('timeout')) {
+        setEditSaveError('Desk items took too long to load. Please try again.')
+      }
+      setNotesFromRemote([])
+    }
   }
 
   async function addStickyNote() {
