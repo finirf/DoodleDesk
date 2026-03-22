@@ -198,11 +198,13 @@ function Desk({ user }) {
   const importDeskInputRef = useRef(null)
   const historyPastRef = useRef([])
   const historyFutureRef = useRef([])
+  const pendingHistoryActionRef = useRef(null)
   const previousNotesSnapshotRef = useRef([])
   const isApplyingHistoryRef = useRef(false)
   const skipNextHistoryRef = useRef(false)
   const [historyVersion, setHistoryVersion] = useState(0)
   const [historySyncing, setHistorySyncing] = useState(false)
+  const [forceSaveInProgress, setForceSaveInProgress] = useState(false)
   const [autoSaveStatus, setAutoSaveStatus] = useState('idle')
   const [selectedDeskMemberRole, setSelectedDeskMemberRole] = useState('owner')
   const [selectedDeskMemberRoleLoading, setSelectedDeskMemberRoleLoading] = useState(false)
@@ -901,7 +903,10 @@ function Desk({ user }) {
 
   async function undoNotesChange() {
     if (!canCurrentUserEditDeskItems) return
-    if (historySyncing) return
+    if (historySyncingRef.current) {
+      pendingHistoryActionRef.current = 'undo'
+      return
+    }
 
     const previousSnapshot = historyPastRef.current.pop()
     if (!previousSnapshot) return
@@ -934,7 +939,10 @@ function Desk({ user }) {
 
   async function redoNotesChange() {
     if (!canCurrentUserEditDeskItems) return
-    if (historySyncing) return
+    if (historySyncingRef.current) {
+      pendingHistoryActionRef.current = 'redo'
+      return
+    }
 
     const nextSnapshot = historyFutureRef.current.pop()
     if (!nextSnapshot) return
@@ -962,6 +970,75 @@ function Desk({ user }) {
       setHistoryVersion((prev) => prev + 1)
     } finally {
       setHistorySyncing(false)
+    }
+  }
+
+  async function forceSaveAndClearHistory() {
+    if (!selectedDeskId) return
+    if (!canCurrentUserEditDeskItems) return
+    if (hasModalOpen) return
+    if (historySyncingRef.current || forceSaveInProgress) return
+
+    setForceSaveInProgress(true)
+    markAutoSaveSaving()
+
+    try {
+      const localSnapshot = cloneNotesSnapshot(notesRef.current)
+
+      const [
+        { data: remoteNotes, error: remoteNotesError },
+        { data: remoteChecklists, error: remoteChecklistsError },
+        { data: remoteDecorations, error: remoteDecorationsError }
+      ] = await Promise.all([
+        supabase.from('notes').select('*').eq('desk_id', selectedDeskId),
+        supabase.from('checklists').select('*').eq('desk_id', selectedDeskId),
+        supabase.from('decorations').select('*').eq('desk_id', selectedDeskId)
+      ])
+
+      if (remoteNotesError) throw remoteNotesError
+      if (remoteChecklistsError) throw remoteChecklistsError
+      if (remoteDecorationsError) throw remoteDecorationsError
+
+      const checklistRows = remoteChecklists || []
+      const checklistIds = checklistRows.map((row) => row.id)
+      let checklistItemsMap = new Map()
+
+      if (checklistIds.length > 0) {
+        const { data: remoteChecklistItems, error: remoteChecklistItemsError } = await supabase
+          .from('checklist_items')
+          .select('*')
+          .in('checklist_id', checklistIds)
+          .order('sort_order', { ascending: true })
+
+        if (remoteChecklistItemsError) throw remoteChecklistItemsError
+
+        checklistItemsMap = (remoteChecklistItems || []).reduce((acc, entry) => {
+          const existing = acc.get(entry.checklist_id) || []
+          existing.push(entry)
+          acc.set(entry.checklist_id, existing)
+          return acc
+        }, new Map())
+      }
+
+      const remoteSnapshot = [
+        ...(remoteNotes || []).map((row) => ({ ...row, item_type: 'note' })),
+        ...checklistRows.map((row) => ({
+          ...row,
+          item_type: 'checklist',
+          items: checklistItemsMap.get(row.id) || []
+        })),
+        ...(remoteDecorations || []).map((row) => ({ ...row, item_type: 'decoration' }))
+      ]
+
+      await persistHistoryTransition(remoteSnapshot, localSnapshot)
+      resetDeskHistory(localSnapshot)
+      pendingHistoryActionRef.current = null
+      markAutoSaveSaved()
+    } catch (error) {
+      console.error('Force save failed:', error)
+      markAutoSaveError(error?.message || 'Force save failed. Please try again.')
+    } finally {
+      setForceSaveInProgress(false)
     }
   }
 
@@ -1724,6 +1801,16 @@ function Desk({ user }) {
   useEffect(() => {
     historySyncingRef.current = historySyncing
     if (!historySyncing) {
+      const pendingAction = pendingHistoryActionRef.current
+      pendingHistoryActionRef.current = null
+      if (pendingAction === 'undo') {
+        void undoNotesChange()
+        return
+      }
+      if (pendingAction === 'redo') {
+        void redoNotesChange()
+        return
+      }
       flushDeferredRemoteNotes()
     }
   }, [historySyncing])
@@ -3930,12 +4017,20 @@ function Desk({ user }) {
     const item = notesRef.current.find((row) => getItemKey(row) === itemKey)
     if (!item) return
 
+    const normalizedX = Math.max(0, Math.round(Number.isFinite(Number(x)) ? Number(x) : Number(item.x) || 0))
+    const normalizedY = Math.max(0, Math.round(Number.isFinite(Number(y)) ? Number(y) : Number(item.y) || 0))
+
+    if (Number(item.x) === normalizedX && Number(item.y) === normalizedY) {
+      markAutoSaveSaved()
+      return
+    }
+
     markAutoSaveSaving()
 
     const table = getItemTableName(item)
     const { error } = await supabase
       .from(table)
-      .update({ x, y, desk_id: selectedDeskId })
+      .update({ x: normalizedX, y: normalizedY })
       .eq('id', item.id)
       .eq('desk_id', selectedDeskId)
 
@@ -5120,7 +5215,7 @@ function Desk({ user }) {
         <button
           type="button"
           onClick={() => void undoNotesChange()}
-          disabled={!canUndo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems}
+          disabled={!canUndo || hasModalOpen || !canCurrentUserEditDeskItems}
           title="Undo (Ctrl/Cmd+Z)"
           style={{
             padding: isMobileLayout ? '8px 12px' : '7px 12px',
@@ -5129,8 +5224,8 @@ function Desk({ user }) {
             border: '1px solid #c9d3e3',
             background: '#ffffffd9',
             color: '#1e2a3b',
-            cursor: !canUndo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
-            opacity: !canUndo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 0.55 : 1,
+            cursor: !canUndo || hasModalOpen || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
+            opacity: !canUndo || hasModalOpen || !canCurrentUserEditDeskItems ? 0.55 : 1,
             pointerEvents: 'auto'
           }}
         >
@@ -5139,7 +5234,7 @@ function Desk({ user }) {
         <button
           type="button"
           onClick={() => void redoNotesChange()}
-          disabled={!canRedo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems}
+          disabled={!canRedo || hasModalOpen || !canCurrentUserEditDeskItems}
           title="Redo (Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y)"
           style={{
             padding: isMobileLayout ? '8px 12px' : '7px 12px',
@@ -5148,23 +5243,29 @@ function Desk({ user }) {
             border: '1px solid #c9d3e3',
             background: '#ffffffd9',
             color: '#1e2a3b',
-            cursor: !canRedo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
-            opacity: !canRedo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 0.55 : 1,
+            cursor: !canRedo || hasModalOpen || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
+            opacity: !canRedo || hasModalOpen || !canCurrentUserEditDeskItems ? 0.55 : 1,
             pointerEvents: 'auto'
           }}
         >
           Redo
         </button>
-        <div
+        <button
+          type="button"
+          onClick={() => void forceSaveAndClearHistory()}
+          disabled={!selectedDeskId || hasModalOpen || forceSaveInProgress || historySyncing || !canCurrentUserEditDeskItems}
+          title="Force-save current desk content and clear undo/redo history"
           aria-live="polite"
           style={{
             ...autoSaveBadgeStyle,
             padding: isMobileLayout ? '8px 10px' : autoSaveBadgeStyle.padding,
-            pointerEvents: 'auto'
+            pointerEvents: 'auto',
+            cursor: !selectedDeskId || hasModalOpen || forceSaveInProgress || historySyncing || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
+            opacity: !selectedDeskId || hasModalOpen || forceSaveInProgress || historySyncing || !canCurrentUserEditDeskItems ? 0.6 : 1
           }}
         >
-          {autoSaveLabel}
-        </div>
+          {forceSaveInProgress ? 'Saving...' : autoSaveLabel}
+        </button>
       </div>
 
       <div

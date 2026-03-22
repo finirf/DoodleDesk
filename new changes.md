@@ -149,3 +149,17 @@
 
 ### 24) Empty-state message readability
 - Restyled and pinned the "Create a desk..." message as a fixed high-contrast banner so it remains readable during initial load transitions.
+
+### 25) Undo after redo input queueing
+- Added queued undo/redo intent handling during history sync so clicks/shortcuts are not dropped while a redo/undo save is in flight.
+- Undo/Redo controls remain clickable during sync; requested action runs immediately after the current history sync completes.
+
+### 26) Shared-desk drag save hardening
+- Normalized drag position persistence to integer/non-negative coordinates before saving.
+- Skipped no-op position writes when x/y are unchanged.
+- Reduced update payload for drag persistence to x/y only (no desk_id mutation), improving compatibility with stricter shared-desk policies.
+
+### 27) Save-status force-save action
+- Converted the save-status badge into a clickable force-save control.
+- Force save now syncs local desk items against remote state and then clears undo/redo history baseline.
+- Preserved status messaging while adding explicit "save now" recovery behavior for edge-case sync drift.
