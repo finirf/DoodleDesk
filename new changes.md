@@ -169,3 +169,15 @@
 - Updated drag boundary calculations to use the expanding canvas width, allowing notes/checklists/decorations to move into newly created horizontal space.
 - Added right-edge growth detection when loading desk items so previously saved wide layouts rehydrate with the correct desk width.
 - Applied a dynamic canvas min-width to enable horizontal scrolling on both desktop and mobile when the desk grows beyond the viewport.
+
+### 29) Horizontal desk texture tiling
+- Updated desk background rendering so horizontal expansion now tiles/repeats the texture pattern instead of stretching it.
+- Kept existing vertical section layering behavior, so each new vertical section still renders as a section-aligned desk strip.
+
+### 30) Scrollbar visual refresh
+- Added cross-browser custom scrollbar styling for a cleaner, more modern look across desk and menu panels.
+- Improved thumb contrast, hover/active feedback, rounded track/thumb geometry, and stable gutter behavior to reduce layout shift.
+
+### 31) Scrollbar gutter alignment fix
+- Fixed a left-edge white strip caused by two-sided scrollbar gutter reservation.
+- Updated gutter behavior to reserve space only on the scrollbar side.

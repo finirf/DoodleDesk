@@ -20,10 +20,10 @@ export function getDeskBackgroundStyles({
   return {
     backgroundImage: backgroundMode === 'custom' && customBackgroundIsHex ? 'none' : backgroundLayers.join(', '),
     backgroundColor: backgroundMode === 'custom' && customBackgroundIsHex ? customBackgroundUrl : undefined,
-    backgroundSize: Array.from({ length: sectionCount }, () => `100% ${sectionHeight}px`).join(', '),
+    backgroundSize: Array.from({ length: sectionCount }, () => `auto ${sectionHeight}px`).join(', '),
     backgroundPosition: Array.from({ length: sectionCount }, (_, index) =>
-      index === 0 ? 'top center' : `center ${index * sectionHeight}px`
+      index === 0 ? 'left top' : `left ${index * sectionHeight}px`
     ).join(', '),
-    backgroundRepeat: Array.from({ length: sectionCount }, () => 'no-repeat').join(', ')
+    backgroundRepeat: Array.from({ length: sectionCount }, () => 'repeat-x').join(', ')
   }
 }
