@@ -1,5 +1,27 @@
 # New Changes
 
+## 2026-03-22
+
+### New features
+- Added show/hide password toggle button on login and signup screens for improved UX.
+  - Users can now click the eye icon button to toggle between showing and hiding the password field.
+  - Button includes accessibility attributes (aria-label, title).
+  - Styled with hover and active states that match the auth theme.
+
+### Bug fixes & improvements
+- Fixed command palette "Cannot access before initialization" ReferenceError by converting `commandPaletteActions` and `commandPaletteFilteredActions` from inline IIFE declarations to `useMemo` hooks placed before dependent useEffect hooks.
+- Fixed forward reference error with `sortedDesks` by converting it to a `useMemo` hook with proper dependency tracking.
+- Added missing `hasModalOpen` dependency to `commandPaletteActions` useMemo.
+- Fixed Content Security Policy violations for Google Fonts by adding `https://fonts.googleapis.com` to `style-src` and `https://fonts.gstatic.com` to `font-src` directives in the CSP meta tag.
+- Fixed a post-login white screen caused by accidental JSX corruption in `Desk` render logic by restoring the control/menu section and repairing `setNotesFromRemote`.
+- Fixed post-login white screen `ReferenceError: Cannot access 'canCurrentUserEditDeskItems' before initialization` by moving desk permission and derived state declarations above `commandPaletteActions`.
+- Added a `DeskErrorBoundary` around desk rendering so runtime errors show a recoverable fallback UI instead of a white screen.
+- Removed `frame-ancestors` from the meta CSP in `index.html` because browsers ignore it there; it must be sent as an HTTP response header to take effect.
+- Completed a modal UI consistency pass in `src/features/desk/components/DeskModals.jsx` by migrating remaining hardcoded legacy colors/buttons/inputs to token-driven styles.
+- Extended show/hide password UX to reset and OAuth link-password flows in `src/features/auth/components/ResetPasswordScreen.jsx` and `src/features/auth/components/LinkPasswordModal.jsx`.
+- Refined auth password toggle styling/focus states and link-password modal motion overlay polish in `src/features/auth/components/AuthScreen.css`.
+- Added explicit Vite manual chunking in `vite.config.js` to split React and Supabase into separate vendor bundles and remove the large chunk warning during production builds.
+
 ## 2026-03-21
 
 ### 1) Undo/Redo (Step 1)
@@ -181,3 +203,45 @@
 ### 31) Scrollbar gutter alignment fix
 - Fixed a left-edge white strip caused by two-sided scrollbar gutter reservation.
 - Updated gutter behavior to reserve space only on the scrollbar side.
+
+### 32) UI foundation refresh (design tokens + typography)
+- Added a cohesive global design token system in `src/index.css` for typography, color, surface, border, radius, shadow, and motion timing.
+- Upgraded global visual identity with expressive font pairing (`Space Grotesk` + `Fraunces`) and a layered atmospheric background treatment.
+- Modernized base button styling with improved hover/active/focus states, stronger depth, and token-driven transitions.
+- Updated top desk controls (Undo/Redo/Save status and Desk menu shell) to consume tokenized surfaces, borders, and glass styling for better consistency.
+- Updated shared desk modal style constants to match the new token system so modal interactions align with the refreshed app chrome.
+
+### 33) Reusable desk UI primitives (step 2 start)
+- Added shared desk UI primitives in `src/features/desk/components/DeskUiPrimitives.jsx` (`DeskTopControlButton`, `DeskMenuTriggerButton`, `DeskMenuPanel`, `DeskMenuItemButton`).
+- Exported the new primitives through `src/features/desk/index.js` so App and feature components can consume a single styling API.
+- Refactored top-level desk controls and Desk menu action items in `src/App.jsx` to use the new primitives, reducing repeated inline style blocks.
+- Refactored `src/features/desk/components/NewNoteMenu.jsx` to use the same trigger/panel/item primitives for visual and interaction consistency.
+
+### 34) Profile menu primitive migration (step 2 continuation)
+- Refactored the Profile menu trigger and shell in `src/App.jsx` to use shared primitives (`DeskMenuTriggerButton`, `DeskMenuPanel`).
+- Migrated Profile/Friends/Activity tab selectors and action buttons to `DeskMenuItemButton` with active/danger/neutral variants.
+- Added shared token-driven style objects for menu inputs and action controls in `src/App.jsx` to reduce duplicate inline style definitions.
+- Updated profile/friends/activity status and list styling to consume tokenized semantic colors and border variables for stronger visual consistency.
+
+### 35) Desk menu form controls migration (step 2 continuation)
+- Migrated Shelf Organizer controls in `src/App.jsx` to tokenized shared form/button styles for inputs, selects, and compact actions.
+- Migrated custom background URL/color apply row to shared compact form/action styling for consistency with Profile menu interactions.
+- Extended `DeskMenuItemButton` with a `fullWidth` option in `src/features/desk/components/DeskUiPrimitives.jsx` to support both list-style and inline action use cases.
+- Applied semantic token colors to desk-menu status/error feedback and organizer labels/dividers for visual parity with the new design foundation.
+
+### 36) Motion layer pass (step 3 start)
+- Added purposeful global keyframes and motion tokens in `src/index.css` (`deskPanelIn`, `deskFloatPulse`, `--motion-slow`).
+- Added `prefers-reduced-motion` safeguards in `src/index.css` so animations/transitions disable for motion-sensitive users.
+- Applied animated menu reveal and transition polish to shared primitives in `src/features/desk/components/DeskUiPrimitives.jsx`.
+- Added subtle animated feedback to the active save/sync badge state in `src/App.jsx` for a more dynamic status experience.
+
+### 37) Feedback banner polish
+- Updated the no-desk empty-state banner in `src/App.jsx` to use tokenized glass surface/border/shadow styling and entry animation.
+- Updated the viewer-mode notice banner in `src/App.jsx` with improved elevation, radius consistency, and motion-aligned reveal behavior.
+
+### 38) Command palette (quick actions)
+- Added a keyboard-driven command palette in `src/App.jsx` with `Ctrl/Cmd + K` toggle support.
+- Added searchable quick actions for desk workflow tasks (open Desk/Profile panels, create note/checklist/decoration, toggle snap, force save, undo/redo).
+- Added searchable desk switching commands generated from current desk list for faster navigation.
+- Added keyboard navigation (`ArrowUp`/`ArrowDown`), execution (`Enter`), and close (`Esc`) behavior plus backdrop click-to-close support.
+- Added motion-aligned glass overlay styling and input autofocus for a modern, fast command experience.

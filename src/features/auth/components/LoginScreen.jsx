@@ -11,6 +11,7 @@ export default function LoginScreen() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [showLinkPasswordModal, setShowLinkPasswordModal] = useState(false)
   const [pendingLinkEmail, setPendingLinkEmail] = useState('')
 
@@ -119,15 +120,26 @@ export default function LoginScreen() {
             {mode !== 'forgot' && (
               <>
                 <label htmlFor="password" className="auth-label">Password</label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
-                  required
-                  className="auth-input"
-                />
+                <div className="auth-password-field">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Password"
+                    required
+                    className="auth-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="auth-password-toggle"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? '👁️' : '👁️‍🗨️'}
+                  </button>
+                </div>
               </>
             )}
 

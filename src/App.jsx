@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { Component, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { AppAuthBoundary, useAuthSession } from './features/auth'
 import {
   BUILT_IN_SHELVES,
   DECORATION_OPTIONS,
   DeskModals,
+  DeskMenuItemButton,
+  DeskMenuPanel,
+  DeskMenuTriggerButton,
+  DeskTopControlButton,
   FONT_OPTIONS,
   FourWayResizeIcon,
   NewNoteMenu,
@@ -38,6 +42,49 @@ import {
   useMenuCloseOnOutsideClick
 } from './features/desk'
 
+class DeskErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Desk render error:', error, errorInfo)
+  }
+
+  handleReload = () => {
+    window.location.reload()
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: '#f8fafc' }}>
+          <div style={{ maxWidth: 520, width: '100%', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, boxShadow: '0 10px 24px rgba(15, 23, 42, 0.08)', padding: 20 }}>
+            <h2 style={{ marginTop: 0, marginBottom: 8, color: '#0f172a' }}>Something went wrong</h2>
+            <p style={{ marginTop: 0, marginBottom: 14, color: '#334155', lineHeight: 1.5 }}>
+              We hit a runtime issue while loading your desk. Please reload the app.
+            </p>
+            <button
+              type="button"
+              onClick={this.handleReload}
+              style={{ border: 'none', background: '#2563eb', color: '#fff', borderRadius: 8, padding: '10px 14px', fontWeight: 600, cursor: 'pointer' }}
+            >
+              Reload App
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
 export default function App() {
   const { session, loading, isRecoveryFlow, exitRecoveryFlow } = useAuthSession()
   return (
@@ -47,7 +94,9 @@ export default function App() {
       session={session}
       onBackToLogin={exitRecoveryFlow}
     >
-      <Desk user={session?.user} />
+      <DeskErrorBoundary>
+        <Desk user={session?.user} />
+      </DeskErrorBoundary>
     </AppAuthBoundary>
   )
 }
@@ -69,6 +118,9 @@ function Desk({ user }) {
   const [showNewNoteMenu, setShowNewNoteMenu] = useState(false)
   const [showDeskMenu, setShowDeskMenu] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
+  const [commandPaletteQuery, setCommandPaletteQuery] = useState('')
+  const [commandPaletteActiveIndex, setCommandPaletteActiveIndex] = useState(0)
   const [showShelfHierarchyTools, setShowShelfHierarchyTools] = useState(false)
   const [deskShelves, setDeskShelves] = useState([])
   const [deskShelfAssignments, setDeskShelfAssignments] = useState({})
@@ -198,6 +250,7 @@ function Desk({ user }) {
   const shelfSyncTimeoutRef = useRef(null)
   const deskCanvasRef = useRef(null)
   const importDeskInputRef = useRef(null)
+  const commandPaletteInputRef = useRef(null)
   const historyPastRef = useRef([])
   const historyFutureRef = useRef([])
   const pendingHistoryActionRef = useRef(null)
@@ -252,10 +305,83 @@ function Desk({ user }) {
     padding: '7px 10px',
     fontSize: 12,
     borderRadius: 999,
-    border: autoSaveStatus === 'error' ? '1px solid #ef9a9a' : '1px solid #c9d3e3',
-    background: autoSaveStatus === 'error' ? '#ffebee' : '#ffffffd9',
-    color: autoSaveStatus === 'error' ? '#b71c1c' : '#1e2a3b',
+    border: autoSaveStatus === 'error' ? '1px solid var(--ui-danger)' : '1px solid var(--ui-border-strong)',
+    background: autoSaveStatus === 'error' ? 'var(--ui-danger-soft)' : 'var(--ui-glass)',
+    color: autoSaveStatus === 'error' ? 'var(--ui-danger)' : 'var(--ui-ink)',
+    whiteSpace: 'nowrap',
+    animation: (historySyncing || isSavingEdit || autoSaveStatus === 'saving')
+      ? 'deskFloatPulse var(--motion-slow) ease-in-out infinite'
+      : 'none'
+  }
+  const menuInputStyle = {
+    flex: 1,
+    padding: '7px 8px',
+    borderRadius: 8,
+    border: '1px solid var(--ui-border-strong)',
+    background: 'var(--ui-surface)',
+    color: 'var(--ui-ink)',
+    fontSize: 13
+  }
+  const menuCompactInputStyle = {
+    ...menuInputStyle,
+    minWidth: 0,
+    padding: '5px 7px',
+    fontSize: 12
+  }
+  const menuSelectStyle = {
+    width: '100%',
+    borderRadius: 8,
+    border: '1px solid var(--ui-border-strong)',
+    padding: '5px 7px',
+    fontSize: 12,
+    background: 'var(--ui-surface)',
+    color: 'var(--ui-ink)'
+  }
+  const menuPrimaryActionStyle = {
+    padding: '7px 10px',
+    borderRadius: 8,
+    border: '1px solid var(--ui-primary-strong)',
+    background: 'var(--ui-primary)',
+    color: '#fff',
+    fontSize: 12,
     whiteSpace: 'nowrap'
+  }
+  const menuSubtleActionStyle = {
+    padding: '5px 8px',
+    borderRadius: 8,
+    border: '1px solid var(--ui-border)',
+    background: 'var(--ui-surface)',
+    color: 'var(--ui-ink)',
+    fontSize: 12
+  }
+  const menuSuccessActionStyle = {
+    border: '1px solid var(--ui-success)',
+    borderRadius: 8,
+    padding: '4px 8px',
+    background: 'var(--ui-success)',
+    color: '#fff',
+    fontSize: 12
+  }
+  const menuDangerActionStyle = {
+    border: '1px solid var(--ui-danger)',
+    borderRadius: 8,
+    padding: '4px 8px',
+    background: 'var(--ui-danger)',
+    color: '#fff',
+    fontSize: 12
+  }
+  const menuNeutralActionStyle = {
+    border: '1px solid var(--ui-border)',
+    borderRadius: 8,
+    padding: '4px 8px',
+    background: 'var(--ui-surface-soft)',
+    color: 'var(--ui-ink-muted)',
+    fontSize: 12
+  }
+  const menuSectionDividerStyle = {
+    borderTop: '1px solid var(--ui-border)',
+    marginTop: 12,
+    paddingTop: 10
   }
   const hasModalOpen = Boolean(
     pendingDeleteId ||
@@ -1895,6 +2021,270 @@ function Desk({ user }) {
     window.addEventListener('keydown', handleHistoryKeyDown)
     return () => window.removeEventListener('keydown', handleHistoryKeyDown)
   }, [hasModalOpen])
+
+  useEffect(() => {
+    function handleCommandPaletteShortcut(e) {
+      const isShortcutPressed = e.ctrlKey || e.metaKey
+      if (!isShortcutPressed) return
+
+      const normalizedKey = (e.key || '').toLowerCase()
+      if (normalizedKey !== 'k') return
+
+      e.preventDefault()
+      if (showCommandPalette) {
+        setShowCommandPalette(false)
+        setCommandPaletteQuery('')
+        setCommandPaletteActiveIndex(0)
+      } else {
+        if (hasModalOpen) return
+        setShowCommandPalette(true)
+        setCommandPaletteQuery('')
+        setCommandPaletteActiveIndex(0)
+        setShowDeskMenu(false)
+        setShowProfileMenu(false)
+        setShowNewNoteMenu(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleCommandPaletteShortcut)
+    return () => window.removeEventListener('keydown', handleCommandPaletteShortcut)
+  }, [hasModalOpen, showCommandPalette])
+
+  useEffect(() => {
+    if (!showCommandPalette) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const focusTimeout = setTimeout(() => {
+      commandPaletteInputRef.current?.focus()
+      commandPaletteInputRef.current?.select()
+    }, 0)
+
+    return () => {
+      clearTimeout(focusTimeout)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [showCommandPalette])
+
+  const sortedDesks = useMemo(() => [...desks].sort((left, right) => getDeskNameValue(left).localeCompare(getDeskNameValue(right))), [desks])
+  const currentDesk = desks.find((desk) => desk.id === selectedDeskId) || null
+  const isMobileLayout = viewportWidth <= 820
+  const isCompactMobileLayout = viewportWidth <= 560
+  const isCurrentDeskOwner = Boolean(currentDesk && currentDesk.user_id === user.id)
+  const canCurrentUserEditDeskItems = Boolean(
+    currentDesk
+    && (
+      currentDesk.user_id === user.id
+      || (!selectedDeskMemberRoleLoading && selectedDeskMemberRole === 'editor')
+    )
+  )
+  const isCurrentUserViewer = Boolean(
+    currentDesk
+    && currentDesk.user_id !== user.id
+    && !selectedDeskMemberRoleLoading
+    && selectedDeskMemberRole === 'viewer'
+  )
+  const pendingFriendRequestCount = incomingFriendRequests.length
+  const totalItemsCount = notes.length
+  const joinDate = formatDate(user.created_at)
+  const desksByShelfId = sortedDesks.reduce((accumulator, desk) => {
+    const shelfId = getDeskEffectiveShelfId(desk)
+    if (!accumulator[shelfId]) accumulator[shelfId] = []
+    accumulator[shelfId].push(desk)
+    return accumulator
+  }, {})
+  const customShelfOptions = getCustomShelfOptions()
+  const topOverlayTop = isMobileLayout ? 12 : 20
+  const topMenuTop = isMobileLayout ? (isCompactMobileLayout ? 64 : 12) : 20
+  const newNoteDesktopTop = topMenuTop
+  const mobileNoteMaxWidth = Math.max(180, viewportWidth - 32)
+
+  const commandPaletteActions = useMemo(() => {
+    const canEditCurrentDesk = Boolean(selectedDeskId && canCurrentUserEditDeskItems)
+
+    const quickActions = [
+      {
+        id: 'open-desk-menu',
+        label: 'Open Desk Menu',
+        description: 'Manage desks, shelves, import/export, and backgrounds.',
+        keywords: 'menu desk shelves import export background',
+        disabled: false,
+        run: () => {
+          setShowDeskMenu(true)
+          setShowProfileMenu(false)
+          setShowNewNoteMenu(false)
+        }
+      },
+      {
+        id: 'open-profile-menu',
+        label: 'Open Profile Panel',
+        description: 'View profile, friends, and desk activity.',
+        keywords: 'profile friends activity',
+        disabled: false,
+        run: () => {
+          setShowProfileMenu(true)
+          setShowDeskMenu(false)
+          setShowNewNoteMenu(false)
+          fetchCurrentUserProfile()
+          if (selectedDeskId) {
+            fetchDeskActivity(selectedDeskId)
+          }
+        }
+      },
+      {
+        id: 'create-sticky-note',
+        label: 'Create Sticky Note',
+        description: 'Add a new sticky note to the selected desk.',
+        keywords: 'create note sticky add',
+        disabled: !canEditCurrentDesk,
+        run: () => {
+          void addStickyNote()
+        }
+      },
+      {
+        id: 'create-checklist',
+        label: 'Create Checklist',
+        description: 'Add a new checklist to the selected desk.',
+        keywords: 'create checklist add task',
+        disabled: !canEditCurrentDesk,
+        run: () => {
+          void addChecklistNote()
+        }
+      },
+      {
+        id: 'add-decoration',
+        label: `Add ${DECORATION_OPTIONS[0]?.label || 'Decoration'}`,
+        description: 'Place a decoration on the selected desk.',
+        keywords: 'add decoration style',
+        disabled: !canEditCurrentDesk,
+        run: () => {
+          void addDecoration(DECORATION_OPTIONS[0]?.key || 'mug')
+        }
+      },
+      {
+        id: 'toggle-snap-grid',
+        label: snapToGrid ? 'Turn Snap To Grid Off' : 'Turn Snap To Grid On',
+        description: 'Toggle movement snapping to a 20px grid.',
+        keywords: 'snap grid toggle',
+        disabled: !canEditCurrentDesk,
+        run: () => {
+          setSnapToGrid((prev) => !prev)
+        }
+      },
+      {
+        id: 'force-save',
+        label: 'Force Save Desk',
+        description: 'Sync desk now and reset undo/redo baseline.',
+        keywords: 'save sync force',
+        disabled: !canEditCurrentDesk || forceSaveInProgress || historySyncing,
+        run: () => {
+          void forceSaveAndClearHistory()
+        }
+      },
+      {
+        id: 'undo',
+        label: 'Undo',
+        description: 'Undo the latest change.',
+        keywords: 'undo history',
+        disabled: !canUndo || hasModalOpen || !canCurrentUserEditDeskItems,
+        run: () => {
+          void undoNotesChange()
+        }
+      },
+      {
+        id: 'redo',
+        label: 'Redo',
+        description: 'Redo the latest undone change.',
+        keywords: 'redo history',
+        disabled: !canRedo || hasModalOpen || !canCurrentUserEditDeskItems,
+        run: () => {
+          void redoNotesChange()
+        }
+      }
+    ]
+
+    const deskActions = sortedDesks.map((desk) => ({
+      id: `switch-desk:${desk.id}`,
+      label: `Switch to ${getDeskNameValue(desk)}`,
+      description: desk.id === selectedDeskId ? 'Current desk' : 'Open this desk now.',
+      keywords: `switch desk ${getDeskNameValue(desk)}`,
+      disabled: desk.id === selectedDeskId,
+      run: () => {
+        handleSelectDesk(desk)
+      }
+    }))
+
+    return [...quickActions, ...deskActions]
+  }, [selectedDeskId, canCurrentUserEditDeskItems, snapToGrid, forceSaveInProgress, historySyncing, canUndo, canRedo, hasModalOpen, sortedDesks])
+
+  const commandPaletteFilteredActions = useMemo(() => {
+    const normalizedQuery = commandPaletteQuery.trim().toLowerCase()
+    if (!normalizedQuery) return commandPaletteActions
+
+    return commandPaletteActions.filter((action) => {
+      const haystack = `${action.label} ${action.description} ${action.keywords || ''}`.toLowerCase()
+      return haystack.includes(normalizedQuery)
+    })
+  }, [commandPaletteQuery, commandPaletteActions])
+
+  useEffect(() => {
+    if (!showCommandPalette) return
+
+    function resetPalette() {
+      setShowCommandPalette(false)
+      setCommandPaletteQuery('')
+      setCommandPaletteActiveIndex(0)
+    }
+
+    function handleCommandPaletteKeyDown(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        resetPalette()
+        return
+      }
+
+      if (commandPaletteFilteredActions.length === 0) return
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setCommandPaletteActiveIndex((prev) => (prev + 1) % commandPaletteFilteredActions.length)
+        return
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setCommandPaletteActiveIndex((prev) => (
+          (prev - 1 + commandPaletteFilteredActions.length) % commandPaletteFilteredActions.length
+        ))
+        return
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const selectedAction = commandPaletteFilteredActions[commandPaletteActiveIndex]
+        if (!selectedAction || selectedAction.disabled) return
+        resetPalette()
+        selectedAction.run()
+      }
+    }
+
+    window.addEventListener('keydown', handleCommandPaletteKeyDown)
+    return () => window.removeEventListener('keydown', handleCommandPaletteKeyDown)
+  }, [commandPaletteActiveIndex, commandPaletteFilteredActions, showCommandPalette])
+
+  useEffect(() => {
+    setCommandPaletteActiveIndex(0)
+  }, [commandPaletteQuery])
+
+  useEffect(() => {
+    if (commandPaletteFilteredActions.length === 0) {
+      setCommandPaletteActiveIndex(0)
+      return
+    }
+
+    setCommandPaletteActiveIndex((prev) => Math.min(prev, commandPaletteFilteredActions.length - 1))
+  }, [commandPaletteFilteredActions.length])
 
   useEffect(() => {
     if (!activeDecorationHandleId) return
@@ -5029,38 +5419,17 @@ function Desk({ user }) {
     flushDeferredRemoteNotes()
   }
 
-  const currentDesk = desks.find((desk) => desk.id === selectedDeskId) || null
-  const isMobileLayout = viewportWidth <= 820
-  const isCompactMobileLayout = viewportWidth <= 560
-  const isCurrentDeskOwner = Boolean(currentDesk && currentDesk.user_id === user.id)
-  const canCurrentUserEditDeskItems = Boolean(
-    currentDesk
-    && (
-      currentDesk.user_id === user.id
-      || (!selectedDeskMemberRoleLoading && selectedDeskMemberRole === 'editor')
-    )
-  )
-  const isCurrentUserViewer = Boolean(
-    currentDesk
-    && currentDesk.user_id !== user.id
-    && !selectedDeskMemberRoleLoading
-    && selectedDeskMemberRole === 'viewer'
-  )
-  const pendingFriendRequestCount = incomingFriendRequests.length
-  const totalItemsCount = notes.length
-  const joinDate = formatDate(user.created_at)
-  const sortedDesks = [...desks].sort((left, right) => getDeskNameValue(left).localeCompare(getDeskNameValue(right)))
-  const desksByShelfId = sortedDesks.reduce((accumulator, desk) => {
-    const shelfId = getDeskEffectiveShelfId(desk)
-    if (!accumulator[shelfId]) accumulator[shelfId] = []
-    accumulator[shelfId].push(desk)
-    return accumulator
-  }, {})
-  const customShelfOptions = getCustomShelfOptions()
-  const topOverlayTop = isMobileLayout ? 12 : 20
-  const topMenuTop = isMobileLayout ? (isCompactMobileLayout ? 64 : 12) : 20
-  const newNoteDesktopTop = topMenuTop
-  const mobileNoteMaxWidth = Math.max(180, viewportWidth - 32)
+  function closeCommandPalette() {
+    setShowCommandPalette(false)
+    setCommandPaletteQuery('')
+    setCommandPaletteActiveIndex(0)
+  }
+
+  function executeCommandPaletteAction(action) {
+    if (!action || action.disabled) return
+    closeCommandPalette()
+    action.run()
+  }
 
   function renderDeskRow(desk, depth = 0) {
     return (
@@ -5231,65 +5600,44 @@ function Desk({ user }) {
           zIndex: menuLayerZIndex
         }}
       >
-        <button
+        <DeskTopControlButton
           type="button"
           onClick={() => void undoNotesChange()}
+          isMobileLayout={isMobileLayout}
           disabled={!canUndo || hasModalOpen || !canCurrentUserEditDeskItems}
           title="Undo (Ctrl/Cmd+Z)"
-          style={{
-            padding: isMobileLayout ? '8px 12px' : '7px 12px',
-            fontSize: 12,
-            borderRadius: 6,
-            border: '1px solid #c9d3e3',
-            background: '#ffffffd9',
-            color: '#1e2a3b',
-            cursor: !canUndo || hasModalOpen || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
-            opacity: !canUndo || hasModalOpen || !canCurrentUserEditDeskItems ? 0.55 : 1,
-            pointerEvents: 'auto'
-          }}
         >
           {historySyncing ? 'Syncing...' : 'Undo'}
-        </button>
-        <button
+        </DeskTopControlButton>
+        <DeskTopControlButton
           type="button"
           onClick={() => void redoNotesChange()}
+          isMobileLayout={isMobileLayout}
           disabled={!canRedo || hasModalOpen || !canCurrentUserEditDeskItems}
           title="Redo (Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y)"
-          style={{
-            padding: isMobileLayout ? '8px 12px' : '7px 12px',
-            fontSize: 12,
-            borderRadius: 6,
-            border: '1px solid #c9d3e3',
-            background: '#ffffffd9',
-            color: '#1e2a3b',
-            cursor: !canRedo || hasModalOpen || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
-            opacity: !canRedo || hasModalOpen || !canCurrentUserEditDeskItems ? 0.55 : 1,
-            pointerEvents: 'auto'
-          }}
         >
           Redo
-        </button>
-        <button
+        </DeskTopControlButton>
+        <DeskTopControlButton
           type="button"
           onClick={() => void forceSaveAndClearHistory()}
+          isMobileLayout={isMobileLayout}
           disabled={!selectedDeskId || hasModalOpen || forceSaveInProgress || historySyncing || !canCurrentUserEditDeskItems}
           title="Force-save current desk content and clear undo/redo history"
           aria-live="polite"
           style={{
             ...autoSaveBadgeStyle,
             padding: isMobileLayout ? '8px 10px' : autoSaveBadgeStyle.padding,
-            pointerEvents: 'auto',
-            cursor: !selectedDeskId || hasModalOpen || forceSaveInProgress || historySyncing || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
             opacity: !selectedDeskId || hasModalOpen || forceSaveInProgress || historySyncing || !canCurrentUserEditDeskItems ? 0.6 : 1
           }}
         >
           {forceSaveInProgress ? 'Saving...' : autoSaveLabel}
-        </button>
+        </DeskTopControlButton>
       </div>
 
       <div
         style={{
-          position: isMobileLayout ? 'absolute' : 'fixed',
+          position: isMobileLayout ? 'fixed' : 'fixed',
           top: topMenuTop,
           right: isMobileLayout ? 12 : 20,
           left: isMobileLayout ? 12 : 'auto',
@@ -5301,7 +5649,7 @@ function Desk({ user }) {
         }}
       >
         <div ref={deskMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
-          <button
+          <DeskMenuTriggerButton
             onClick={() => {
               const nextOpen = !showDeskMenu
               setShowDeskMenu(nextOpen)
@@ -5310,36 +5658,17 @@ function Desk({ user }) {
                 setShowNewNoteMenu(false)
               }
             }}
-            style={{
-              width: isMobileLayout ? '100%' : 'auto',
-              padding: isMobileLayout ? '10px 12px' : '8px 16px',
-              fontSize: isMobileLayout ? 13 : 14,
-              cursor: 'pointer'
-            }}
+            isMobileLayout={isMobileLayout}
           >
             {currentDesk ? getDeskNameValue(currentDesk) : 'Select Desk'} ▼
-          </button>
+          </DeskMenuTriggerButton>
 
           {showDeskMenu && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '100%',
-                right: isMobileLayout ? 'auto' : 0,
-                left: isMobileLayout ? 0 : 'auto',
-                marginTop: 6,
-                background: '#fff',
-                border: '1px solid #ddd',
-                borderRadius: 6,
-                boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
-                color: '#222',
-                zIndex: menuPanelZIndex,
-                minWidth: isMobileLayout ? 0 : 200,
-                width: isMobileLayout ? '100%' : 'auto',
-                padding: 6
-              }}
+            <DeskMenuPanel
+              isMobileLayout={isMobileLayout}
+              menuPanelZIndex={menuPanelZIndex}
             >
-              <div style={{ maxHeight: 180, overflowY: 'auto', borderBottom: '1px solid #eee', marginBottom: 6 }}>
+              <div style={{ maxHeight: 180, overflowY: 'auto', borderBottom: '1px solid var(--ui-border)', marginBottom: 6 }}>
                 {desks.length === 0 && deskShelves.length === 0 ? (
                   <div style={{ padding: '8px 10px', fontSize: 13, opacity: 0.75 }}>No desks yet</div>
                 ) : (
@@ -5350,80 +5679,63 @@ function Desk({ user }) {
 
                       return (
                         <div key={shelfDef.id}>
-                          <button
+                          <DeskMenuItemButton
                             type="button"
                             onClick={() => toggleDeskShelfExpanded(shelfDef.id)}
+                            strong
                             style={{
-                              width: '100%',
-                              textAlign: 'left',
-                              padding: '6px 10px',
-                              border: 'none',
-                              borderRadius: 4,
-                              background: '#f3f5f8',
-                              color: '#333',
-                              cursor: 'pointer',
+                              background: 'var(--ui-surface-soft)',
+                              color: 'var(--ui-ink-muted)',
                               fontSize: 12,
-                              fontWeight: 600,
+                              padding: '6px 10px',
                               marginBottom: 2
                             }}
                           >
                             {isExpanded ? '▼' : '▶'} {shelfDef.label}
-                          </button>
+                          </DeskMenuItemButton>
                           {isExpanded && shelfDesks.map((desk) => renderDeskRow(desk, 1))}
                         </div>
                       )
                     })}
 
                     <div>
-                      <button
+                      <DeskMenuItemButton
                         type="button"
                         onClick={() => toggleDeskShelfExpanded('__custom_root')}
+                        strong
                         style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '6px 10px',
-                          border: 'none',
-                          borderRadius: 4,
-                          background: '#f3f5f8',
-                          color: '#333',
-                          cursor: 'pointer',
+                          background: 'var(--ui-surface-soft)',
+                          color: 'var(--ui-ink-muted)',
                           fontSize: 12,
-                          fontWeight: 600,
+                          padding: '6px 10px',
                           marginBottom: 2
                         }}
                       >
                         {(expandedDeskShelves.__custom_root ?? true) ? '▼' : '▶'} Custom Shelves
-                      </button>
+                      </DeskMenuItemButton>
                       {(expandedDeskShelves.__custom_root ?? true) && (
                         getChildDeskShelves(null).map((shelf) => renderCustomShelfTree(shelf, 1))
                       )}
                     </div>
                   </>
                 )}
-              </div>
 
-              <div style={{ padding: '0 8px 8px', borderBottom: '1px solid #eee', marginBottom: 6 }}>
-                <button
+                <DeskMenuItemButton
                   type="button"
                   onClick={() => setShowShelfHierarchyTools((prev) => !prev)}
+                  strong
                   style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
                     padding: '7px 10px',
-                    border: '1px solid #d9dce2',
-                    borderRadius: 4,
-                    background: '#fff',
-                    color: '#333',
-                    cursor: 'pointer',
+                    border: '1px solid var(--ui-border)',
+                    background: 'var(--ui-surface)',
+                    color: 'var(--ui-ink-muted)',
                     fontSize: 12,
-                    fontWeight: 700,
                     letterSpacing: 0.2,
                     marginBottom: 2
                   }}
                 >
                   Shelf Organizer
-                </button>
+                </DeskMenuItemButton>
 
                 {showShelfHierarchyTools && (
                   <>
@@ -5436,30 +5748,16 @@ function Desk({ user }) {
                           setNewShelfNameInput(e.target.value)
                         }}
                         placeholder="New shelf name"
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          borderRadius: 4,
-                          border: '1px solid #ccc',
-                          padding: '5px 7px',
-                          fontSize: 12
-                        }}
+                        style={menuCompactInputStyle}
                       />
-                      <button
+                      <DeskMenuItemButton
                         type="button"
                         onClick={createDeskShelf}
-                        style={{
-                          border: 'none',
-                          borderRadius: 4,
-                          background: '#4285F4',
-                          color: '#fff',
-                          padding: '5px 8px',
-                          fontSize: 12,
-                          cursor: 'pointer'
-                        }}
+                        fullWidth={false}
+                        style={menuPrimaryActionStyle}
                       >
                         Add
-                      </button>
+                      </DeskMenuItemButton>
                     </div>
 
                     <div style={{ marginTop: 6 }}>
@@ -5469,15 +5767,7 @@ function Desk({ user }) {
                           setShelfActionError('')
                           setNewShelfParentId(e.target.value)
                         }}
-                        style={{
-                          width: '100%',
-                          borderRadius: 4,
-                          border: '1px solid #ccc',
-                          padding: '5px 7px',
-                          fontSize: 12,
-                          background: '#fff',
-                          color: '#222'
-                        }}
+                        style={menuSelectStyle}
                       >
                         <option value="">Top-level custom shelf</option>
                         {customShelfOptions.map((shelfOption) => (
@@ -5490,19 +5780,11 @@ function Desk({ user }) {
 
                     {currentDesk && (
                       <div style={{ marginTop: 6 }}>
-                        <div style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>Move current desk</div>
+                        <div style={{ fontSize: 11, color: 'var(--ui-ink-soft)', marginBottom: 4 }}>Move current desk</div>
                         <select
                           value={getDeskAssignedCustomShelfId(currentDesk.id)}
                           onChange={(e) => setSelectedDeskCustomShelf(e.target.value)}
-                          style={{
-                            width: '100%',
-                            borderRadius: 4,
-                            border: '1px solid #ccc',
-                            padding: '5px 7px',
-                            fontSize: 12,
-                            background: '#fff',
-                            color: '#222'
-                          }}
+                          style={menuSelectStyle}
                         >
                           <option value="">Auto ({getDeskGroupLabel(currentDesk)})</option>
                           {customShelfOptions.map((shelfOption) => (
@@ -5515,149 +5797,75 @@ function Desk({ user }) {
                     )}
 
                     {shelfActionError && (
-                      <div style={{ marginTop: 4, color: '#d32f2f', fontSize: 11 }}>{shelfActionError}</div>
+                      <div style={{ marginTop: 4, color: 'var(--ui-danger)', fontSize: 11 }}>{shelfActionError}</div>
                     )}
                   </>
                 )}
               </div>
 
-              <button
+              <DeskMenuItemButton
                 type="button"
                 onClick={openCreateDeskDialog}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '7px 10px',
-                  border: 'none',
-                  borderRadius: 4,
-                  background: '#fff',
-                  color: '#222',
-                  cursor: 'pointer'
-                }}
+                strong
               >
                 + New Desk
-              </button>
+              </DeskMenuItemButton>
 
               {currentDesk && isCurrentDeskOwner && (
-                <button
+                <DeskMenuItemButton
                   type="button"
                   onClick={openRenameDeskDialog}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '7px 10px',
-                    border: 'none',
-                    borderRadius: 4,
-                    background: '#fff',
-                    color: '#222',
-                    cursor: 'pointer'
-                  }}
                 >
                   Rename Desk
-                </button>
+                </DeskMenuItemButton>
               )}
 
               {currentDesk && isCurrentDeskOwner && (
-                <button
+                <DeskMenuItemButton
                   type="button"
                   onClick={deleteCurrentDesk}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '7px 10px',
-                    border: 'none',
-                    borderRadius: 4,
-                    background: '#fff',
-                    color: '#d32f2f',
-                    cursor: 'pointer'
-                  }}
+                  danger
                 >
                   Delete Desk
-                </button>
+                </DeskMenuItemButton>
               )}
 
               {currentDesk && (isCurrentDeskOwner || isDeskCollaborative(currentDesk) || currentDesk.user_id !== user.id) && (
-                <button
+                <DeskMenuItemButton
                   type="button"
                   onClick={openDeskMembersDialog}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '7px 10px',
-                    border: 'none',
-                    borderRadius: 4,
-                    background: '#fff',
-                    color: '#222',
-                    cursor: 'pointer'
-                  }}
                 >
                   Manage Members
-                </button>
+                </DeskMenuItemButton>
               )}
 
               {currentDesk && !isCurrentDeskOwner && (
-                <button
+                <DeskMenuItemButton
                   type="button"
                   onClick={leaveCurrentDesk}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '7px 10px',
-                    border: 'none',
-                    borderRadius: 4,
-                    background: '#fff',
-                    color: '#d32f2f',
-                    cursor: 'pointer'
-                  }}
+                  danger
                 >
                   Leave Desk
-                </button>
+                </DeskMenuItemButton>
               )}
 
               {currentDesk && (
-                <button
+                <DeskMenuItemButton
                   type="button"
                   onClick={exportCurrentDesk}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '7px 10px',
-                    border: 'none',
-                    borderRadius: 4,
-                    background: '#fff',
-                    color: '#222',
-                    cursor: 'pointer'
-                  }}
                 >
                   Export Desk (.json)
-                </button>
+                </DeskMenuItemButton>
               )}
 
               {currentDesk && canCurrentUserEditDeskItems && (
                 <>
-                  <button
+                  <DeskMenuItemButton
                     type="button"
                     onClick={() => importDeskInputRef.current?.click()}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '7px 10px',
-                      border: 'none',
-                      borderRadius: 4,
-                      background: '#fff',
-                      color: '#222',
-                      cursor: 'pointer'
-                    }}
                   >
                     Import Desk (.json)
-                  </button>
+                  </DeskMenuItemButton>
                   <input
                     ref={importDeskInputRef}
                     type="file"
@@ -5669,28 +5877,20 @@ function Desk({ user }) {
               )}
 
               {currentDesk && canCurrentUserEditDeskItems && (
-                <button
+                <DeskMenuItemButton
                   type="button"
                   onClick={() => setSnapToGrid((prev) => !prev)}
+                  active={snapToGrid}
                   style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '7px 10px',
-                    border: 'none',
-                    borderRadius: 4,
-                    background: snapToGrid ? '#e8f0fe' : '#fff',
-                    color: snapToGrid ? '#1a73e8' : '#222',
-                    cursor: 'pointer',
-                    fontWeight: snapToGrid ? 600 : 400
+                    fontWeight: snapToGrid ? 700 : 500
                   }}
                 >
                   Snap To Grid: {snapToGrid ? 'On' : 'Off'}
-                </button>
+                </DeskMenuItemButton>
               )}
 
               {(deskMenuMessage || deskMenuError) && (
-                <div style={{ padding: '6px 10px', fontSize: 12, color: deskMenuError ? '#b71c1c' : '#2e7d32' }}>
+                <div style={{ padding: '6px 10px', fontSize: 12, color: deskMenuError ? 'var(--ui-danger)' : 'var(--ui-success)' }}>
                   {deskMenuError || deskMenuMessage}
                 </div>
               )}
@@ -5802,42 +6002,28 @@ function Desk({ user }) {
                         setCustomBackgroundInput(e.target.value)
                       }}
                       placeholder="https://... or #1f2937"
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        borderRadius: 4,
-                        border: '1px solid #ccc',
-                        padding: '5px 7px',
-                        fontSize: 12
-                      }}
+                      style={menuCompactInputStyle}
                     />
-                    <button
+                    <DeskMenuItemButton
                       type="button"
                       onClick={() => setCurrentDeskCustomBackground(customBackgroundInput)}
-                      style={{
-                        border: 'none',
-                        borderRadius: 4,
-                        background: '#4285F4',
-                        color: '#fff',
-                        padding: '5px 8px',
-                        fontSize: 12,
-                        cursor: 'pointer'
-                      }}
+                      fullWidth={false}
+                      style={menuPrimaryActionStyle}
                     >
                       Apply
-                    </button>
+                    </DeskMenuItemButton>
                   </div>
                   {backgroundMenuError && (
-                    <div style={{ marginTop: 4, color: '#d32f2f', fontSize: 11 }}>{backgroundMenuError}</div>
+                    <div style={{ marginTop: 4, color: 'var(--ui-danger)', fontSize: 11 }}>{backgroundMenuError}</div>
                   )}
                 </div>
               )}
-            </div>
+            </DeskMenuPanel>
           )}
         </div>
 
         <div ref={profileMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
-          <button
+          <DeskMenuTriggerButton
             type="button"
             onClick={() => {
               const nextOpen = !showProfileMenu
@@ -5855,70 +6041,49 @@ function Desk({ user }) {
                 }
               }
             }}
-            style={{
-              width: isMobileLayout ? '100%' : 'auto',
-              padding: isMobileLayout ? '10px 12px' : '8px 16px',
-              fontSize: isMobileLayout ? 13 : 14,
-              cursor: 'pointer'
-            }}
+            isMobileLayout={isMobileLayout}
           >
             Profile{pendingFriendRequestCount > 0 ? ` (${pendingFriendRequestCount})` : ''} ▼
-          </button>
+          </DeskMenuTriggerButton>
 
           {showProfileMenu && (
-            <div
+            <DeskMenuPanel
+              isMobileLayout={isMobileLayout}
+              menuPanelZIndex={menuPanelZIndex}
+              minWidth={340}
+              width={isMobileLayout ? '100%' : 340}
               style={{
-                position: 'absolute',
-                top: '100%',
-                right: isMobileLayout ? 'auto' : 0,
-                left: isMobileLayout ? 0 : 'auto',
-                marginTop: 6,
-                background: '#fff',
-                border: '1px solid #ddd',
-                borderRadius: 6,
-                boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
-                color: '#222',
-                zIndex: menuPanelZIndex,
-                width: isMobileLayout ? '100%' : 340,
                 padding: 10,
                 maxHeight: isMobileLayout ? 420 : 500,
                 overflowY: 'auto'
               }}
             >
               <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                <button
+                <DeskMenuItemButton
                   type="button"
                   onClick={() => setProfileTab('profile')}
+                  active={profileTab === 'profile'}
                   style={{
                     flex: 1,
-                    border: 'none',
-                    borderRadius: 4,
                     padding: '7px 8px',
-                    background: profileTab === 'profile' ? '#4285F4' : '#eee',
-                    color: profileTab === 'profile' ? '#fff' : '#333',
-                    fontSize: 13,
-                    cursor: 'pointer'
+                    fontSize: 13
                   }}
                 >
                   Profile
-                </button>
-                <button
+                </DeskMenuItemButton>
+                <DeskMenuItemButton
                   type="button"
                   onClick={() => setProfileTab('friends')}
+                  active={profileTab === 'friends'}
                   style={{
                     flex: 1,
-                    border: 'none',
-                    borderRadius: 4,
                     padding: '7px 8px',
-                    background: profileTab === 'friends' ? '#4285F4' : '#eee',
-                    color: profileTab === 'friends' ? '#fff' : '#333',
-                    fontSize: 13,
-                    cursor: 'pointer'
+                    fontSize: 13
                   }}
                 >
                   Friends{pendingFriendRequestCount > 0 ? ` (${pendingFriendRequestCount})` : ''}
-                </button>
-                <button
+                </DeskMenuItemButton>
+                <DeskMenuItemButton
                   type="button"
                   onClick={() => {
                     setProfileTab('activity')
@@ -5926,26 +6091,22 @@ function Desk({ user }) {
                       void fetchDeskActivity(selectedDeskId)
                     }
                   }}
+                  active={profileTab === 'activity'}
                   style={{
                     flex: 1,
-                    border: 'none',
-                    borderRadius: 4,
                     padding: '7px 8px',
-                    background: profileTab === 'activity' ? '#4285F4' : '#eee',
-                    color: profileTab === 'activity' ? '#fff' : '#333',
-                    fontSize: 13,
-                    cursor: 'pointer'
+                    fontSize: 13
                   }}
                 >
                   Activity
-                </button>
+                </DeskMenuItemButton>
               </div>
 
               {profileTab === 'profile' ? (
                 <div>
                   <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 14 }}>{user.email || 'Unknown user'}</div>
                   <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 12, marginBottom: 4, color: '#333' }}>Preferred name</div>
+                    <div style={{ fontSize: 12, marginBottom: 4, color: 'var(--ui-ink-muted)' }}>Preferred name</div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <input
                         value={preferredNameInput}
@@ -5955,38 +6116,27 @@ function Desk({ user }) {
                           setPreferredNameInput(e.target.value)
                         }}
                         placeholder="How you want your name shown"
-                        style={{
-                          flex: 1,
-                          padding: '7px 8px',
-                          borderRadius: 4,
-                          border: '1px solid #ccc',
-                          fontSize: 13
-                        }}
+                        style={menuInputStyle}
                       />
-                      <button
+                      <DeskMenuItemButton
                         type="button"
                         onClick={savePreferredName}
                         disabled={preferredNameSaving}
+                        fullWidth={false}
                         style={{
-                          padding: '7px 10px',
-                          borderRadius: 4,
-                          border: 'none',
-                          background: '#4285F4',
-                          color: '#fff',
-                          cursor: preferredNameSaving ? 'not-allowed' : 'pointer',
+                          ...menuPrimaryActionStyle,
                           opacity: preferredNameSaving ? 0.75 : 1,
-                          fontSize: 12,
-                          whiteSpace: 'nowrap'
+                          cursor: preferredNameSaving ? 'not-allowed' : 'pointer'
                         }}
                       >
                         {preferredNameSaving ? 'Saving...' : 'Save'}
-                      </button>
+                      </DeskMenuItemButton>
                     </div>
                     {preferredNameMessage && (
-                      <div style={{ marginTop: 5, color: '#2e7d32', fontSize: 12 }}>{preferredNameMessage}</div>
+                      <div style={{ marginTop: 5, color: 'var(--ui-success)', fontSize: 12 }}>{preferredNameMessage}</div>
                     )}
                     {preferredNameError && (
-                      <div style={{ marginTop: 5, color: '#d32f2f', fontSize: 12 }}>{preferredNameError}</div>
+                      <div style={{ marginTop: 5, color: 'var(--ui-danger)', fontSize: 12 }}>{preferredNameError}</div>
                     )}
                   </div>
                   <div style={{ fontSize: 13, marginBottom: 4 }}>Join date: {joinDate}</div>
@@ -5999,44 +6149,32 @@ function Desk({ user }) {
                     Desks deleted: {profileStatsLoading ? '...' : profileStats.desks_deleted}
                   </div>
 
-                  <button
+                  <DeskMenuItemButton
                     type="button"
                     onClick={fetchUserStats}
                     disabled={profileStatsLoading}
+                    fullWidth={false}
                     style={{
-                      padding: '5px 8px',
-                      borderRadius: 4,
-                      border: '1px solid #ccc',
-                      background: '#fff',
-                      color: '#222',
+                      ...menuSubtleActionStyle,
                       cursor: profileStatsLoading ? 'not-allowed' : 'pointer',
-                      fontSize: 12
+                      opacity: profileStatsLoading ? 0.7 : 1
                     }}
                   >
                     {profileStatsLoading ? 'Refreshing...' : 'Refresh stats'}
-                  </button>
+                  </DeskMenuItemButton>
 
-                  <div style={{ borderTop: '1px solid #eee', marginTop: 12, paddingTop: 10 }}>
+                  <div style={menuSectionDividerStyle}>
                     {deleteAccountError && (
-                      <div style={{ marginBottom: 6, color: '#d32f2f', fontSize: 12, textAlign: 'right' }}>{deleteAccountError}</div>
+                      <div style={{ marginBottom: 6, color: 'var(--ui-danger)', fontSize: 12, textAlign: 'right' }}>{deleteAccountError}</div>
                     )}
-                    <button
+                    <DeskMenuItemButton
                       type="button"
                       onClick={handleDeleteAccount}
-                      style={{
-                        marginLeft: 0,
-                        display: 'inline-block',
-                        padding: '7px 8px',
-                        borderRadius: 4,
-                        border: 'none',
-                        background: '#fff',
-                        color: '#b71c1c',
-                        fontSize: 12,
-                        cursor: 'pointer'
-                      }}
+                      danger
+                      style={{ display: 'inline-block', width: 'auto' }}
                     >
                       Delete account
-                    </button>
+                    </DeskMenuItemButton>
                   </div>
                 </div>
               ) : profileTab === 'friends' ? (
@@ -6046,57 +6184,44 @@ function Desk({ user }) {
                       value={friendEmailInput}
                       onChange={(e) => setFriendEmailInput(e.target.value)}
                       placeholder="friend@email.com"
-                      style={{
-                        flex: 1,
-                        padding: '7px 8px',
-                        borderRadius: 4,
-                        border: '1px solid #ccc',
-                        fontSize: 13
-                      }}
+                      style={menuInputStyle}
                     />
-                    <button
+                    <DeskMenuItemButton
                       type="submit"
                       disabled={friendSubmitting}
+                      fullWidth={false}
                       style={{
-                        padding: '7px 10px',
-                        borderRadius: 4,
-                        border: 'none',
-                        background: '#4285F4',
-                        color: '#fff',
+                        ...menuPrimaryActionStyle,
                         cursor: friendSubmitting ? 'not-allowed' : 'pointer',
-                        opacity: friendSubmitting ? 0.75 : 1,
-                        fontSize: 13
+                        opacity: friendSubmitting ? 0.75 : 1
                       }}
                     >
                       {friendSubmitting ? 'Sending...' : 'Add'}
-                    </button>
+                    </DeskMenuItemButton>
                   </form>
 
-                  <button
+                  <DeskMenuItemButton
                     type="button"
                     onClick={fetchFriends}
                     disabled={friendsLoading}
+                    fullWidth={false}
                     style={{
                       marginBottom: 10,
-                      padding: '5px 8px',
-                      borderRadius: 4,
-                      border: '1px solid #ccc',
-                      background: '#fff',
-                      color: '#222',
+                      ...menuSubtleActionStyle,
                       cursor: friendsLoading ? 'not-allowed' : 'pointer',
-                      fontSize: 12
+                      opacity: friendsLoading ? 0.7 : 1
                     }}
                   >
                     {friendsLoading ? 'Refreshing...' : 'Refresh'}
-                  </button>
+                  </DeskMenuItemButton>
 
                   {friendMessage && (
-                    <div style={{ marginBottom: 8, color: 'green', fontSize: 12 }}>
+                    <div style={{ marginBottom: 8, color: 'var(--ui-success)', fontSize: 12 }}>
                       {friendMessage}
                     </div>
                   )}
                   {friendError && (
-                    <div style={{ marginBottom: 8, color: '#d32f2f', fontSize: 12 }}>
+                    <div style={{ marginBottom: 8, color: 'var(--ui-danger)', fontSize: 12 }}>
                       {friendError}
                     </div>
                   )}
@@ -6109,44 +6234,30 @@ function Desk({ user }) {
                       incomingFriendRequests.map((request) => {
                         const requestDisplay = getProfileDisplayParts(request)
                         return (
-                        <div key={request.id} style={{ marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #f1f1f1' }}>
+                        <div key={request.id} style={{ marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid var(--ui-border)' }}>
                           <div style={{ fontSize: 13, marginBottom: 4 }}>
                             {requestDisplay.primary}
                             {requestDisplay.secondary && (
-                              <div style={{ fontSize: 11, color: '#666' }}>{requestDisplay.secondary}</div>
+                              <div style={{ fontSize: 11, color: 'var(--ui-ink-soft)' }}>{requestDisplay.secondary}</div>
                             )}
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <button
+                            <DeskMenuItemButton
                               type="button"
                               onClick={() => respondToFriendRequest(request.id, 'accepted')}
-                              style={{
-                                border: 'none',
-                                borderRadius: 4,
-                                padding: '4px 8px',
-                                background: '#2e7d32',
-                                color: '#fff',
-                                fontSize: 12,
-                                cursor: 'pointer'
-                              }}
+                              fullWidth={false}
+                              style={menuSuccessActionStyle}
                             >
                               Accept
-                            </button>
-                            <button
+                            </DeskMenuItemButton>
+                            <DeskMenuItemButton
                               type="button"
                               onClick={() => respondToFriendRequest(request.id, 'declined')}
-                              style={{
-                                border: 'none',
-                                borderRadius: 4,
-                                padding: '4px 8px',
-                                background: '#d32f2f',
-                                color: '#fff',
-                                fontSize: 12,
-                                cursor: 'pointer'
-                              }}
+                              fullWidth={false}
+                              style={menuDangerActionStyle}
                             >
                               Decline
-                            </button>
+                            </DeskMenuItemButton>
                           </div>
                         </div>
                         )
@@ -6175,27 +6286,23 @@ function Desk({ user }) {
                           <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {friendDisplay.primary}
                             {friendDisplay.secondary && (
-                              <div style={{ fontSize: 11, color: '#666' }}>{friendDisplay.secondary}</div>
+                              <div style={{ fontSize: 11, color: 'var(--ui-ink-soft)' }}>{friendDisplay.secondary}</div>
                             )}
                           </span>
-                          <button
+                          <DeskMenuItemButton
                             type="button"
                             onClick={() => removeFriend(friend.id)}
                             disabled={friendActionLoadingId === friend.id}
+                            fullWidth={false}
                             style={{
-                              border: 'none',
-                              borderRadius: 4,
-                              padding: '4px 8px',
-                              background: '#eee',
-                              color: '#333',
-                              fontSize: 12,
+                              ...menuNeutralActionStyle,
                               cursor: friendActionLoadingId === friend.id ? 'not-allowed' : 'pointer',
                               opacity: friendActionLoadingId === friend.id ? 0.7 : 1,
                               whiteSpace: 'nowrap'
                             }}
                           >
                             {friendActionLoadingId === friend.id ? 'Removing...' : 'Remove'}
-                          </button>
+                          </DeskMenuItemButton>
                         </div>
                         )
                       })
@@ -6214,25 +6321,17 @@ function Desk({ user }) {
                           <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {requestDisplay.primary}
                             {requestDisplay.secondary && (
-                              <div style={{ fontSize: 11, color: '#666' }}>{requestDisplay.secondary}</div>
+                              <div style={{ fontSize: 11, color: 'var(--ui-ink-soft)' }}>{requestDisplay.secondary}</div>
                             )}
                           </span>
-                          <button
+                          <DeskMenuItemButton
                             type="button"
                             onClick={() => cancelOutgoingFriendRequest(request.id)}
-                            style={{
-                              border: 'none',
-                              borderRadius: 4,
-                              padding: '4px 8px',
-                              background: '#eee',
-                              color: '#333',
-                              fontSize: 12,
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap'
-                            }}
+                            fullWidth={false}
+                            style={{ ...menuNeutralActionStyle, whiteSpace: 'nowrap' }}
                           >
                             Cancel
-                          </button>
+                          </DeskMenuItemButton>
                         </div>
                         )
                       })
@@ -6247,26 +6346,23 @@ function Desk({ user }) {
                     <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                         <div style={{ fontWeight: 700, fontSize: 13 }}>Recent activity</div>
-                        <button
+                        <DeskMenuItemButton
                           type="button"
                           onClick={() => fetchDeskActivity(selectedDeskId)}
                           disabled={activityLoading}
+                          fullWidth={false}
                           style={{
-                            padding: '5px 8px',
-                            borderRadius: 4,
-                            border: '1px solid #ccc',
-                            background: '#fff',
-                            color: '#222',
+                            ...menuSubtleActionStyle,
                             cursor: activityLoading ? 'not-allowed' : 'pointer',
-                            fontSize: 12
+                            opacity: activityLoading ? 0.7 : 1
                           }}
                         >
                           {activityLoading ? 'Refreshing...' : 'Refresh'}
-                        </button>
+                        </DeskMenuItemButton>
                       </div>
 
                       {activityError && (
-                        <div style={{ marginBottom: 8, color: '#d32f2f', fontSize: 12 }}>
+                        <div style={{ marginBottom: 8, color: 'var(--ui-danger)', fontSize: 12 }}>
                           {activityError}
                         </div>
                       )}
@@ -6276,9 +6372,9 @@ function Desk({ user }) {
                       ) : (
                         <div>
                           {activityFeed.map((entry) => (
-                            <div key={entry.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #f1f1f1' }}>
-                              <div style={{ fontSize: 13, color: '#222' }}>{getActivityActionLabel(entry)}</div>
-                              <div style={{ marginTop: 2, fontSize: 11, color: '#666' }}>{formatDate(entry.created_at)}</div>
+                            <div key={entry.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--ui-border)' }}>
+                              <div style={{ fontSize: 13, color: 'var(--ui-ink)' }}>{getActivityActionLabel(entry)}</div>
+                              <div style={{ marginTop: 2, fontSize: 11, color: 'var(--ui-ink-soft)' }}>{formatDate(entry.created_at)}</div>
                             </div>
                           ))}
                         </div>
@@ -6288,7 +6384,7 @@ function Desk({ user }) {
                 </div>
               )}
 
-              <div style={{ borderTop: '1px solid #eee', marginTop: 12, paddingTop: 10 }}>
+              <div style={menuSectionDividerStyle}>
                 <a
                   href="/privacy.html"
                   target="_blank"
@@ -6298,7 +6394,7 @@ function Desk({ user }) {
                     width: '100%',
                     textAlign: 'left',
                     padding: '7px 2px',
-                    color: '#555',
+                    color: 'var(--ui-ink-soft)',
                     fontSize: 13,
                     textDecoration: 'underline',
                     marginBottom: 4
@@ -6306,24 +6402,16 @@ function Desk({ user }) {
                 >
                   Privacy Policy
                 </a>
-                <button
+                <DeskMenuItemButton
                   type="button"
                   onClick={handleLogout}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '7px 2px',
-                    border: 'none',
-                    background: 'transparent',
-                    color: '#d32f2f',
-                    fontSize: 13,
-                    cursor: 'pointer'
-                  }}
+                  danger
+                  style={{ padding: '7px 2px', background: 'transparent', borderColor: 'transparent' }}
                 >
                   Logout
-                </button>
+                </DeskMenuItemButton>
               </div>
-            </div>
+            </DeskMenuPanel>
           )}
         </div>
       </div>
@@ -6351,6 +6439,108 @@ function Desk({ user }) {
         desktopLeft={20}
       />
 
+      {showCommandPalette && (
+        <div
+          onClick={closeCommandPalette}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: menuLayerZIndex + 30,
+            background: 'rgba(8, 14, 26, 0.42)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            padding: isMobileLayout ? '12px' : '64px 20px 20px'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(720px, 100%)',
+              borderRadius: 16,
+              border: '1px solid var(--ui-border)',
+              background: 'var(--ui-glass)',
+              boxShadow: 'var(--ui-shadow-floating)',
+              backdropFilter: 'blur(14px)',
+              overflow: 'hidden',
+              animation: 'deskPanelIn var(--motion-base) cubic-bezier(0.18, 0.85, 0.27, 1)'
+            }}
+          >
+            <div style={{ padding: isMobileLayout ? 10 : 12, borderBottom: '1px solid var(--ui-border)' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--ui-ink)', marginBottom: 8 }}>
+                Command Palette
+              </div>
+              <input
+                ref={commandPaletteInputRef}
+                value={commandPaletteQuery}
+                onChange={(e) => setCommandPaletteQuery(e.target.value)}
+                placeholder="Type a command or desk name..."
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  borderRadius: 10,
+                  border: '1px solid var(--ui-border-strong)',
+                  background: 'var(--ui-surface)',
+                  color: 'var(--ui-ink)',
+                  fontSize: 14,
+                  padding: '10px 12px'
+                }}
+              />
+              <div style={{ marginTop: 7, fontSize: 11, color: 'var(--ui-ink-soft)' }}>
+                Enter to run, Up/Down to navigate, Esc to close, Ctrl/Cmd+K to toggle.
+              </div>
+            </div>
+
+            <div style={{ maxHeight: isMobileLayout ? 300 : 360, overflowY: 'auto', padding: 8 }}>
+              {commandPaletteFilteredActions.length === 0 ? (
+                <div
+                  style={{
+                    padding: '12px 10px',
+                    borderRadius: 10,
+                    background: 'var(--ui-surface-soft)',
+                    color: 'var(--ui-ink-soft)',
+                    fontSize: 13
+                  }}
+                >
+                  No commands found. Try "desk", "note", "profile", or a desk name.
+                </div>
+              ) : (
+                commandPaletteFilteredActions.map((action, index) => {
+                  const isActive = index === commandPaletteActiveIndex
+                  return (
+                    <button
+                      key={action.id}
+                      type="button"
+                      onMouseEnter={() => setCommandPaletteActiveIndex(index)}
+                      onClick={() => executeCommandPaletteAction(action)}
+                      disabled={action.disabled}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        borderRadius: 10,
+                        border: isActive ? '1px solid var(--ui-primary)' : '1px solid transparent',
+                        background: isActive ? 'var(--ui-primary-soft)' : 'transparent',
+                        color: action.disabled ? 'var(--ui-ink-soft)' : 'var(--ui-ink)',
+                        opacity: action.disabled ? 0.65 : 1,
+                        padding: '9px 10px',
+                        marginBottom: 4,
+                        cursor: action.disabled ? 'not-allowed' : 'pointer',
+                        transition: 'background var(--motion-fast) ease, border-color var(--motion-fast) ease'
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{action.label}</div>
+                      <div style={{ fontSize: 11, marginTop: 2, color: 'var(--ui-ink-soft)' }}>{action.description}</div>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {!selectedDeskId && (
         <div
           style={{
@@ -6359,10 +6549,12 @@ function Desk({ user }) {
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: menuLayerZIndex + 2,
-            color: '#1e2a3b',
-            background: 'rgba(255, 255, 255, 0.98)',
-            border: '1px solid #c9d3e3',
-            boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
+            color: 'var(--ui-ink)',
+            background: 'var(--ui-glass)',
+            border: '1px solid var(--ui-border-strong)',
+            boxShadow: 'var(--ui-shadow-floating)',
+            backdropFilter: 'blur(10px)',
+            animation: 'deskPanelIn var(--motion-base) cubic-bezier(0.18, 0.85, 0.27, 1)',
             display: 'inline-block',
             padding: isMobileLayout ? '8px 10px' : '9px 12px',
             borderRadius: 10,
@@ -6377,7 +6569,19 @@ function Desk({ user }) {
       )}
 
       {isCurrentUserViewer && (
-        <div style={{ color: '#6a4f00', background: 'rgba(255,248,225,0.95)', display: 'inline-block', padding: '6px 10px', borderRadius: 6, border: '1px solid #f2d18f', marginTop: 8 }}>
+        <div
+          style={{
+            color: '#6a4f00',
+            background: 'rgba(255, 248, 225, 0.95)',
+            display: 'inline-block',
+            padding: '6px 10px',
+            borderRadius: 8,
+            border: '1px solid #f2d18f',
+            marginTop: 8,
+            boxShadow: '0 6px 16px rgba(106, 79, 0, 0.12)',
+            animation: 'deskPanelIn var(--motion-base) cubic-bezier(0.18, 0.85, 0.27, 1)'
+          }}
+        >
           Viewer mode: you can view this desk, but only Editors and Owner can make changes.
         </div>
       )}
@@ -7352,7 +7556,7 @@ function Desk({ user }) {
         modalSecondaryButtonStyle={modalSecondaryButtonStyle}
         modalPrimaryButtonStyle={modalPrimaryButtonStyle}
         modalDangerButtonStyle={modalDangerButtonStyle}
-      />
-    </div>
-  )
-}
+        />
+      </div>
+    )
+  }

@@ -1,4 +1,10 @@
 export { default as DeskModals } from './components/DeskModals'
+export {
+  DeskMenuItemButton,
+  DeskMenuPanel,
+  DeskMenuTriggerButton,
+  DeskTopControlButton
+} from './components/DeskUiPrimitives'
 export { default as FourWayResizeIcon } from './components/FourWayResizeIcon'
 export { default as NewNoteMenu } from './components/NewNoteMenu'
 export { default as useDeskViewport } from './hooks/useDeskViewport'

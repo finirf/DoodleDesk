@@ -86,6 +86,57 @@ export default function DeskModals({
     })
 
   const resizeOverlayIcon = _ResizeIconComponent({ size: 14, color: '#fff' })
+  const modalBodyTextStyle = { marginBottom: 10, fontSize: 13, color: 'var(--ui-ink-muted)' }
+  const modalHintTextStyle = { marginBottom: 8, fontSize: 12, color: 'var(--ui-ink-soft)' }
+  const modalInputStyle = {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '8px 10px',
+    borderRadius: 8,
+    border: '1px solid var(--ui-border-strong)',
+    background: 'var(--ui-surface)',
+    color: 'var(--ui-ink)',
+    marginBottom: 12,
+    fontSize: 14
+  }
+  const panelContainerStyle = {
+    border: '1px solid var(--ui-border)',
+    borderRadius: 8,
+    padding: 8,
+    maxHeight: 140,
+    overflowY: 'auto',
+    background: 'var(--ui-surface-soft)'
+  }
+  const neutralInfoTextStyle = { fontSize: 12, color: 'var(--ui-ink-soft)' }
+  const subtleLabelTextStyle = { fontSize: 12, color: 'var(--ui-ink-muted)', marginBottom: 6 }
+  const errorMessageStyle = { color: 'var(--ui-danger)', fontSize: 12, marginBottom: 8 }
+  const successMessageStyle = { color: 'var(--ui-success)', fontSize: 12, marginBottom: 8 }
+  const actionSelectStyle = {
+    border: '1px solid var(--ui-border-strong)',
+    borderRadius: 8,
+    padding: '3px 6px',
+    fontSize: 12,
+    background: 'var(--ui-surface)',
+    color: 'var(--ui-ink-muted)'
+  }
+  const modalPrimaryActionStyle = {
+    border: '1px solid var(--ui-primary-strong)',
+    borderRadius: 8,
+    padding: '4px 8px',
+    background: 'var(--ui-primary)',
+    color: '#fff',
+    fontSize: 12,
+    whiteSpace: 'nowrap'
+  }
+  const modalNeutralActionStyle = {
+    border: '1px solid var(--ui-border)',
+    borderRadius: 8,
+    padding: '4px 8px',
+    background: 'var(--ui-surface-soft)',
+    color: 'var(--ui-ink-muted)',
+    fontSize: 12,
+    whiteSpace: 'nowrap'
+  }
 
   return (
     <>
@@ -103,7 +154,7 @@ export default function DeskModals({
               textAlign: 'center'
             }}
           >
-            <div style={{ marginBottom: 12, color: '#222' }}>Delete this note?</div>
+            <div style={{ marginBottom: 12, color: 'var(--ui-ink)' }}>Delete this note?</div>
             <button
               type="button"
               onClick={confirmDeleteNote}
@@ -140,7 +191,7 @@ export default function DeskModals({
             }}
           >
             <div style={{ ...modalTitleStyle, marginBottom: 12 }}>{confirmDialog.title || 'Confirm Action'}</div>
-            <div style={{ marginBottom: 14, fontSize: 13, color: '#333' }}>{confirmDialog.message}</div>
+            <div style={{ ...modalBodyTextStyle, marginBottom: 14 }}>{confirmDialog.message}</div>
             <button
               type="button"
               onClick={confirmDialogAction}
@@ -185,10 +236,10 @@ export default function DeskModals({
             }}
           >
             <div style={modalTitleStyle}>Delete Account</div>
-            <div style={{ marginBottom: 10, fontSize: 13, color: '#333' }}>
+            <div style={modalBodyTextStyle}>
               This permanently deletes your DoodleDesk profile data, desks, shelves, and friend data. This action cannot be undone.
             </div>
-            <div style={{ marginBottom: 8, fontSize: 12, color: '#666' }}>Type DELETE to confirm.</div>
+            <div style={modalHintTextStyle}>Type DELETE to confirm.</div>
             <input
               value={deleteAccountDialog.confirmationText}
               onChange={(e) => {
@@ -197,15 +248,7 @@ export default function DeskModals({
               }}
               autoFocus
               placeholder="DELETE"
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                padding: '8px 10px',
-                borderRadius: 6,
-                border: '1px solid #ccc',
-                marginBottom: 12,
-                fontSize: 14
-              }}
+              style={modalInputStyle}
             />
 
             <div style={modalActionsStyle}>
@@ -265,15 +308,7 @@ export default function DeskModals({
               }}
               autoFocus
               placeholder="Desk name"
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                padding: '8px 10px',
-                borderRadius: 6,
-                border: '1px solid #ccc',
-                marginBottom: 12,
-                fontSize: 14
-              }}
+              style={modalInputStyle}
             />
 
             {deskNameDialog.mode === 'create' && (
@@ -297,18 +332,11 @@ export default function DeskModals({
 
                 {deskNameDialog.isCollaborative && (
                   <div
-                    style={{
-                      border: '1px solid #e3e3e3',
-                      borderRadius: 6,
-                      padding: 8,
-                      maxHeight: 140,
-                      overflowY: 'auto',
-                      background: '#fafafa'
-                    }}
+                    style={panelContainerStyle}
                   >
-                    <div style={{ fontSize: 12, marginBottom: 6, color: '#555' }}>Invite friends:</div>
+                    <div style={subtleLabelTextStyle}>Invite friends:</div>
                     {friends.length === 0 ? (
-                      <div style={{ fontSize: 12, color: '#777' }}>No friends available to invite yet.</div>
+                      <div style={neutralInfoTextStyle}>No friends available to invite yet.</div>
                     ) : (
                       friends.map((friend) => {
                         const checked = (deskNameDialog.invitedFriendIds || []).includes(friend.id)
@@ -334,7 +362,7 @@ export default function DeskModals({
             )}
 
             {deskNameError && (
-              <div style={{ color: '#d32f2f', fontSize: 12, marginBottom: 10 }}>
+              <div style={{ ...errorMessageStyle, marginBottom: 10 }}>
                 {deskNameError}
               </div>
             )}
@@ -387,21 +415,21 @@ export default function DeskModals({
             <div style={modalTitleStyle}>Manage Desk Members</div>
 
             {deskMembersMessage && (
-              <div style={{ color: 'green', fontSize: 12, marginBottom: 8 }}>{deskMembersMessage}</div>
+              <div style={successMessageStyle}>{deskMembersMessage}</div>
             )}
             {deskMembersError && (
-              <div style={{ color: '#d32f2f', fontSize: 12, marginBottom: 8 }}>{deskMembersError}</div>
+              <div style={errorMessageStyle}>{deskMembersError}</div>
             )}
             {deskMemberRequestsError && (
-              <div style={{ color: '#d32f2f', fontSize: 12, marginBottom: 8 }}>{deskMemberRequestsError}</div>
+              <div style={errorMessageStyle}>{deskMemberRequestsError}</div>
             )}
 
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Current members</div>
+              <div style={subtleLabelTextStyle}>Current members</div>
               {deskMembersLoading ? (
-                <div style={{ fontSize: 12, color: '#777' }}>Loading members...</div>
+                <div style={neutralInfoTextStyle}>Loading members...</div>
               ) : deskMembers.length === 0 ? (
-                <div style={{ fontSize: 12, color: '#777' }}>No members yet</div>
+                <div style={neutralInfoTextStyle}>No members yet</div>
               ) : (
                 sortedDeskMembers.map((member) => {
                   const isRemoving = deskMemberActionLoadingId === `remove:${member.user_id}`
@@ -427,15 +455,15 @@ export default function DeskModals({
                       <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {memberDisplay.primary}
                         {isOwnerRow && (
-                          <div style={{ fontSize: 11, color: '#666' }}>Desk owner</div>
+                          <div style={{ fontSize: 11, color: 'var(--ui-ink-soft)' }}>Desk owner</div>
                         )}
                         {!isOwnerRow && (
-                          <div style={{ fontSize: 11, color: '#666' }}>
+                          <div style={{ fontSize: 11, color: 'var(--ui-ink-soft)' }}>
                             {member.role === 'viewer' ? 'Viewer (read-only)' : 'Editor'}
                           </div>
                         )}
                         {memberDisplay.secondary && (
-                          <div style={{ fontSize: 11, color: '#666' }}>{memberDisplay.secondary}</div>
+                          <div style={{ fontSize: 11, color: 'var(--ui-ink-soft)' }}>{memberDisplay.secondary}</div>
                         )}
                       </span>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -445,12 +473,7 @@ export default function DeskModals({
                             onChange={(e) => updateDeskMemberRole(member.user_id, e.target.value)}
                             disabled={isRoleUpdating}
                             style={{
-                              border: '1px solid #ccc',
-                              borderRadius: 4,
-                              padding: '3px 6px',
-                              fontSize: 12,
-                              background: '#fff',
-                              color: '#333',
+                              ...actionSelectStyle,
                               cursor: isRoleUpdating ? 'not-allowed' : 'pointer',
                               opacity: isRoleUpdating ? 0.7 : 1
                             }}
@@ -466,15 +489,9 @@ export default function DeskModals({
                             onClick={() => sendFriendRequestToDeskMember(member.user_id, member.email)}
                             disabled={isFriend || hasOutgoingFriendRequest || hasIncomingFriendRequest || isFriendRequesting}
                             style={{
-                              border: 'none',
-                              borderRadius: 4,
-                              padding: '4px 8px',
-                              background: isFriend || hasOutgoingFriendRequest || hasIncomingFriendRequest ? '#eee' : '#4285F4',
-                              color: isFriend || hasOutgoingFriendRequest || hasIncomingFriendRequest ? '#777' : '#fff',
-                              fontSize: 12,
+                              ...(isFriend || hasOutgoingFriendRequest || hasIncomingFriendRequest ? modalNeutralActionStyle : modalPrimaryActionStyle),
                               cursor: isFriend || hasOutgoingFriendRequest || hasIncomingFriendRequest || isFriendRequesting ? 'not-allowed' : 'pointer',
-                              opacity: isFriendRequesting ? 0.7 : 1,
-                              whiteSpace: 'nowrap'
+                              opacity: isFriendRequesting ? 0.7 : 1
                             }}
                           >
                             {isFriend
@@ -495,15 +512,9 @@ export default function DeskModals({
                             onClick={() => removeDeskMember(member.user_id)}
                             disabled={isRemoving}
                             style={{
-                              border: 'none',
-                              borderRadius: 4,
-                              padding: '4px 8px',
-                              background: '#eee',
-                              color: '#333',
-                              fontSize: 12,
+                              ...modalNeutralActionStyle,
                               cursor: isRemoving ? 'not-allowed' : 'pointer',
-                              opacity: isRemoving ? 0.7 : 1,
-                              whiteSpace: 'nowrap'
+                              opacity: isRemoving ? 0.7 : 1
                             }}
                           >
                             {isRemoving ? 'Removing...' : 'Remove'}
@@ -518,11 +529,11 @@ export default function DeskModals({
 
             {isCurrentDeskOwner && (
               <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Pending member requests</div>
+                <div style={subtleLabelTextStyle}>Pending member requests</div>
                 {deskMemberRequestsLoading ? (
-                  <div style={{ fontSize: 12, color: '#777' }}>Loading requests...</div>
+                  <div style={neutralInfoTextStyle}>Loading requests...</div>
                 ) : deskMemberRequests.length === 0 ? (
-                  <div style={{ fontSize: 12, color: '#777' }}>No pending requests</div>
+                  <div style={neutralInfoTextStyle}>No pending requests</div>
                 ) : (
                   deskMemberRequests.map((request) => {
                     const requester = {
@@ -539,8 +550,8 @@ export default function DeskModals({
                     const isDeclining = deskMemberActionLoadingId === `declined:${request.id}`
 
                     return (
-                      <div key={request.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #f0f0f0' }}>
-                        <div style={{ fontSize: 12, marginBottom: 6, color: '#333' }}>
+                      <div key={request.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--ui-border)' }}>
+                        <div style={{ fontSize: 12, marginBottom: 6, color: 'var(--ui-ink-muted)' }}>
                           {requesterDisplay.primary} requested adding {targetDisplay.primary}
                         </div>
                         <div style={{ display: 'flex', gap: 6 }}>
@@ -549,12 +560,7 @@ export default function DeskModals({
                             onClick={() => respondDeskMemberRequest(request, 'approved')}
                             disabled={isApproving || isDeclining}
                             style={{
-                              border: 'none',
-                              borderRadius: 4,
-                              padding: '4px 8px',
-                              background: '#4285F4',
-                              color: '#fff',
-                              fontSize: 12,
+                              ...modalPrimaryActionStyle,
                               cursor: isApproving || isDeclining ? 'not-allowed' : 'pointer',
                               opacity: isApproving || isDeclining ? 0.7 : 1
                             }}
@@ -566,12 +572,7 @@ export default function DeskModals({
                             onClick={() => respondDeskMemberRequest(request, 'declined')}
                             disabled={isApproving || isDeclining}
                             style={{
-                              border: 'none',
-                              borderRadius: 4,
-                              padding: '4px 8px',
-                              background: '#eee',
-                              color: '#333',
-                              fontSize: 12,
+                              ...modalNeutralActionStyle,
                               cursor: isApproving || isDeclining ? 'not-allowed' : 'pointer',
                               opacity: isApproving || isDeclining ? 0.7 : 1
                             }}
@@ -587,11 +588,11 @@ export default function DeskModals({
             )}
 
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>
+              <div style={subtleLabelTextStyle}>
                 {isCurrentDeskOwner ? 'Add friends' : 'Request to add your friends'}
               </div>
               {sortedInvitableFriends.length === 0 ? (
-                <div style={{ fontSize: 12, color: '#777' }}>No friends available</div>
+                <div style={neutralInfoTextStyle}>No friends available</div>
               ) : (
                 sortedInvitableFriends.map((friend) => {
                   const alreadyMember = deskMembers.some((member) => member.user_id === friend.id)
@@ -612,7 +613,7 @@ export default function DeskModals({
                       <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {friendDisplay.primary}
                         {friendDisplay.secondary && (
-                          <div style={{ fontSize: 11, color: '#666' }}>{friendDisplay.secondary}</div>
+                          <div style={{ fontSize: 11, color: 'var(--ui-ink-soft)' }}>{friendDisplay.secondary}</div>
                         )}
                       </span>
                       <button
@@ -620,15 +621,9 @@ export default function DeskModals({
                         onClick={() => (isCurrentDeskOwner ? addDeskMember(friend.id) : requestDeskMemberAdd(friend.id))}
                         disabled={alreadyMember || hasPendingRequest || isAdding}
                         style={{
-                          border: 'none',
-                          borderRadius: 4,
-                          padding: '4px 8px',
-                          background: alreadyMember || hasPendingRequest ? '#eee' : '#4285F4',
-                          color: alreadyMember || hasPendingRequest ? '#777' : '#fff',
-                          fontSize: 12,
+                          ...(alreadyMember || hasPendingRequest ? modalNeutralActionStyle : modalPrimaryActionStyle),
                           cursor: alreadyMember || hasPendingRequest || isAdding ? 'not-allowed' : 'pointer',
-                          opacity: isAdding ? 0.7 : 1,
-                          whiteSpace: 'nowrap'
+                          opacity: isAdding ? 0.7 : 1
                         }}
                       >
                         {alreadyMember

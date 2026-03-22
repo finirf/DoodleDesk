@@ -9,6 +9,8 @@ import './AuthScreen.css'
 export default function LinkPasswordModal({ email, onClose, onSuccess }) {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
@@ -64,28 +66,50 @@ export default function LinkPasswordModal({ email, onClose, onSuccess }) {
           <label htmlFor="link-password" className="auth-label">
             Password
           </label>
-          <input
-            id="link-password"
-            type="password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="Choose a password"
-            required
-            className="auth-input"
-          />
+          <div className="auth-password-field">
+            <input
+              id="link-password"
+              type={showNewPassword ? 'text' : 'password'}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Choose a password"
+              required
+              className="auth-input"
+            />
+            <button
+              type="button"
+              onClick={() => setShowNewPassword((prev) => !prev)}
+              className="auth-password-toggle"
+              aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+              title={showNewPassword ? 'Hide password' : 'Show password'}
+            >
+              {showNewPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
 
           <label htmlFor="link-confirm-password" className="auth-label">
             Confirm password
           </label>
-          <input
-            id="link-confirm-password"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm password"
-            required
-            className="auth-input"
-          />
+          <div className="auth-password-field">
+            <input
+              id="link-confirm-password"
+              type={showConfirmPassword ? 'text' : 'password'}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm password"
+              required
+              className="auth-input"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword((prev) => !prev)}
+              className="auth-password-toggle"
+              aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+              title={showConfirmPassword ? 'Hide password' : 'Show password'}
+            >
+              {showConfirmPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
 
           {error && <div className="auth-message auth-message-error">{error}</div>}
           {success && <div className="auth-message auth-message-success">{success}</div>}

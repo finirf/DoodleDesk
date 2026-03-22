@@ -130,6 +130,51 @@
   box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.18);
 }
 
+.auth-password-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.auth-password-field .auth-input {
+  padding-right: 56px;
+}
+
+.auth-password-toggle {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 4px 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #cbd5e1;
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
+  border-radius: 999px;
+}
+
+.auth-password-toggle:hover {
+  color: #f1f5f9;
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.auth-password-toggle:active {
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.auth-password-toggle:focus,
+.auth-password-toggle:focus-visible {
+  outline: none;
+  border-color: rgba(66, 133, 244, 0.65);
+  background: rgba(66, 133, 244, 0.14);
+}
+
 .auth-submit-button {
   margin-top: 8px;
   background: #4285f4;
@@ -216,7 +261,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(4, 10, 21, 0.56);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -233,6 +278,7 @@
   width: 100%;
   backdrop-filter: blur(8px);
   box-shadow: 0 20px 44px rgba(2, 6, 23, 0.7);
+  animation: deskPanelIn var(--motion-base) cubic-bezier(0.18, 0.85, 0.27, 1);
 }
 
 .auth-modal-content h2 {
