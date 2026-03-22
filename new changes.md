@@ -163,3 +163,9 @@
 - Converted the save-status badge into a clickable force-save control.
 - Force save now syncs local desk items against remote state and then clears undo/redo history baseline.
 - Preserved status messaging while adding explicit "save now" recovery behavior for edge-case sync drift.
+
+### 28) Bidirectional desk expansion (desktop + mobile)
+- Added horizontal canvas growth to match existing vertical growth, so desks can now expand in both directions as items are moved.
+- Updated drag boundary calculations to use the expanding canvas width, allowing notes/checklists/decorations to move into newly created horizontal space.
+- Added right-edge growth detection when loading desk items so previously saved wide layouts rehydrate with the correct desk width.
+- Applied a dynamic canvas min-width to enable horizontal scrolling on both desktop and mobile when the desk grows beyond the viewport.

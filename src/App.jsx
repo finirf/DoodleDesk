@@ -153,7 +153,9 @@ function Desk({ user }) {
   const {
     viewportWidth,
     sectionHeight,
+    canvasWidth,
     canvasHeight,
+    setCanvasWidth,
     setCanvasHeight
   } = useDeskViewport({ getViewportMetrics })
   const draggedIdRef = useRef(null)
@@ -2848,8 +2850,8 @@ function Desk({ user }) {
   }
 
   function findAvailableSpawnPosition({ baseX, baseY, width, height }) {
-    const canvasWidth = Math.round(deskCanvasRef.current?.clientWidth || getViewportMetrics().width)
-    const maxX = Math.max(0, canvasWidth - width)
+    const availableWidth = Math.round(canvasWidth || getViewportMetrics().width)
+    const maxX = Math.max(0, availableWidth - width)
     const normalizedBaseX = Math.min(Math.max(0, Number(baseX) || 0), maxX)
     const normalizedBaseY = Math.max(0, Number(baseY) || 0)
     const diagonalStep = 24
@@ -3319,7 +3321,13 @@ function Desk({ user }) {
       const itemBottom = (Number(item.y) || 0) + getItemHeight(item)
       return Math.max(maxY, itemBottom)
     }, 0)
+    const maxNoteRight = combined.reduce((maxX, item) => {
+      const itemRight = (Number(item.x) || 0) + getItemWidth(item)
+      return Math.max(maxX, itemRight)
+    }, 0)
+    const requiredWidth = maxNoteRight + growThreshold
     const requiredHeight = maxNoteBottom + growThreshold
+    setCanvasWidth((prev) => Math.max(prev, requiredWidth, viewportWidth))
     const requiredSections = Math.max(2, Math.ceil(requiredHeight / sectionHeight))
     setCanvasHeight((prev) => Math.max(prev, requiredSections * sectionHeight))
     } catch (error) {
@@ -4933,6 +4941,13 @@ function Desk({ user }) {
 
     const nextX = pageX - dragOffsetRef.current.x
     const nextY = pageY - dragOffsetRef.current.y
+    const requiredWidth = Math.ceil(nextX + activeItemWidth + growThreshold)
+    const effectiveCanvasWidth = Math.max(canvasWidth, requiredWidth)
+
+    setCanvasWidth((prev) => {
+      if (requiredWidth <= prev) return prev
+      return requiredWidth
+    })
 
     setCanvasHeight((prev) => {
       if (nextY + activeItemHeight + growThreshold <= prev) return prev
@@ -4941,8 +4956,7 @@ function Desk({ user }) {
       return Math.max(prev, requiredSections * sectionHeight)
     })
 
-    const canvasWidth = Math.round(deskCanvasRef.current?.clientWidth || getViewportMetrics().width)
-    const maxX = Math.max(0, canvasWidth - activeItemWidth)
+    const maxX = Math.max(0, effectiveCanvasWidth - activeItemWidth)
     const boundedX = Math.min(Math.max(0, nextX), maxX)
     const boundedY = Math.max(0, nextY)
     const snappedX = snapToGrid ? Math.min(Math.max(0, Math.round(boundedX / gridSize) * gridSize), maxX) : boundedX
@@ -4986,14 +5000,18 @@ function Desk({ user }) {
       const nextX = pageX - dragOffsetRef.current.x
       const nextY = pageY - dragOffsetRef.current.y
       const activeItem = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
-      const canvasWidth = Math.round(deskCanvasRef.current?.clientWidth || getViewportMetrics().width)
-      const maxX = Math.max(0, canvasWidth - getItemWidth(activeItem))
+      const activeItemWidth = getItemWidth(activeItem)
+      const requiredWidth = Math.ceil(nextX + activeItemWidth + growThreshold)
+      const availableWidth = Math.max(canvasWidth, requiredWidth)
+      const maxX = Math.max(0, availableWidth - activeItemWidth)
       const boundedX = Math.min(Math.max(0, nextX), maxX)
       const boundedY = Math.max(0, nextY)
       nextPosition = {
         x: snapToGrid ? Math.min(Math.max(0, Math.round(boundedX / gridSize) * gridSize), maxX) : boundedX,
         y: snapToGrid ? Math.max(0, Math.round(boundedY / gridSize) * gridSize) : boundedY
       }
+
+      setCanvasWidth((prev) => Math.max(prev, requiredWidth))
     } else {
       const itemToPersist = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
       if (!itemToPersist) return
@@ -5176,6 +5194,7 @@ function Desk({ user }) {
       style={{
         position: 'relative',
         width: '100%',
+        minWidth: canvasWidth,
         boxSizing: 'border-box',
         minHeight: canvasHeight,
         paddingTop: isMobileLayout ? 104 : 20,
