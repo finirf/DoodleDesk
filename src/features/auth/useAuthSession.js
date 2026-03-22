@@ -17,23 +17,11 @@ export default function useAuthSession() {
       }
 
       try {
-        const { data: redirectData, error: redirectError } = await supabase.auth.getSessionFromUrl()
-        if (redirectError) console.error('Redirect session error:', redirectError)
-
-        if (redirectData?.session) {
-          if (!isMounted) return
-          setSession(redirectData.session)
-          console.log('Session from redirect:', redirectData.session)
-          if (window.location.hash) {
-            window.history.replaceState({}, document.title, window.location.pathname)
-          }
-        } else {
-          const { data: { session: persistedSession }, error } = await supabase.auth.getSession()
-          if (error) console.error('Get session error:', error)
-          if (!isMounted) return
-          setSession(persistedSession)
-          console.log('Initial session:', persistedSession)
-        }
+        const { data: { session: persistedSession }, error } = await supabase.auth.getSession()
+        if (error) console.error('Get session error:', error)
+        if (!isMounted) return
+        setSession(persistedSession)
+        console.log('Initial session:', persistedSession)
       } catch (err) {
         console.error('Error loading session:', err)
       } finally {
