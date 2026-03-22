@@ -159,6 +159,7 @@ function Desk({ user }) {
   const draggedIdRef = useRef(null)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
   const dragPointerIdRef = useRef(null)
+  const dragLastPositionRef = useRef(null)
   const notesRef = useRef([])
   const rotatingNoteIdRef = useRef(null)
   const rotatingPointerIdRef = useRef(null)
@@ -202,6 +203,7 @@ function Desk({ user }) {
 
   const growThreshold = 180
   const gridSize = 20
+  const dragReleaseDeadZonePx = 10
   const menuLayerZIndex = 6000
   const menuPanelZIndex = menuLayerZIndex + 1
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
@@ -4727,6 +4729,7 @@ function Desk({ user }) {
     setDraggedId(itemKey)
     draggedIdRef.current = itemKey
     dragPointerIdRef.current = typeof e.pointerId === 'number' ? e.pointerId : null
+    dragLastPositionRef.current = { x: item.x, y: item.y }
 
     const offset = { x: pageX - item.x, y: pageY - item.y }
     setDragOffset(offset)
@@ -4741,7 +4744,10 @@ function Desk({ user }) {
     if (dragPointerIdRef.current !== null && e.pointerId !== dragPointerIdRef.current) return
 
     const activeDraggedId = draggedIdRef.current
-    if (!activeDraggedId) return
+    if (!activeDraggedId) {
+      dragLastPositionRef.current = null
+      return
+    }
 
     const { pageX, pageY } = getEventPosition(e)
 
@@ -4765,6 +4771,7 @@ function Desk({ user }) {
     const boundedY = Math.max(0, nextY)
     const snappedX = snapToGrid ? Math.min(Math.max(0, Math.round(boundedX / gridSize) * gridSize), maxX) : boundedX
     const snappedY = snapToGrid ? Math.max(0, Math.round(boundedY / gridSize) * gridSize) : boundedY
+    dragLastPositionRef.current = { x: snappedX, y: snappedY }
 
     setNotes((prev) =>
       prev.map((item) =>
@@ -4790,6 +4797,7 @@ function Desk({ user }) {
     if (!activeDraggedId) return
 
     let nextPosition = null
+    const lastPosition = dragLastPositionRef.current
 
     if (e) {
       const { pageX, pageY } = getEventPosition(e)
@@ -4800,23 +4808,35 @@ function Desk({ user }) {
       const maxX = Math.max(0, canvasWidth - getItemWidth(activeItem))
       const boundedX = Math.min(Math.max(0, nextX), maxX)
       const boundedY = Math.max(0, nextY)
-      nextPosition = {
+      const releasePosition = {
         x: snapToGrid ? Math.min(Math.max(0, Math.round(boundedX / gridSize) * gridSize), maxX) : boundedX,
         y: snapToGrid ? Math.max(0, Math.round(boundedY / gridSize) * gridSize) : boundedY
       }
 
-      setNotes((prev) =>
-        prev.map((item) =>
-          getItemKey(item) === activeDraggedId ? { ...item, x: nextPosition.x, y: nextPosition.y } : item
-        )
-      )
+      if (!lastPosition) {
+        nextPosition = releasePosition
+      } else {
+        const dx = releasePosition.x - lastPosition.x
+        const dy = releasePosition.y - lastPosition.y
+        const distanceFromLast = Math.hypot(dx, dy)
+        nextPosition = distanceFromLast <= dragReleaseDeadZonePx ? lastPosition : releasePosition
+      }
+    } else if (lastPosition) {
+      nextPosition = lastPosition
     } else {
       const itemToPersist = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
       if (!itemToPersist) return
       nextPosition = { x: itemToPersist.x, y: itemToPersist.y }
     }
 
+    setNotes((prev) =>
+      prev.map((item) =>
+        getItemKey(item) === activeDraggedId ? { ...item, x: nextPosition.x, y: nextPosition.y } : item
+      )
+    )
+
     await persistItemPosition(activeDraggedId, nextPosition.x, nextPosition.y)
+    dragLastPositionRef.current = null
   }
 
   const currentDesk = desks.find((desk) => desk.id === selectedDeskId) || null
@@ -5015,7 +5035,7 @@ function Desk({ user }) {
           left: isMobileLayout ? 12 : 20,
           display: 'flex',
           gap: 8,
-          zIndex: menuLayerZIndex + 1
+          zIndex: menuLayerZIndex
         }}
       >
         <button
@@ -5031,7 +5051,8 @@ function Desk({ user }) {
             background: '#ffffffd9',
             color: '#1e2a3b',
             cursor: !canUndo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
-            opacity: !canUndo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 0.55 : 1
+            opacity: !canUndo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 0.55 : 1,
+            pointerEvents: 'auto'
           }}
         >
           {historySyncing ? 'Syncing...' : 'Undo'}
@@ -5049,7 +5070,8 @@ function Desk({ user }) {
             background: '#ffffffd9',
             color: '#1e2a3b',
             cursor: !canRedo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
-            opacity: !canRedo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 0.55 : 1
+            opacity: !canRedo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 0.55 : 1,
+            pointerEvents: 'auto'
           }}
         >
           Redo
@@ -5058,7 +5080,8 @@ function Desk({ user }) {
           aria-live="polite"
           style={{
             ...autoSaveBadgeStyle,
-            padding: isMobileLayout ? '8px 10px' : autoSaveBadgeStyle.padding
+            padding: isMobileLayout ? '8px 10px' : autoSaveBadgeStyle.padding,
+            pointerEvents: 'auto'
           }}
         >
           {autoSaveLabel}
