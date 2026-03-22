@@ -160,6 +160,13 @@ function Desk({ user }) {
   const dragOffsetRef = useRef({ x: 0, y: 0 })
   const dragPointerIdRef = useRef(null)
   const dragLastPositionRef = useRef(null)
+  const isDraggingRef = useRef(false)
+  const isResizingRef = useRef(false)
+  const isRotatingRef = useRef(false)
+  const resizeLastDimensionsRef = useRef(null)
+  const rotateLastValueRef = useRef(null)
+  const deferredRemoteNotesRef = useRef(null)
+  const historySyncingRef = useRef(false)
   const notesRef = useRef([])
   const rotatingNoteIdRef = useRef(null)
   const rotatingPointerIdRef = useRef(null)
@@ -399,9 +406,28 @@ function Desk({ user }) {
     return JSON.stringify(left) === JSON.stringify(right)
   }
 
-  function setNotesFromRemote(nextNotes) {
+  function hasActivePointerInteraction() {
+    return Boolean(isDraggingRef.current || isResizingRef.current || isRotatingRef.current)
+  }
+
+  function flushDeferredRemoteNotes() {
+    if (historySyncingRef.current || hasActivePointerInteraction()) return
+    if (!deferredRemoteNotesRef.current) return
+
+    const deferredNotes = deferredRemoteNotesRef.current
+    deferredRemoteNotesRef.current = null
     skipNextHistoryRef.current = true
-    setNotes(nextNotes)
+    setNotes(cloneNotesSnapshot(deferredNotes))
+  }
+
+  function setNotesFromRemote(nextNotes) {
+    if (historySyncingRef.current || hasActivePointerInteraction()) {
+      deferredRemoteNotesRef.current = cloneNotesSnapshot(nextNotes)
+      return
+    }
+
+    skipNextHistoryRef.current = true
+    setNotes(cloneNotesSnapshot(nextNotes))
   }
 
   function resetDeskHistory(baselineNotes = []) {
@@ -1696,6 +1722,13 @@ function Desk({ user }) {
   }, [notes])
 
   useEffect(() => {
+    historySyncingRef.current = historySyncing
+    if (!historySyncing) {
+      flushDeferredRemoteNotes()
+    }
+  }, [historySyncing])
+
+  useEffect(() => {
     return () => {
       clearAutoSaveStatusTimeout()
       if (shelfSyncTimeoutRef.current) {
@@ -1717,6 +1750,11 @@ function Desk({ user }) {
     if (isApplyingHistoryRef.current) {
       isApplyingHistoryRef.current = false
       previousNotesSnapshotRef.current = currentSnapshot
+      return
+    }
+
+    // Pointer interactions emit many move updates; record one history step on release.
+    if (hasActivePointerInteraction()) {
       return
     }
 
@@ -3992,6 +4030,8 @@ function Desk({ user }) {
     const itemKey = getItemKey(item)
     const startWidth = getItemWidth(item)
     const startHeight = getItemHeight(item)
+    isResizingRef.current = true
+    resizeLastDimensionsRef.current = { width: startWidth, height: startHeight }
     resizingPointerIdRef.current = typeof e.pointerId === 'number' ? e.pointerId : null
 
     resizeStartRef.current = {
@@ -4070,6 +4110,7 @@ function Desk({ user }) {
         getItemKey(item) === activeItemKey ? { ...item, width: nextWidth, height: nextHeight } : item
       )
     )
+    resizeLastDimensionsRef.current = { width: nextWidth, height: nextHeight }
 
     setResizeOverlay({
       x: clientX,
@@ -4085,6 +4126,7 @@ function Desk({ user }) {
     if (resizingPointerIdRef.current !== null && e?.pointerId !== undefined && e.pointerId !== resizingPointerIdRef.current) return
 
     const activeItemKey = resizeStartRef.current.itemKey
+    isResizingRef.current = false
     resizingPointerIdRef.current = null
 
     window.removeEventListener('pointermove', handleResizeMouseMove)
@@ -4094,16 +4136,38 @@ function Desk({ user }) {
     setResizingId(null)
     setResizeOverlay(null)
 
-    if (!activeItemKey) return
-
-    const resizedItem = notesRef.current.find((item) => getItemKey(item) === activeItemKey)
-    if (!resizedItem) {
-      resizeStartRef.current.itemKey = null
+    if (!activeItemKey) {
+      resizeLastDimensionsRef.current = null
+      flushDeferredRemoteNotes()
       return
     }
 
-    await persistItemSize(activeItemKey, getItemWidth(resizedItem), getItemHeight(resizedItem))
+    let nextDimensions = resizeLastDimensionsRef.current
+    if (!nextDimensions) {
+      const resizedItem = notesRef.current.find((item) => getItemKey(item) === activeItemKey)
+      if (!resizedItem) {
+        resizeStartRef.current.itemKey = null
+        flushDeferredRemoteNotes()
+        return
+      }
+      nextDimensions = {
+        width: getItemWidth(resizedItem),
+        height: getItemHeight(resizedItem)
+      }
+    }
+
+    setNotes((prev) =>
+      prev.map((item) =>
+        getItemKey(item) === activeItemKey
+          ? { ...item, width: nextDimensions.width, height: nextDimensions.height }
+          : item
+      )
+    )
+
+    await persistItemSize(activeItemKey, nextDimensions.width, nextDimensions.height)
     resizeStartRef.current.itemKey = null
+    resizeLastDimensionsRef.current = null
+    flushDeferredRemoteNotes()
   }
 
   async function saveItemEdits(item) {
@@ -4401,6 +4465,8 @@ function Desk({ user }) {
     const pointerAngle = getPointerAngleFromCenter(pageX, pageY)
     rotationOffsetRef.current = currentRotation - pointerAngle
     const itemKey = getItemKey(item)
+    isRotatingRef.current = true
+    rotateLastValueRef.current = normalizeRotation(currentRotation)
     rotatingPointerIdRef.current = typeof e.pointerId === 'number' ? e.pointerId : null
     rotatingNoteIdRef.current = itemKey
     setRotatingId(itemKey)
@@ -4420,6 +4486,7 @@ function Desk({ user }) {
 
     const pointerAngle = getPointerAngleFromCenter(pageX, pageY)
     const nextRotation = normalizeRotation(pointerAngle + rotationOffsetRef.current)
+    rotateLastValueRef.current = nextRotation
 
     setNotes((prev) =>
       prev.map((item) =>
@@ -4433,6 +4500,7 @@ function Desk({ user }) {
 
     const activeRotatingId = rotatingNoteIdRef.current
 
+    isRotatingRef.current = false
     rotatingNoteIdRef.current = null
     rotatingPointerIdRef.current = null
     setRotatingId(null)
@@ -4440,25 +4508,35 @@ function Desk({ user }) {
     window.removeEventListener('pointerup', handleRotateMouseUp)
     window.removeEventListener('pointercancel', handleRotateMouseUp)
 
-    if (!activeRotatingId) return
+    if (!activeRotatingId) {
+      rotateLastValueRef.current = null
+      flushDeferredRemoteNotes()
+      return
+    }
 
     let nextRotation = null
 
-    if (e) {
+    if (rotateLastValueRef.current !== null) {
+      nextRotation = rotateLastValueRef.current
+    } else if (e) {
       const { pageX, pageY } = getEventPosition(e)
       const pointerAngle = getPointerAngleFromCenter(pageX, pageY)
       nextRotation = normalizeRotation(pointerAngle + rotationOffsetRef.current)
-
-      setNotes((prev) =>
-        prev.map((item) =>
-          getItemKey(item) === activeRotatingId ? { ...item, rotation: nextRotation } : item
-        )
-      )
     } else {
       const itemToPersist = notesRef.current.find((item) => getItemKey(item) === activeRotatingId)
-      if (!itemToPersist) return
+      if (!itemToPersist) {
+        rotateLastValueRef.current = null
+        flushDeferredRemoteNotes()
+        return
+      }
       nextRotation = Number(itemToPersist.rotation) || 0
     }
+
+    setNotes((prev) =>
+      prev.map((item) =>
+        getItemKey(item) === activeRotatingId ? { ...item, rotation: nextRotation } : item
+      )
+    )
 
     const savedRotation = await persistRotation(activeRotatingId, nextRotation)
     if (savedRotation !== null) {
@@ -4468,6 +4546,9 @@ function Desk({ user }) {
         )
       )
     }
+
+    rotateLastValueRef.current = null
+    flushDeferredRemoteNotes()
   }
 
   function requestDeleteNote(itemKey) {
@@ -4725,6 +4806,7 @@ function Desk({ user }) {
     const { pageX, pageY } = getEventPosition(e)
 
     const itemKey = getItemKey(item)
+    isDraggingRef.current = true
     setDraggedId(itemKey)
     draggedIdRef.current = itemKey
     dragPointerIdRef.current = typeof e.pointerId === 'number' ? e.pointerId : null
@@ -4789,11 +4871,15 @@ function Desk({ user }) {
     setDraggedId(null)
     draggedIdRef.current = null
     dragPointerIdRef.current = null
+    isDraggingRef.current = false
     window.removeEventListener('pointermove', handleDragMove)
     window.removeEventListener('pointerup', handleDragEnd)
     window.removeEventListener('pointercancel', handleDragEnd)
 
-    if (!activeDraggedId) return
+    if (!activeDraggedId) {
+      dragLastPositionRef.current = null
+      return
+    }
 
     let nextPosition = null
     const lastPosition = dragLastPositionRef.current
@@ -4827,6 +4913,7 @@ function Desk({ user }) {
 
     await persistItemPosition(activeDraggedId, nextPosition.x, nextPosition.y)
     dragLastPositionRef.current = null
+    flushDeferredRemoteNotes()
   }
 
   const currentDesk = desks.find((desk) => desk.id === selectedDeskId) || null
@@ -4859,6 +4946,7 @@ function Desk({ user }) {
   const customShelfOptions = getCustomShelfOptions()
   const topOverlayTop = isMobileLayout ? 12 : 20
   const topMenuTop = isMobileLayout ? (isCompactMobileLayout ? 64 : 12) : 20
+  const newNoteDesktopTop = topMenuTop
   const mobileNoteMaxWidth = Math.max(180, viewportWidth - 32)
 
   function renderDeskRow(desk, depth = 0) {
@@ -5020,8 +5108,9 @@ function Desk({ user }) {
 
       <div
         style={{
-          position: 'absolute',
-          top: topOverlayTop,
+          position: isMobileLayout ? 'absolute' : 'fixed',
+          top: isMobileLayout ? topOverlayTop : 'auto',
+          bottom: isMobileLayout ? 'auto' : 20,
           left: isMobileLayout ? 12 : 20,
           display: 'flex',
           gap: 8,
@@ -5080,7 +5169,7 @@ function Desk({ user }) {
 
       <div
         style={{
-          position: 'absolute',
+          position: isMobileLayout ? 'absolute' : 'fixed',
           top: topMenuTop,
           right: isMobileLayout ? 12 : 20,
           left: isMobileLayout ? 12 : 'auto',
@@ -6138,10 +6227,31 @@ function Desk({ user }) {
         onAddDecoration={addDecoration}
         menuLayerZIndex={menuLayerZIndex}
         menuPanelZIndex={menuPanelZIndex}
+        desktopTop={newNoteDesktopTop}
+        desktopLeft={20}
       />
 
       {!selectedDeskId && (
-        <div style={{ color: '#222', background: 'rgba(255,255,255,0.75)', display: 'inline-block', padding: '6px 10px', borderRadius: 6 }}>
+        <div
+          style={{
+            position: 'fixed',
+            top: isMobileLayout ? 68 : 72,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: menuLayerZIndex + 2,
+            color: '#1e2a3b',
+            background: 'rgba(255, 255, 255, 0.98)',
+            border: '1px solid #c9d3e3',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
+            display: 'inline-block',
+            padding: isMobileLayout ? '8px 10px' : '9px 12px',
+            borderRadius: 10,
+            fontSize: isMobileLayout ? 12 : 13,
+            fontWeight: 600,
+            maxWidth: isMobileLayout ? 'calc(100vw - 24px)' : 'min(560px, calc(100vw - 40px))',
+            textAlign: 'center'
+          }}
+        >
           Create a desk from the top-right menu to get started.
         </div>
       )}

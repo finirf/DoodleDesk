@@ -122,3 +122,30 @@
 - Replaced effect-to-handler wiring with `useEffectEvent` handlers called directly inside effects.
 - Kept the memoized realtime channel naming and direct effect dependencies for clarity.
 - Re-ran lint for `src/App.jsx`: clean, no warnings/errors.
+
+### 18) Drag undo/redo reliability (mobile + desktop)
+- Fixed drag history capture so pointer-move updates are treated as one atomic history action.
+- Undo now restores pre-drag position consistently, and redo correctly reapplies the drag position.
+- Prevented drag motion frames from polluting/clearing redo history by suspending snapshot pushes during active dragging.
+
+### 19) Top menu viewport persistence
+- Made top-of-screen menu controls use viewport anchoring on desktop instead of desk-canvas anchoring.
+- Desk/Profile menu buttons now stay pinned to the screen while scrolling large desks.
+
+### 20) New Note desktop persistence
+- Made the desktop New Note launcher viewport-anchored so it stays persistent while scrolling tall desks.
+- Aligned desktop launcher below the top menu row to avoid overlap with Shelf Manager/Profile controls.
+
+### 21) Undo/redo hardening for resize/rotate + remote deferral
+- Extended atomic interaction history guards to resize and rotate so continuous pointer-move updates no longer flood history.
+- Added last-valid release commit behavior for resize and rotate, matching drag reliability.
+- Added deferred remote note replacement when an interaction or history sync is active, then flushes safely after completion.
+
+### 22) New Note desktop placement refinement
+- Moved the desktop New Note launcher to top-left viewport anchoring (instead of top-right) while keeping it persistent.
+
+### 23) New Note top re-alignment after loading
+- Aligned desktop New Note launcher to the top control offset so it no longer remains visually lowered after initial "Create a desk" loading/empty-state transitions.
+
+### 24) Empty-state message readability
+- Restyled and pinned the "Create a desk..." message as a fixed high-contrast banner so it remains readable during initial load transitions.

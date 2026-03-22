@@ -9,7 +9,9 @@ export default function NewNoteMenu({
   decorationOptions,
   onAddDecoration,
   menuLayerZIndex,
-  menuPanelZIndex
+  menuPanelZIndex,
+  desktopTop = 68,
+  desktopLeft = 20
 }) {
   const rootStyle = isMobileLayout
     ? {
@@ -20,9 +22,11 @@ export default function NewNoteMenu({
         zIndex: menuLayerZIndex
       }
     : {
-        position: 'relative',
+        position: 'fixed',
+        top: desktopTop,
+        left: desktopLeft,
+        right: 'auto',
         display: 'inline-block',
-        marginBottom: 20,
         zIndex: menuLayerZIndex
       }
 
