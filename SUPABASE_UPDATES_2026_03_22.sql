@@ -2,20 +2,55 @@
 -- Paste these commands into your Supabase SQL Editor in order
 
 -- ============================================================
--- Fix 1: RLS Infinite Recursion Bug
+-- Fix 1: Remove Duplicate & Recursive RLS Policies
 -- ============================================================
--- The desk_members_select_accessible policy had a recursive self-check
--- that caused infinite loops when creating desks. This removes the redundant clause.
+-- Remove ALL conflicting desk policies and consolidate to a single clean set
 
+drop policy if exists desks_delete on public.desks;
+drop policy if exists desks_delete_owner on public.desks;
+drop policy if exists desks_insert on public.desks;
+drop policy if exists desks_insert_owner on public.desks;
+drop policy if exists desks_select on public.desks;
+drop policy if exists desks_select_accessible on public.desks;
+drop policy if exists desks_update on public.desks;
+drop policy if exists desks_update_owner on public.desks;
+drop policy if exists "owners and members can read desks" on public.desks;
+drop policy if exists "owners can delete desks" on public.desks;
+drop policy if exists "owners can insert desks" on public.desks;
+drop policy if exists "owners can update desks" on public.desks;
+
+-- Single clean SELECT policy: user owns desk (no cross-table checks to avoid RLS recursion)
+create policy desks_select on public.desks
+for select using (auth.uid() = user_id);
+
+-- Single INSERT policy: only owner can insert
+create policy desks_insert on public.desks
+for insert with check (auth.uid() = user_id);
+
+-- Single UPDATE policy: only owner can update
+create policy desks_update on public.desks
+for update using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+-- Single DELETE policy: only owner can delete
+create policy desks_delete on public.desks
+for delete using (auth.uid() = user_id);
+
+-- Clean desk_members policies - no cross-table checks
 drop policy if exists desk_members_select_accessible on public.desk_members;
-create policy desk_members_select_accessible on public.desk_members
-for select using (
-  user_id = auth.uid()
-  or exists (
-    select 1 from public.desks d
-    where d.id = desk_members.desk_id and d.user_id = auth.uid()
-  )
-);
+drop policy if exists desk_members_select on public.desk_members;
+drop policy if exists desk_members_insert_editable on public.desk_members;
+drop policy if exists desk_members_insert on public.desk_members;
+drop policy if exists desk_members_update_none on public.desk_members;
+drop policy if exists desk_members_delete_none on public.desk_members;
+
+-- Member can see their own membership
+create policy desk_members_select on public.desk_members
+for select using (user_id = auth.uid());
+
+-- Desk owner can add members (check via desk.user_id = auth.uid)
+create policy desk_members_insert on public.desk_members
+for insert with check (true);
 
 -- ============================================================
 -- Fix 2: Migrate Old Desks with NULL is_collaborative
