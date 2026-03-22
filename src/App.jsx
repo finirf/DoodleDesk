@@ -5015,7 +5015,7 @@ function Desk({ user }) {
           left: isMobileLayout ? 12 : 20,
           display: 'flex',
           gap: 8,
-          zIndex: menuLayerZIndex
+          zIndex: menuLayerZIndex + 1
         }}
       >
         <button
@@ -5080,7 +5080,14 @@ function Desk({ user }) {
       >
         <div ref={deskMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
           <button
-            onClick={() => setShowDeskMenu((prev) => !prev)}
+            onClick={() => {
+              const nextOpen = !showDeskMenu
+              setShowDeskMenu(nextOpen)
+              if (nextOpen && isMobileLayout) {
+                setShowProfileMenu(false)
+                setShowNewNoteMenu(false)
+              }
+            }}
             style={{
               width: isMobileLayout ? '100%' : 'auto',
               padding: isMobileLayout ? '10px 12px' : '8px 16px',
@@ -5616,6 +5623,10 @@ function Desk({ user }) {
               setFriendError('')
               setFriendMessage('')
               if (nextOpen) {
+                if (isMobileLayout) {
+                  setShowDeskMenu(false)
+                  setShowNewNoteMenu(false)
+                }
                 fetchCurrentUserProfile()
                 if (selectedDeskId) {
                   fetchDeskActivity(selectedDeskId)
@@ -6099,7 +6110,14 @@ function Desk({ user }) {
         menuRef={newNoteMenuRef}
         isOpen={showNewNoteMenu}
         isMobileLayout={isMobileLayout}
-        onToggle={() => setShowNewNoteMenu((prev) => !prev)}
+        onToggle={() => {
+          const nextOpen = !showNewNoteMenu
+          setShowNewNoteMenu(nextOpen)
+          if (nextOpen && isMobileLayout) {
+            setShowDeskMenu(false)
+            setShowProfileMenu(false)
+          }
+        }}
         isDeskSelected={Boolean(selectedDeskId && canCurrentUserEditDeskItems)}
         onAddStickyNote={addStickyNote}
         onAddChecklist={addChecklistNote}

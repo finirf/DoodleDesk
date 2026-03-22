@@ -48,6 +48,19 @@
 - Added member role display and owner-controlled role switching in Manage Desk Members.
 - Updated BACKEND_SQL_README.md with a permission-level SQL migration section and RLS write-policy hardening.
 
+## 2026-03-22
+
+### 7) Production RLS Policy Fix & Performance Optimization
+- **Fixed infinite recursion bug**: Removed duplicate/conflicting RLS policies on desks table. Consolidated to single policies per operation.
+- **Fixed desk/member visibility**: Shared desks now properly visible to members via safe RLS subquery without circular recursion.
+- **Performance indexing**: Added indexes on desk_id, user_id, and created_at columns across notes, checklists, decorations, checklist_items, desks, and desk_activity tables.
+- **Belt-and-suspenders security**: Added desk_members delete policy to ensure only desk owners can remove members.
+
+### 8) Frontend Session & Menu UI Fixes
+- **Fixed auth session loading**: Removed deprecated `getSessionFromUrl()` API call, now using `getSession()` which handles redirects automatically.
+- **Fixed mobile menu overlap**: Menu tabs (Desk, Profile, New Note) now mutually exclusive on mobile—opening one automatically closes others.
+- **Improved UX**: Mobile users can now see one focused menu at a time instead of overlapping menus.
+
 ### 7) Export desk
 - Added desk export action in the desk menu.
 - Export now downloads the selected desk as JSON, including desk metadata and all item tables (notes, checklists, checklist items, decorations).

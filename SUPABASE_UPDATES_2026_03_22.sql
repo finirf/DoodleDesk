@@ -19,9 +19,15 @@ drop policy if exists "owners can delete desks" on public.desks;
 drop policy if exists "owners can insert desks" on public.desks;
 drop policy if exists "owners can update desks" on public.desks;
 
--- Single clean SELECT policy: user owns desk (no cross-table checks to avoid RLS recursion)
+-- Single clean SELECT policy: user owns desk OR is a member (safe subquery without circular refs)
 create policy desks_select on public.desks
-for select using (auth.uid() = user_id);
+for select using (
+  auth.uid() = user_id
+  or exists (
+    select 1 from public.desk_members dm
+    where dm.desk_id = desks.id and dm.user_id = auth.uid()
+  )
+);
 
 -- Single INSERT policy: only owner can insert
 create policy desks_insert on public.desks
@@ -43,6 +49,7 @@ drop policy if exists desk_members_insert_editable on public.desk_members;
 drop policy if exists desk_members_insert on public.desk_members;
 drop policy if exists desk_members_update_none on public.desk_members;
 drop policy if exists desk_members_delete_none on public.desk_members;
+drop policy if exists desk_members_delete on public.desk_members;
 
 -- Member can see their own membership
 create policy desk_members_select on public.desk_members
@@ -50,7 +57,15 @@ for select using (user_id = auth.uid());
 
 -- Desk owner can add members (check via desk.user_id = auth.uid)
 create policy desk_members_insert on public.desk_members
-for insert with check (true);
+for insert with check (
+  exists (select 1 from public.desks d where d.id = desk_members.desk_id and d.user_id = auth.uid())
+);
+
+-- Desk owner can remove members
+create policy desk_members_delete on public.desk_members
+for delete using (
+  exists (select 1 from public.desks d where d.id = desk_members.desk_id and d.user_id = auth.uid())
+);
 
 -- ============================================================
 -- Fix 2: Migrate Old Desks with NULL is_collaborative
@@ -63,7 +78,40 @@ set is_collaborative = false
 where is_collaborative is null;
 
 -- ============================================================
--- Fix 3: Activity Feed Migration (if not already applied)
+-- Fix 3: Add Performance Indexes (Critical for RLS queries)
+-- ============================================================
+-- The simplified RLS policies now require efficient desk_id lookups
+
+-- Index for desk_members lookups by desk_id
+create index if not exists idx_desk_members_desk_id 
+  on public.desk_members(desk_id);
+
+-- Index for desk_members lookups by user_id
+create index if not exists idx_desk_members_user_id 
+  on public.desk_members(user_id);
+
+-- Index for notes lookups by desk_id
+create index if not exists idx_notes_desk_id 
+  on public.notes(desk_id);
+
+-- Index for checklists lookups by desk_id
+create index if not exists idx_checklists_desk_id 
+  on public.checklists(desk_id);
+
+-- Index for decorations lookups by desk_id
+create index if not exists idx_decorations_desk_id 
+  on public.decorations(desk_id);
+
+-- Index for checklist_items lookups by checklist_id
+create index if not exists idx_checklist_items_checklist_id 
+  on public.checklist_items(checklist_id);
+
+-- Index for desks lookups by user_id (for owned desks queries)
+create index if not exists idx_desks_user_id 
+  on public.desks(user_id);
+
+-- ============================================================
+-- Fix 4: Activity Feed Migration (if not already applied)
 -- ============================================================
 -- Create the activity feed table and enable logging
 
@@ -97,21 +145,28 @@ end $$;
 alter table public.desk_activity enable row level security;
 
 drop policy if exists desk_activity_select_accessible on public.desk_activity;
-create policy desk_activity_select_accessible on public.desk_activity
-for select using (public.user_can_access_desk(desk_id));
-
 drop policy if exists desk_activity_insert_editable on public.desk_activity;
-create policy desk_activity_insert_editable on public.desk_activity
-for insert with check (
-  public.user_can_edit_desk(desk_id)
-  and actor_user_id = auth.uid()
+drop policy if exists desk_activity_update_none on public.desk_activity;
+drop policy if exists desk_activity_delete_none on public.desk_activity;
+drop policy if exists desk_activity_select on public.desk_activity;
+drop policy if exists desk_activity_insert on public.desk_activity;
+
+-- Activity feed can only be viewed by desk owner
+create policy desk_activity_select on public.desk_activity
+for select using (
+  exists (select 1 from public.desks d where d.id = desk_activity.desk_id and d.user_id = auth.uid())
 );
 
-drop policy if exists desk_activity_update_none on public.desk_activity;
+-- Only desk owner can insert activity records
+create policy desk_activity_insert on public.desk_activity
+for insert with check (
+  exists (select 1 from public.desks d where d.id = desk_activity.desk_id and d.user_id = auth.uid())
+);
+
+-- Prevent updates and deletes
 create policy desk_activity_update_none on public.desk_activity
 for update using (false) with check (false);
 
-drop policy if exists desk_activity_delete_none on public.desk_activity;
 create policy desk_activity_delete_none on public.desk_activity
 for delete using (false);
 
