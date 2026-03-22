@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { AppAuthBoundary, useAuthSession } from './features/auth'
 import {
@@ -107,6 +107,9 @@ function Desk({ user }) {
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState('')
   const [customBackgroundInput, setCustomBackgroundInput] = useState('')
   const [backgroundMenuError, setBackgroundMenuError] = useState('')
+  const [deskMenuMessage, setDeskMenuMessage] = useState('')
+  const [deskMenuError, setDeskMenuError] = useState('')
+  const [snapToGrid, setSnapToGrid] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const [confirmDialog, setConfirmDialog] = useState({
     isOpen: false,
@@ -128,6 +131,9 @@ function Desk({ user }) {
   const [friendActionLoadingId, setFriendActionLoadingId] = useState(null)
   const [profileStats, setProfileStats] = useState({ desks_created: 0, desks_deleted: 0 })
   const [profileStatsLoading, setProfileStatsLoading] = useState(false)
+  const [activityFeed, setActivityFeed] = useState([])
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityError, setActivityError] = useState('')
   const [preferredNameInput, setPreferredNameInput] = useState('')
   const [preferredNameSaving, setPreferredNameSaving] = useState(false)
   const [preferredNameError, setPreferredNameError] = useState('')
@@ -143,7 +149,7 @@ function Desk({ user }) {
   const [rotatingId, setRotatingId] = useState(null)
   const [resizingId, setResizingId] = useState(null)
   const [resizeOverlay, setResizeOverlay] = useState(null)
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [_dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const {
     viewportWidth,
     sectionHeight,
@@ -181,13 +187,35 @@ function Desk({ user }) {
   const shelfSupabaseSyncEnabledRef = useRef(true)
   const shelfSyncTimeoutRef = useRef(null)
   const deskCanvasRef = useRef(null)
+  const importDeskInputRef = useRef(null)
+  const historyPastRef = useRef([])
+  const historyFutureRef = useRef([])
+  const previousNotesSnapshotRef = useRef([])
+  const isApplyingHistoryRef = useRef(false)
+  const skipNextHistoryRef = useRef(false)
+  const [historyVersion, setHistoryVersion] = useState(0)
+  const [historySyncing, setHistorySyncing] = useState(false)
+  const [autoSaveStatus, setAutoSaveStatus] = useState('idle')
+  const [selectedDeskMemberRole, setSelectedDeskMemberRole] = useState('owner')
+  const [selectedDeskMemberRoleLoading, setSelectedDeskMemberRoleLoading] = useState(false)
+  const autoSaveStatusTimeoutRef = useRef(null)
 
   const growThreshold = 180
+  const gridSize = 20
   const menuLayerZIndex = 6000
   const menuPanelZIndex = menuLayerZIndex + 1
   const sectionCount = Math.max(2, Math.ceil(canvasHeight / sectionHeight))
   const lastDeskStorageKey = `doodledesk:lastDesk:${user.id}`
   const shelfPrefsStorageKey = `doodledesk:deskShelves:${user.id}`
+  const snapPrefsStorageKey = `doodledesk:snapToGrid:${user.id}`
+  const deskLiveChannelName = useMemo(
+    () => (selectedDeskId ? `desk-live:${selectedDeskId}:${user.id}` : ''),
+    [selectedDeskId, user.id]
+  )
+  const deskMembersLiveChannelName = useMemo(
+    () => `desk-members-live:${user.id}`,
+    [user.id]
+  )
   const {
     backgroundImage,
     backgroundColor,
@@ -201,6 +229,22 @@ function Desk({ user }) {
     sectionHeight
   })
   const deleteAccountConfirmationMatches = deleteAccountDialog.confirmationText.trim().toUpperCase() === 'DELETE'
+  const canUndo = historyVersion >= 0 && historyPastRef.current.length > 0
+  const canRedo = historyVersion >= 0 && historyFutureRef.current.length > 0
+  const autoSaveLabel = historySyncing
+    ? 'Syncing history...'
+    : (isSavingEdit || autoSaveStatus === 'saving'
+        ? 'Saving...'
+        : (autoSaveStatus === 'error' ? 'Save issue' : 'All changes saved'))
+  const autoSaveBadgeStyle = {
+    padding: '7px 10px',
+    fontSize: 12,
+    borderRadius: 999,
+    border: autoSaveStatus === 'error' ? '1px solid #ef9a9a' : '1px solid #c9d3e3',
+    background: autoSaveStatus === 'error' ? '#ffebee' : '#ffffffd9',
+    color: autoSaveStatus === 'error' ? '#b71c1c' : '#1e2a3b',
+    whiteSpace: 'nowrap'
+  }
   const hasModalOpen = Boolean(
     pendingDeleteId ||
     deskNameDialog.isOpen ||
@@ -222,8 +266,653 @@ function Desk({ user }) {
     const text = newChecklistItemText.trim()
     if (!text) return
 
-    setChecklistEditItems((prev) => [...prev, { text, is_checked: false }])
+    setChecklistEditItems((prev) => [...prev, { text, is_checked: false, due_at: null }])
     setNewChecklistItemText('')
+  }
+
+  function normalizeChecklistReminderValue(value) {
+    if (!value) return null
+    const parsedDate = new Date(value)
+    if (Number.isNaN(parsedDate.getTime())) return null
+    return parsedDate.toISOString()
+  }
+
+  function toReminderInputValue(value) {
+    if (!value) return ''
+    const parsedDate = new Date(value)
+    if (Number.isNaN(parsedDate.getTime())) return ''
+
+    const year = parsedDate.getFullYear()
+    const month = String(parsedDate.getMonth() + 1).padStart(2, '0')
+    const day = String(parsedDate.getDate()).padStart(2, '0')
+    const hour = String(parsedDate.getHours()).padStart(2, '0')
+    const minute = String(parsedDate.getMinutes()).padStart(2, '0')
+
+    return `${year}-${month}-${day}T${hour}:${minute}`
+  }
+
+  function formatChecklistReminderValue(value) {
+    if (!value) return ''
+    const parsedDate = new Date(value)
+    if (Number.isNaN(parsedDate.getTime())) return ''
+
+    return parsedDate.toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    })
+  }
+
+  function getChecklistReminderMeta(entry) {
+    const normalizedDueAt = normalizeChecklistReminderValue(entry?.due_at)
+    if (!normalizedDueAt || entry?.is_checked) return null
+
+    const dueDate = new Date(normalizedDueAt)
+    const diffMs = dueDate.getTime() - Date.now()
+    const diffMinutes = Math.round(diffMs / 60000)
+
+    if (diffMs <= 0) {
+      return {
+        label: `Overdue ${Math.abs(diffMinutes)}m`,
+        color: '#8b0000',
+        background: '#ffe5e5'
+      }
+    }
+
+    if (diffMs <= 30 * 60 * 1000) {
+      return {
+        label: `Due in ${Math.max(1, diffMinutes)}m`,
+        color: '#7a4a00',
+        background: '#fff3d6'
+      }
+    }
+
+    return {
+      label: `Due ${formatChecklistReminderValue(normalizedDueAt)}`,
+      color: '#0b4f86',
+      background: '#e8f4ff'
+    }
+  }
+
+  async function insertChecklistItemsWithReminderFallback(rows, options = {}) {
+    if (!rows.length) {
+      return options.includeSelect ? [] : null
+    }
+
+    let nextRows = rows
+
+    while (true) {
+      let query = supabase
+        .from('checklist_items')
+        .insert(nextRows)
+
+      if (options.includeSelect) {
+        query = query.select()
+      }
+
+      const { data, error } = await query
+
+      if (!error) {
+        return options.includeSelect ? (data || []) : null
+      }
+
+      if (isMissingColumnError(error, 'due_at')) {
+        nextRows = nextRows.map((row) => {
+          const nextRow = { ...row }
+          delete nextRow.due_at
+          return nextRow
+        })
+        continue
+      }
+
+      throw error
+    }
+  }
+
+  function cloneNotesSnapshot(items) {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(items)
+    }
+    return JSON.parse(JSON.stringify(items))
+  }
+
+  function areNoteSnapshotsEqual(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right)
+  }
+
+  function setNotesFromRemote(nextNotes) {
+    skipNextHistoryRef.current = true
+    setNotes(nextNotes)
+  }
+
+  function resetDeskHistory(baselineNotes = []) {
+    historyPastRef.current = []
+    historyFutureRef.current = []
+    previousNotesSnapshotRef.current = cloneNotesSnapshot(baselineNotes)
+    setHistoryVersion((prev) => prev + 1)
+  }
+
+  function closeItemEditor() {
+    setIsSavingEdit(false)
+    setEditSaveError('')
+    setEditingId(null)
+    setEditValue('')
+    setChecklistEditItems([])
+    setNewChecklistItemText('')
+    setShowStyleEditor(false)
+    setEditColor('#fff59d')
+    setEditTextColor('#222222')
+    setEditFontSize(16)
+    setEditFontFamily('inherit')
+  }
+
+  function clearAutoSaveStatusTimeout() {
+    if (!autoSaveStatusTimeoutRef.current) return
+    clearTimeout(autoSaveStatusTimeoutRef.current)
+    autoSaveStatusTimeoutRef.current = null
+  }
+
+  function markAutoSaveSaving() {
+    clearAutoSaveStatusTimeout()
+    setAutoSaveStatus('saving')
+  }
+
+  function markAutoSaveSaved() {
+    clearAutoSaveStatusTimeout()
+    setAutoSaveStatus('saved')
+    autoSaveStatusTimeoutRef.current = setTimeout(() => {
+      setAutoSaveStatus('idle')
+      autoSaveStatusTimeoutRef.current = null
+    }, 1800)
+  }
+
+  function markAutoSaveError(message = '') {
+    clearAutoSaveStatusTimeout()
+    setAutoSaveStatus('error')
+    if (message) {
+      setEditSaveError(message)
+    }
+  }
+
+  const hasChecklistInCurrentNotes = useCallback((checklistId) => {
+    if (!checklistId) return false
+    return notesRef.current.some((row) => isChecklistItem(row) && row.id === checklistId)
+  }, [])
+
+  function isMissingTableError(error, tableName) {
+    if (!error) return false
+    if (error.code === '42P01') return true
+    const searchable = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`.toLowerCase()
+    return searchable.includes('does not exist') && searchable.includes((tableName || '').toLowerCase())
+  }
+
+  function getActivityActionLabel(activity) {
+    const details = activity?.details && typeof activity.details === 'object' ? activity.details : {}
+    const actorLabel = activity?.actor_display || 'Someone'
+    const actionType = activity?.action_type || 'updated'
+    const itemType = activity?.item_type || 'item'
+    const summary = typeof details.summary === 'string' ? details.summary.trim() : ''
+
+    if (summary) return `${actorLabel} ${summary}`
+
+    switch (actionType) {
+      case 'created':
+        return `${actorLabel} created a ${itemType}`
+      case 'edited':
+        return `${actorLabel} edited a ${itemType}`
+      case 'deleted':
+        return `${actorLabel} deleted a ${itemType}`
+      case 'duplicated':
+        return `${actorLabel} duplicated a ${itemType}`
+      case 'checked':
+        return `${actorLabel} checked off a ${itemType}`
+      case 'unchecked':
+        return `${actorLabel} unchecked a ${itemType}`
+      case 'imported':
+        return `${actorLabel} imported desk content`
+      case 'exported':
+        return `${actorLabel} exported this desk`
+      default:
+        return `${actorLabel} updated a ${itemType}`
+    }
+  }
+
+  async function fetchDeskActivity(deskId = selectedDeskId) {
+    if (!deskId) {
+      setActivityFeed([])
+      setActivityError('')
+      return
+    }
+
+    setActivityLoading(true)
+
+    try {
+      const { data: rows, error } = await supabase
+        .from('desk_activity')
+        .select('*')
+        .eq('desk_id', deskId)
+        .order('created_at', { ascending: false })
+        .limit(40)
+
+      if (error) throw error
+
+      const actorIds = Array.from(new Set((rows || []).map((row) => row.actor_user_id).filter(Boolean)))
+      let actorProfilesById = new Map()
+
+      if (actorIds.length > 0) {
+        const { data: actorProfiles, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, email, preferred_name')
+          .in('id', actorIds)
+
+        if (profileError) throw profileError
+
+        actorProfilesById = new Map((actorProfiles || []).map((row) => [
+          row.id,
+          row.preferred_name?.trim() || row.email || 'Unknown user'
+        ]))
+      }
+
+      const hydratedRows = (rows || []).map((row) => ({
+        ...row,
+        actor_display: row.actor_user_id === user.id
+          ? 'You'
+          : (actorProfilesById.get(row.actor_user_id) || 'Unknown user')
+      }))
+
+      setActivityFeed(hydratedRows)
+      setActivityError('')
+    } catch (error) {
+      if (isMissingTableError(error, 'desk_activity')) {
+        setActivityFeed([])
+        setActivityError('Run the backend SQL activity feed migration to enable this tab.')
+      } else {
+        console.error('Failed to fetch desk activity:', error)
+        setActivityError(error?.message || 'Could not load activity feed.')
+      }
+    } finally {
+      setActivityLoading(false)
+    }
+  }
+
+  async function logDeskActivity({ actionType, itemType, itemId, summary = '', metadata = null }) {
+    if (!selectedDeskId) return
+
+    const details = {
+      summary,
+      ...(metadata && typeof metadata === 'object' ? metadata : {})
+    }
+
+    const payload = {
+      desk_id: selectedDeskId,
+      actor_user_id: user.id,
+      action_type: actionType,
+      item_type: itemType,
+      item_id: itemId ? String(itemId) : null,
+      details
+    }
+
+    const { error } = await supabase
+      .from('desk_activity')
+      .insert([payload])
+
+    if (error) {
+      if (isMissingTableError(error, 'desk_activity')) return
+      console.error('Failed to log desk activity:', error)
+      return
+    }
+
+    if (profileTab === 'activity') {
+      await fetchDeskActivity(selectedDeskId)
+    }
+  }
+
+  function getComparableChecklistItems(items = []) {
+    return (items || []).map((entry, index) => ({
+      text: (entry?.text || '').trim(),
+      is_checked: Boolean(entry?.is_checked),
+      sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index,
+      due_at: normalizeChecklistReminderValue(entry?.due_at)
+    }))
+  }
+
+  function getComparableDeskItem(item) {
+    if (!item) return null
+
+    if (isChecklistItem(item)) {
+      return {
+        item_type: 'checklist',
+        id: item.id,
+        desk_id: item.desk_id,
+        user_id: item.user_id || null,
+        title: item.title || '',
+        color: getItemColor(item),
+        text_color: getItemTextColor(item),
+        font_size: getItemFontSize(item),
+        font_family: getItemFontFamily(item),
+        x: Number(item.x) || 0,
+        y: Number(item.y) || 0,
+        rotation: toStoredRotation(Number(item.rotation) || 0),
+        width: getItemWidth(item),
+        height: getItemHeight(item),
+        items: getComparableChecklistItems(item.items)
+      }
+    }
+
+    if (isDecorationItem(item)) {
+      return {
+        item_type: 'decoration',
+        id: item.id,
+        desk_id: item.desk_id,
+        kind: item.kind || 'pin',
+        x: Number(item.x) || 0,
+        y: Number(item.y) || 0,
+        rotation: toStoredRotation(Number(item.rotation) || 0),
+        width: getItemWidth(item),
+        height: getItemHeight(item)
+      }
+    }
+
+    return {
+      item_type: 'note',
+      id: item.id,
+      desk_id: item.desk_id,
+      user_id: item.user_id || null,
+      content: item.content || '',
+      color: getItemColor(item),
+      text_color: getItemTextColor(item),
+      font_size: getItemFontSize(item),
+      font_family: getItemFontFamily(item),
+      x: Number(item.x) || 0,
+      y: Number(item.y) || 0,
+      rotation: toStoredRotation(Number(item.rotation) || 0),
+      width: getItemWidth(item),
+      height: getItemHeight(item)
+    }
+  }
+
+  function areComparableDeskItemsEqual(leftItem, rightItem) {
+    return JSON.stringify(getComparableDeskItem(leftItem)) === JSON.stringify(getComparableDeskItem(rightItem))
+  }
+
+  function getPersistableDeskItem(item) {
+    const comparable = getComparableDeskItem(item)
+    if (!comparable || !comparable.id || !comparable.desk_id) return null
+
+    if (comparable.item_type === 'checklist') {
+      return {
+        item_type: 'checklist',
+        table: 'checklists',
+        id: comparable.id,
+        payload: {
+          id: comparable.id,
+          desk_id: comparable.desk_id,
+          user_id: comparable.user_id || user.id,
+          title: comparable.title,
+          color: comparable.color,
+          text_color: comparable.text_color,
+          font_size: comparable.font_size,
+          font_family: comparable.font_family,
+          x: comparable.x,
+          y: comparable.y,
+          rotation: comparable.rotation,
+          width: comparable.width,
+          height: comparable.height
+        },
+        checklistItems: comparable.items || []
+      }
+    }
+
+    if (comparable.item_type === 'decoration') {
+      return {
+        item_type: 'decoration',
+        table: 'decorations',
+        id: comparable.id,
+        payload: {
+          id: comparable.id,
+          desk_id: comparable.desk_id,
+          kind: comparable.kind,
+          x: comparable.x,
+          y: comparable.y,
+          rotation: comparable.rotation,
+          width: comparable.width,
+          height: comparable.height
+        }
+      }
+    }
+
+    return {
+      item_type: 'note',
+      table: 'notes',
+      id: comparable.id,
+      payload: {
+        id: comparable.id,
+        desk_id: comparable.desk_id,
+        user_id: comparable.user_id || user.id,
+        content: comparable.content,
+        color: comparable.color,
+        text_color: comparable.text_color,
+        font_size: comparable.font_size,
+        font_family: comparable.font_family,
+        x: comparable.x,
+        y: comparable.y,
+        rotation: comparable.rotation,
+        width: comparable.width,
+        height: comparable.height
+      }
+    }
+  }
+
+  async function upsertRowsWithSchemaFallback(table, rows) {
+    if (!rows.length) return
+
+    let nextRows = rows
+
+    while (true) {
+      const { error } = await supabase
+        .from(table)
+        .upsert(nextRows, { onConflict: 'id' })
+
+      if (!error) return
+
+      if (isMissingColumnError(error, 'user_id')) {
+        nextRows = nextRows.map((row) => {
+          const nextRow = { ...row }
+          delete nextRow.user_id
+          return nextRow
+        })
+        continue
+      }
+
+      if (isMissingColumnError(error, 'text_color')) {
+        nextRows = nextRows.map((row) => {
+          const nextRow = { ...row }
+          delete nextRow.text_color
+          return nextRow
+        })
+        continue
+      }
+
+      if (isMissingColumnError(error, 'font_size')) {
+        nextRows = nextRows.map((row) => {
+          const nextRow = { ...row }
+          delete nextRow.font_size
+          return nextRow
+        })
+        continue
+      }
+
+      throw error
+    }
+  }
+
+  async function persistHistoryTransition(previousSnapshot, nextSnapshot) {
+    if (!selectedDeskId) return
+
+    const previousByKey = new Map((previousSnapshot || []).map((item) => [getItemKey(item), item]))
+    const nextByKey = new Map((nextSnapshot || []).map((item) => [getItemKey(item), item]))
+    const allKeys = new Set([...previousByKey.keys(), ...nextByKey.keys()])
+
+    const deleteIdsByTable = {
+      notes: [],
+      checklists: [],
+      decorations: []
+    }
+    const upsertRowsByTable = {
+      notes: [],
+      checklists: [],
+      decorations: []
+    }
+    const checklistIdsNeedingItemSync = new Set()
+    const checklistItemsByChecklistId = new Map()
+
+    allKeys.forEach((itemKey) => {
+      const previousItem = previousByKey.get(itemKey)
+      const nextItem = nextByKey.get(itemKey)
+
+      if (!previousItem && !nextItem) return
+
+      if (previousItem && !nextItem) {
+        const persistable = getPersistableDeskItem(previousItem)
+        if (persistable?.table && persistable?.id) {
+          deleteIdsByTable[persistable.table].push(persistable.id)
+        }
+        return
+      }
+
+      if (!previousItem && nextItem) {
+        const persistable = getPersistableDeskItem(nextItem)
+        if (persistable?.table && persistable?.payload) {
+          upsertRowsByTable[persistable.table].push(persistable.payload)
+          if (persistable.item_type === 'checklist') {
+            checklistIdsNeedingItemSync.add(persistable.id)
+            checklistItemsByChecklistId.set(persistable.id, persistable.checklistItems || [])
+          }
+        }
+        return
+      }
+
+      if (previousItem && nextItem && !areComparableDeskItemsEqual(previousItem, nextItem)) {
+        const persistable = getPersistableDeskItem(nextItem)
+        if (persistable?.table && persistable?.payload) {
+          upsertRowsByTable[persistable.table].push(persistable.payload)
+          if (persistable.item_type === 'checklist') {
+            checklistIdsNeedingItemSync.add(persistable.id)
+            checklistItemsByChecklistId.set(persistable.id, persistable.checklistItems || [])
+          }
+        }
+      }
+    })
+
+    for (const table of ['notes', 'checklists', 'decorations']) {
+      const rowsToUpsert = upsertRowsByTable[table]
+      if (rowsToUpsert.length > 0) {
+        await upsertRowsWithSchemaFallback(table, rowsToUpsert)
+      }
+    }
+
+    for (const checklistId of checklistIdsNeedingItemSync) {
+      const { error: deleteItemsError } = await supabase
+        .from('checklist_items')
+        .delete()
+        .eq('checklist_id', checklistId)
+
+      if (deleteItemsError) throw deleteItemsError
+
+      const nextItems = (checklistItemsByChecklistId.get(checklistId) || [])
+        .map((entry, index) => ({
+          checklist_id: checklistId,
+          text: (entry?.text || '').trim(),
+          is_checked: Boolean(entry?.is_checked),
+          sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index,
+          due_at: normalizeChecklistReminderValue(entry?.due_at)
+        }))
+        .filter((entry) => entry.text.length > 0)
+
+      if (nextItems.length > 0) {
+        await insertChecklistItemsWithReminderFallback(nextItems)
+      }
+    }
+
+    for (const table of ['decorations', 'notes', 'checklists']) {
+      const idsToDelete = deleteIdsByTable[table]
+      if (idsToDelete.length > 0) {
+        const { error } = await supabase
+          .from(table)
+          .delete()
+          .eq('desk_id', selectedDeskId)
+          .in('id', idsToDelete)
+
+        if (error) throw error
+      }
+    }
+  }
+
+  async function undoNotesChange() {
+    if (!canCurrentUserEditDeskItems) return
+    if (historySyncing) return
+
+    const previousSnapshot = historyPastRef.current.pop()
+    if (!previousSnapshot) return
+
+    const currentSnapshot = cloneNotesSnapshot(notesRef.current)
+    historyFutureRef.current.push(currentSnapshot)
+    isApplyingHistoryRef.current = true
+    previousNotesSnapshotRef.current = cloneNotesSnapshot(previousSnapshot)
+    setNotes(cloneNotesSnapshot(previousSnapshot))
+    closeItemEditor()
+    setHistoryVersion((prev) => prev + 1)
+
+    setHistorySyncing(true)
+    try {
+      await persistHistoryTransition(currentSnapshot, previousSnapshot)
+    } catch (error) {
+      console.error('Failed to persist undo operation:', error)
+      setEditSaveError(error?.message || 'Undo failed to sync. Reverting local changes.')
+
+      historyFutureRef.current.pop()
+      historyPastRef.current.push(cloneNotesSnapshot(previousSnapshot))
+      isApplyingHistoryRef.current = true
+      previousNotesSnapshotRef.current = cloneNotesSnapshot(currentSnapshot)
+      setNotes(cloneNotesSnapshot(currentSnapshot))
+      setHistoryVersion((prev) => prev + 1)
+    } finally {
+      setHistorySyncing(false)
+    }
+  }
+
+  async function redoNotesChange() {
+    if (!canCurrentUserEditDeskItems) return
+    if (historySyncing) return
+
+    const nextSnapshot = historyFutureRef.current.pop()
+    if (!nextSnapshot) return
+
+    const currentSnapshot = cloneNotesSnapshot(notesRef.current)
+    historyPastRef.current.push(currentSnapshot)
+    isApplyingHistoryRef.current = true
+    previousNotesSnapshotRef.current = cloneNotesSnapshot(nextSnapshot)
+    setNotes(cloneNotesSnapshot(nextSnapshot))
+    closeItemEditor()
+    setHistoryVersion((prev) => prev + 1)
+
+    setHistorySyncing(true)
+    try {
+      await persistHistoryTransition(currentSnapshot, nextSnapshot)
+    } catch (error) {
+      console.error('Failed to persist redo operation:', error)
+      setEditSaveError(error?.message || 'Redo failed to sync. Reverting local changes.')
+
+      historyPastRef.current.pop()
+      historyFutureRef.current.push(cloneNotesSnapshot(nextSnapshot))
+      isApplyingHistoryRef.current = true
+      previousNotesSnapshotRef.current = cloneNotesSnapshot(currentSnapshot)
+      setNotes(cloneNotesSnapshot(currentSnapshot))
+      setHistoryVersion((prev) => prev + 1)
+    } finally {
+      setHistorySyncing(false)
+    }
   }
 
   function getDeskGroupLabel(desk) {
@@ -471,13 +1160,55 @@ function Desk({ user }) {
     }
   }
 
+  const runFetchDesksEffect = useEffectEvent(() => {
+    void fetchDesks()
+  })
+
+  const runSyncDeskShelfPrefsEffect = useEffectEvent(async (shelvesSnapshot, assignmentsSnapshot) => {
+    await syncDeskShelfPrefsToSupabase(shelvesSnapshot, assignmentsSnapshot)
+  })
+
+  const runFetchFriendsEffect = useEffectEvent(() => {
+    void fetchFriends()
+  })
+
+  const runFetchUserStatsEffect = useEffectEvent(() => {
+    void fetchUserStats()
+  })
+
+  const runFetchDeskItemsEffect = useEffectEvent((deskId) => {
+    void fetchDeskItems(deskId)
+  })
+
+  const runFetchDeskActivityEffect = useEffectEvent((deskId) => {
+    void fetchDeskActivity(deskId)
+  })
+
+  const runResetDeskHistoryEffect = useEffectEvent((baselineNotes = []) => {
+    resetDeskHistory(baselineNotes)
+  })
+
+  const runUndoNotesEffect = useEffectEvent(() => {
+    void undoNotesChange()
+  })
+
+  const runRedoNotesEffect = useEffectEvent(() => {
+    void redoNotesChange()
+  })
+
+  const runCloseConfirmDialogEffect = useEffectEvent(() => {
+    closeConfirmDialog()
+  })
+
+  // Intentionally keyed to authenticated user identity changes.
   useEffect(() => {
-    fetchDesks()
+    runFetchDesksEffect()
   }, [user.id])
 
+  // Intentionally keyed to authenticated user identity changes.
   useEffect(() => {
     const channel = supabase
-      .channel(`desk-members-live:${user.id}`)
+      .channel(deskMembersLiveChannelName)
       .on(
         'postgres_changes',
         {
@@ -487,7 +1218,7 @@ function Desk({ user }) {
           filter: `user_id=eq.${user.id}`
         },
         () => {
-          fetchDesks()
+          runFetchDesksEffect()
         }
       )
       .subscribe()
@@ -495,7 +1226,7 @@ function Desk({ user }) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user.id])
+  }, [deskMembersLiveChannelName, user.id])
 
   useEffect(() => {
     if (shelfSyncTimeoutRef.current) {
@@ -625,8 +1356,9 @@ function Desk({ user }) {
         shelfSyncTimeoutRef.current = null
       }
     }
-  }, [shelfPrefsStorageKey])
+  }, [shelfPrefsStorageKey, user.id])
 
+  // Intentionally re-evaluated when hydrated shelf snapshots change.
   useEffect(() => {
     if (!shelfPrefsHydrated) return
     try {
@@ -654,7 +1386,7 @@ function Desk({ user }) {
 
     shelfSyncTimeoutRef.current = setTimeout(async () => {
       try {
-        await syncDeskShelfPrefsToSupabase(shelvesSnapshot, assignmentsSnapshot)
+        await runSyncDeskShelfPrefsEffect(shelvesSnapshot, assignmentsSnapshot)
       } catch (error) {
         if (isMissingShelfStorageTableError(error)) {
           shelfSupabaseSyncEnabledRef.current = false
@@ -686,22 +1418,225 @@ function Desk({ user }) {
     })
   }, [shelfPrefsHydrated, desks, deskShelves])
 
+  // Intentionally keyed to authenticated user identity changes.
   useEffect(() => {
-    fetchFriends()
+    runFetchFriendsEffect()
   }, [user.id])
 
+  // Intentionally keyed to authenticated user identity changes.
   useEffect(() => {
-    fetchUserStats()
+    runFetchUserStatsEffect()
   }, [user.id])
 
+  // Intentionally keyed to selected desk switches.
   useEffect(() => {
     if (!selectedDeskId) {
-      setNotes([])
+      setSelectedDeskMemberRole('owner')
+      setSelectedDeskMemberRoleLoading(false)
+      setNotesFromRemote([])
+      setActivityFeed([])
+      setActivityError('')
       return
     }
 
-    fetchDeskItems(selectedDeskId)
+    runResetDeskHistoryEffect([])
+    runFetchDeskItemsEffect(selectedDeskId)
+    runFetchDeskActivityEffect(selectedDeskId)
   }, [selectedDeskId])
+
+  useEffect(() => {
+    if (!selectedDeskId) {
+      setSelectedDeskMemberRole('owner')
+      setSelectedDeskMemberRoleLoading(false)
+      return
+    }
+
+    const desk = desks.find((entry) => entry.id === selectedDeskId)
+    if (!desk) {
+      setSelectedDeskMemberRole('viewer')
+      setSelectedDeskMemberRoleLoading(false)
+      return
+    }
+
+    if (desk.user_id === user.id) {
+      setSelectedDeskMemberRole('owner')
+      setSelectedDeskMemberRoleLoading(false)
+      return
+    }
+
+    let isCancelled = false
+    setSelectedDeskMemberRoleLoading(true)
+
+    async function loadSelectedDeskMemberRole() {
+      try {
+        const { data, error } = await supabase
+          .from('desk_members')
+          .select('role')
+          .eq('desk_id', selectedDeskId)
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        if (error) {
+          if (isMissingColumnError(error, 'role')) {
+            if (!isCancelled) setSelectedDeskMemberRole('editor')
+            return
+          }
+          throw error
+        }
+
+        if (!isCancelled) {
+          setSelectedDeskMemberRole(data?.role === 'viewer' ? 'viewer' : 'editor')
+        }
+      } catch (error) {
+        console.error('Failed to fetch selected desk member role:', error)
+        if (!isCancelled) {
+          setSelectedDeskMemberRole('viewer')
+        }
+      } finally {
+        if (!isCancelled) {
+          setSelectedDeskMemberRoleLoading(false)
+        }
+      }
+    }
+
+    loadSelectedDeskMemberRole()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [selectedDeskId, user.id, desks])
+
+  // Intentionally keyed to realtime identity/scope changes.
+  useEffect(() => {
+    if (!selectedDeskId) return
+
+    let itemRefreshTimeoutId = null
+    let deskRefreshTimeoutId = null
+
+    const scheduleDeskItemRefresh = () => {
+      if (itemRefreshTimeoutId) {
+        clearTimeout(itemRefreshTimeoutId)
+      }
+
+      itemRefreshTimeoutId = setTimeout(() => {
+        itemRefreshTimeoutId = null
+        runFetchDeskItemsEffect(selectedDeskId)
+      }, 140)
+    }
+
+    const scheduleDeskListRefresh = () => {
+      if (deskRefreshTimeoutId) {
+        clearTimeout(deskRefreshTimeoutId)
+      }
+
+      deskRefreshTimeoutId = setTimeout(() => {
+        deskRefreshTimeoutId = null
+        runFetchDesksEffect()
+      }, 140)
+    }
+
+    const channel = supabase
+      .channel(deskLiveChannelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notes',
+          filter: `desk_id=eq.${selectedDeskId}`
+        },
+        () => {
+          scheduleDeskItemRefresh()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'checklists',
+          filter: `desk_id=eq.${selectedDeskId}`
+        },
+        () => {
+          scheduleDeskItemRefresh()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'decorations',
+          filter: `desk_id=eq.${selectedDeskId}`
+        },
+        () => {
+          scheduleDeskItemRefresh()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'checklist_items'
+        },
+        (payload) => {
+          const checklistId = payload?.new?.checklist_id || payload?.old?.checklist_id || null
+          if (!hasChecklistInCurrentNotes(checklistId)) return
+          scheduleDeskItemRefresh()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'desks',
+          filter: `id=eq.${selectedDeskId}`
+        },
+        () => {
+          scheduleDeskListRefresh()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'desk_members',
+          filter: `desk_id=eq.${selectedDeskId}`
+        },
+        () => {
+          scheduleDeskListRefresh()
+          scheduleDeskItemRefresh()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'desk_activity',
+          filter: `desk_id=eq.${selectedDeskId}`
+        },
+        () => {
+          if (profileTab === 'activity') {
+            runFetchDeskActivityEffect(selectedDeskId)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      if (itemRefreshTimeoutId) {
+        clearTimeout(itemRefreshTimeoutId)
+      }
+      if (deskRefreshTimeoutId) {
+        clearTimeout(deskRefreshTimeoutId)
+      }
+      supabase.removeChannel(channel)
+    }
+  }, [deskLiveChannelName, hasChecklistInCurrentNotes, profileTab, selectedDeskId, user.id])
 
   useEffect(() => {
     if (!selectedDeskId) return
@@ -709,8 +1644,102 @@ function Desk({ user }) {
   }, [lastDeskStorageKey, selectedDeskId])
 
   useEffect(() => {
+    try {
+      const storedValue = localStorage.getItem(snapPrefsStorageKey)
+      if (storedValue === '1') {
+        setSnapToGrid(true)
+      } else if (storedValue === '0') {
+        setSnapToGrid(false)
+      } else {
+        setSnapToGrid(false)
+      }
+    } catch (error) {
+      console.error('Failed to load snap-to-grid preference:', error)
+      setSnapToGrid(false)
+    }
+  }, [snapPrefsStorageKey])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(snapPrefsStorageKey, snapToGrid ? '1' : '0')
+    } catch (error) {
+      console.error('Failed to save snap-to-grid preference:', error)
+    }
+  }, [snapPrefsStorageKey, snapToGrid])
+
+  useEffect(() => {
     notesRef.current = notes
   }, [notes])
+
+  useEffect(() => {
+    return () => {
+      clearAutoSaveStatusTimeout()
+    }
+  }, [])
+
+  useEffect(() => {
+    const currentSnapshot = cloneNotesSnapshot(notes)
+
+    if (skipNextHistoryRef.current) {
+      skipNextHistoryRef.current = false
+      previousNotesSnapshotRef.current = currentSnapshot
+      return
+    }
+
+    if (isApplyingHistoryRef.current) {
+      isApplyingHistoryRef.current = false
+      previousNotesSnapshotRef.current = currentSnapshot
+      return
+    }
+
+    const previousSnapshot = previousNotesSnapshotRef.current
+    if (areNoteSnapshotsEqual(previousSnapshot, currentSnapshot)) {
+      return
+    }
+
+    historyPastRef.current.push(cloneNotesSnapshot(previousSnapshot))
+    if (historyPastRef.current.length > 60) {
+      historyPastRef.current.shift()
+    }
+    historyFutureRef.current = []
+    previousNotesSnapshotRef.current = currentSnapshot
+    setHistoryVersion((prev) => prev + 1)
+  }, [notes])
+
+  // Keyboard handlers intentionally track modal/history toggles only.
+  useEffect(() => {
+    function handleHistoryKeyDown(e) {
+      if (hasModalOpen) return
+
+      const target = e.target
+      const tagName = typeof target?.tagName === 'string' ? target.tagName.toLowerCase() : ''
+      const isTypingField = tagName === 'input' || tagName === 'textarea' || tagName === 'select' || Boolean(target?.isContentEditable)
+      if (isTypingField) return
+
+      const isShortcutPressed = e.ctrlKey || e.metaKey
+      if (!isShortcutPressed) return
+
+      const normalizedKey = (e.key || '').toLowerCase()
+
+      if (normalizedKey === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) {
+          runRedoNotesEffect()
+        } else {
+          runUndoNotesEffect()
+        }
+        return
+      }
+
+      if (normalizedKey === 'y') {
+        e.preventDefault()
+        runRedoNotesEffect()
+      }
+    }
+
+    window.addEventListener('keydown', handleHistoryKeyDown)
+    return () => window.removeEventListener('keydown', handleHistoryKeyDown)
+  }, [hasModalOpen])
 
   useEffect(() => {
     if (!activeDecorationHandleId) return
@@ -727,6 +1756,7 @@ function Desk({ user }) {
     return () => window.removeEventListener('pointerdown', handleDecorationOutsideClick)
   }, [activeDecorationHandleId])
 
+  // Escape-key modal handler intentionally tracks modal state flags.
   useEffect(() => {
     if (!hasModalOpen) return
 
@@ -736,7 +1766,7 @@ function Desk({ user }) {
     function handleKeyDown(e) {
       if (e.key === 'Escape') {
         if (confirmDialog.isOpen && !confirmDialogLoading) {
-          closeConfirmDialog()
+          runCloseConfirmDialogEffect()
           return
         }
 
@@ -757,7 +1787,7 @@ function Desk({ user }) {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [hasModalOpen, confirmDialog.isOpen, confirmDialogLoading, deleteAccountDeleting, deleteAccountDialog.isOpen, pendingDeleteId])
+  }, [confirmDialog.isOpen, confirmDialogLoading, deleteAccountDeleting, deleteAccountDialog.isOpen, hasModalOpen, pendingDeleteId])
 
   function getDeskBackgroundValue(desk) {
     const modeFromColumn = typeof desk?.background_mode === 'string' ? desk.background_mode.trim() : ''
@@ -1113,7 +2143,7 @@ function Desk({ user }) {
     try {
       const { data: membershipRows, error: membershipError } = await supabase
         .from('desk_members')
-        .select('id, user_id, created_at')
+        .select('id, user_id, role, created_at')
         .eq('desk_id', deskId)
         .order('created_at', { ascending: true })
 
@@ -1152,7 +2182,8 @@ function Desk({ user }) {
           user_id: memberId,
           email: profileById.get(memberId)?.email || 'Unknown user',
           preferred_name: profileById.get(memberId)?.preferred_name || '',
-          is_owner: memberId === desk.user_id
+          is_owner: memberId === desk.user_id,
+          role: memberId === desk.user_id ? 'owner' : (membershipRow?.role === 'viewer' ? 'viewer' : 'editor')
         }
       })
 
@@ -1315,6 +2346,40 @@ function Desk({ user }) {
     setDeskMembersMessage('Member removed.')
     const updatedMembers = await fetchDeskMembers(selectedDeskId)
     await syncOwnedDeskCollaborativeState(selectedDeskId, updatedMembers)
+    setDeskMemberActionLoadingId(null)
+  }
+
+  async function updateDeskMemberRole(memberUserId, nextRole) {
+    if (!selectedDeskId || !memberUserId) return
+    if (nextRole !== 'editor' && nextRole !== 'viewer') return
+    if (!isCurrentDeskOwner) return
+
+    const targetMember = deskMembers.find((member) => member.user_id === memberUserId)
+    if (!targetMember || targetMember.is_owner || targetMember.role === nextRole) return
+
+    setDeskMemberActionLoadingId(`role:${memberUserId}`)
+    setDeskMembersError('')
+    setDeskMembersMessage('')
+
+    const { error } = await supabase
+      .from('desk_members')
+      .update({ role: nextRole })
+      .eq('desk_id', selectedDeskId)
+      .eq('user_id', memberUserId)
+
+    if (error) {
+      console.error('Failed to update desk member role:', error)
+      if (isMissingColumnError(error, 'role')) {
+        setDeskMembersError('Desk member roles are not available yet. Run the latest SQL in BACKEND_SQL_README.md.')
+      } else {
+        setDeskMembersError(error?.message || 'Could not update role.')
+      }
+      setDeskMemberActionLoadingId(null)
+      return
+    }
+
+    setDeskMembersMessage(nextRole === 'viewer' ? 'Member changed to Viewer.' : 'Member changed to Editor.')
+    await fetchDeskMembers(selectedDeskId)
     setDeskMemberActionLoadingId(null)
   }
 
@@ -1572,6 +2637,382 @@ function Desk({ user }) {
     )
   }
 
+  function sanitizeExportFileName(value) {
+    const trimmed = (value || '').trim()
+    if (!trimmed) return 'desk'
+    return trimmed
+      .replace(/[\\/:*?"<>|]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 80)
+      .toLowerCase() || 'desk'
+  }
+
+  function triggerJsonDownload(fileName, payload) {
+    const serialized = JSON.stringify(payload, null, 2)
+    const blob = new Blob([serialized], { type: 'application/json;charset=utf-8' })
+    const downloadUrl = URL.createObjectURL(blob)
+    const downloadAnchor = document.createElement('a')
+    downloadAnchor.href = downloadUrl
+    downloadAnchor.download = fileName
+    document.body.appendChild(downloadAnchor)
+    downloadAnchor.click()
+    downloadAnchor.remove()
+    URL.revokeObjectURL(downloadUrl)
+  }
+
+  function areRectanglesOverlapping(leftRect, rightRect, gap = 8) {
+    return !(
+      leftRect.x + leftRect.width + gap <= rightRect.x
+      || rightRect.x + rightRect.width + gap <= leftRect.x
+      || leftRect.y + leftRect.height + gap <= rightRect.y
+      || rightRect.y + rightRect.height + gap <= leftRect.y
+    )
+  }
+
+  function findAvailableSpawnPosition({ baseX, baseY, width, height }) {
+    const canvasWidth = Math.round(deskCanvasRef.current?.clientWidth || getViewportMetrics().width)
+    const maxX = Math.max(0, canvasWidth - width)
+    const normalizedBaseX = Math.min(Math.max(0, Number(baseX) || 0), maxX)
+    const normalizedBaseY = Math.max(0, Number(baseY) || 0)
+    const diagonalStep = 24
+    const maxAttempts = 24
+
+    for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
+      const candidate = {
+        x: Math.min(Math.max(0, normalizedBaseX + attempt * diagonalStep), maxX),
+        y: Math.max(0, normalizedBaseY + attempt * diagonalStep),
+        width,
+        height
+      }
+
+      const hasOverlap = notesRef.current.some((item) => {
+        const existing = {
+          x: Number(item?.x) || 0,
+          y: Number(item?.y) || 0,
+          width: getItemWidth(item),
+          height: getItemHeight(item)
+        }
+        return areRectanglesOverlapping(candidate, existing)
+      })
+
+      if (!hasOverlap) {
+        return { x: candidate.x, y: candidate.y }
+      }
+    }
+
+    return {
+      x: normalizedBaseX,
+      y: normalizedBaseY + (maxAttempts + 1) * diagonalStep
+    }
+  }
+
+  async function exportCurrentDesk() {
+    if (!selectedDeskId) return
+
+    const desk = desks.find((entry) => entry.id === selectedDeskId)
+    if (!desk) return
+
+    try {
+      const [notesResult, checklistsResult, decorationsResult] = await Promise.all([
+        supabase.from('notes').select('*').eq('desk_id', selectedDeskId),
+        supabase.from('checklists').select('*').eq('desk_id', selectedDeskId),
+        supabase.from('decorations').select('*').eq('desk_id', selectedDeskId)
+      ])
+
+      if (notesResult.error || checklistsResult.error || decorationsResult.error) {
+        throw notesResult.error || checklistsResult.error || decorationsResult.error
+      }
+
+      const checklistRows = checklistsResult.data || []
+      const checklistIds = checklistRows.map((row) => row.id)
+      let checklistItems = []
+
+      if (checklistIds.length > 0) {
+        const { data: checklistItemsData, error: checklistItemsError } = await supabase
+          .from('checklist_items')
+          .select('*')
+          .in('checklist_id', checklistIds)
+          .order('sort_order', { ascending: true })
+
+        if (checklistItemsError) {
+          throw checklistItemsError
+        }
+
+        checklistItems = checklistItemsData || []
+      }
+
+      const exportPayload = {
+        schema_version: 1,
+        exported_at: new Date().toISOString(),
+        exported_by_user_id: user.id,
+        desk: {
+          id: desk.id,
+          name: desk.name,
+          user_id: desk.user_id,
+          is_collaborative: Boolean(desk.is_collaborative),
+          background: desk.background || 'desk1',
+          background_mode: desk.background_mode || null,
+          custom_background_url: desk.custom_background_url || null,
+          background_url: desk.background_url || null,
+          created_at: desk.created_at || null
+        },
+        items: {
+          notes: notesResult.data || [],
+          checklists: checklistRows,
+          checklist_items: checklistItems,
+          decorations: decorationsResult.data || []
+        }
+      }
+
+      const safeDeskName = sanitizeExportFileName(getDeskNameValue(desk))
+      const exportDate = new Date().toISOString().slice(0, 10)
+      const exportFileName = `${safeDeskName}-${exportDate}.json`
+
+      triggerJsonDownload(exportFileName, exportPayload)
+      await logDeskActivity({
+        actionType: 'exported',
+        itemType: 'desk',
+        itemId: selectedDeskId,
+        summary: 'exported this desk'
+      })
+      setShowDeskMenu(false)
+      setBackgroundMenuError('')
+      setDeskMenuError('')
+      setDeskMenuMessage(`Exported ${getDeskNameValue(desk)}.`)
+    } catch (error) {
+      console.error('Failed to export desk:', error)
+      setDeskMenuMessage('')
+      setDeskMenuError(error?.message || 'Failed to export desk.')
+    }
+  }
+
+  async function insertRowsWithImportFallback(table, rows) {
+    if (!rows.length) return []
+
+    let nextRows = rows
+
+    while (true) {
+      const { data, error } = await supabase
+        .from(table)
+        .insert(nextRows)
+        .select()
+
+      if (!error) return data || []
+
+      if (isMissingColumnError(error, 'user_id')) {
+        nextRows = nextRows.map((row) => {
+          const copy = { ...row }
+          delete copy.user_id
+          return copy
+        })
+        continue
+      }
+
+      if (isMissingColumnError(error, 'text_color')) {
+        nextRows = nextRows.map((row) => {
+          const copy = { ...row }
+          delete copy.text_color
+          return copy
+        })
+        continue
+      }
+
+      if (isMissingColumnError(error, 'font_size')) {
+        nextRows = nextRows.map((row) => {
+          const copy = { ...row }
+          delete copy.font_size
+          return copy
+        })
+        continue
+      }
+
+      throw error
+    }
+  }
+
+  function normalizeDeskImportPayload(payload) {
+    if (!payload) {
+      return { notes: [], checklists: [], checklistItems: [], decorations: [] }
+    }
+
+    if (Array.isArray(payload)) {
+      return { notes: payload, checklists: [], checklistItems: [], decorations: [] }
+    }
+
+    const items = payload.items && typeof payload.items === 'object' ? payload.items : {}
+    const checklists = Array.isArray(items.checklists)
+      ? items.checklists
+      : (Array.isArray(payload.checklists) ? payload.checklists : [])
+
+    const explicitChecklistItems = Array.isArray(items.checklist_items)
+      ? items.checklist_items
+      : (Array.isArray(payload.checklist_items) ? payload.checklist_items : [])
+
+    const nestedChecklistItems = checklists.flatMap((checklist) => {
+      if (!Array.isArray(checklist?.items)) return []
+      return checklist.items.map((entry, index) => ({
+        checklist_id: checklist.id,
+        text: entry?.text || '',
+        is_checked: Boolean(entry?.is_checked),
+        sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index,
+        due_at: normalizeChecklistReminderValue(entry?.due_at)
+      }))
+    })
+
+    return {
+      notes: Array.isArray(items.notes) ? items.notes : (Array.isArray(payload.notes) ? payload.notes : []),
+      checklists,
+      checklistItems: explicitChecklistItems.length > 0 ? explicitChecklistItems : nestedChecklistItems,
+      decorations: Array.isArray(items.decorations) ? items.decorations : (Array.isArray(payload.decorations) ? payload.decorations : [])
+    }
+  }
+
+  async function importDeskPayloadIntoCurrentDesk(payload) {
+    if (!selectedDeskId) return { notes: 0, checklists: 0, checklistItems: 0, decorations: 0 }
+
+    const normalized = normalizeDeskImportPayload(payload)
+    const positionOffset = 20
+
+    const noteRows = normalized.notes.map((note) => ({
+      desk_id: selectedDeskId,
+      user_id: user.id,
+      content: note?.content || 'Imported note',
+      color: note?.color || '#fff59d',
+      text_color: note?.text_color || '#222222',
+      font_size: normalizeFontSize(note?.font_size, 16),
+      font_family: note?.font_family || 'inherit',
+      x: (Number(note?.x) || 100) + positionOffset,
+      y: (Number(note?.y) || 100) + positionOffset,
+      rotation: toStoredRotation(Number(note?.rotation) || 0),
+      width: getItemWidth(note),
+      height: getItemHeight(note)
+    }))
+
+    const checklistRows = normalized.checklists.map((checklist) => ({
+      __source_id: checklist?.id,
+      desk_id: selectedDeskId,
+      user_id: user.id,
+      title: checklist?.title || 'Imported checklist',
+      color: checklist?.color || '#ffffff',
+      text_color: checklist?.text_color || '#222222',
+      font_size: normalizeFontSize(checklist?.font_size, 16),
+      font_family: checklist?.font_family || 'inherit',
+      x: (Number(checklist?.x) || 100) + positionOffset,
+      y: (Number(checklist?.y) || 100) + positionOffset,
+      rotation: toStoredRotation(Number(checklist?.rotation) || 0),
+      width: getItemWidth(checklist),
+      height: getItemHeight(checklist)
+    }))
+
+    const decorationRows = normalized.decorations.map((decoration) => ({
+      desk_id: selectedDeskId,
+      kind: decoration?.kind || 'pin',
+      x: (Number(decoration?.x) || 110) + positionOffset,
+      y: (Number(decoration?.y) || 110) + positionOffset,
+      rotation: toStoredRotation(Number(decoration?.rotation) || 0),
+      width: getItemWidth(decoration),
+      height: getItemHeight(decoration)
+    }))
+
+    const insertedNotes = await insertRowsWithImportFallback('notes', noteRows)
+
+    const checklistsWithoutMeta = checklistRows.map((row) => {
+      const copy = { ...row }
+      delete copy.__source_id
+      return copy
+    })
+    const insertedChecklists = await insertRowsWithImportFallback('checklists', checklistsWithoutMeta)
+
+    const checklistIdMap = new Map()
+    checklistRows.forEach((row, index) => {
+      if (!row.__source_id) return
+      const inserted = insertedChecklists[index]
+      if (!inserted?.id) return
+      checklistIdMap.set(row.__source_id, inserted.id)
+    })
+
+    const checklistItemRows = normalized.checklistItems
+      .map((entry, index) => {
+        const targetChecklistId = checklistIdMap.get(entry?.checklist_id)
+        if (!targetChecklistId) return null
+        return {
+          checklist_id: targetChecklistId,
+          text: (entry?.text || '').trim(),
+          is_checked: Boolean(entry?.is_checked),
+          sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index,
+          due_at: normalizeChecklistReminderValue(entry?.due_at)
+        }
+      })
+      .filter((entry) => entry && entry.text.length > 0)
+
+    let insertedChecklistItems = []
+    if (checklistItemRows.length > 0) {
+      insertedChecklistItems = await insertChecklistItemsWithReminderFallback(checklistItemRows, { includeSelect: true })
+    }
+
+    let insertedDecorations = []
+    if (decorationRows.length > 0) {
+      const { data, error } = await supabase
+        .from('decorations')
+        .insert(decorationRows)
+        .select()
+
+      if (error) throw error
+      insertedDecorations = data || []
+    }
+
+    return {
+      notes: insertedNotes.length,
+      checklists: insertedChecklists.length,
+      checklistItems: insertedChecklistItems.length,
+      decorations: insertedDecorations.length
+    }
+  }
+
+  async function handleImportDeskFileSelection(e) {
+    const selectedFile = e.target?.files?.[0]
+    if (e.target) e.target.value = ''
+    if (!selectedFile) return
+
+    if (!canCurrentUserEditDeskItems) {
+      setDeskMenuMessage('')
+      setDeskMenuError('You do not have permission to import into this desk.')
+      return
+    }
+
+    try {
+      const rawContent = await selectedFile.text()
+      const parsedPayload = JSON.parse(rawContent)
+      const result = await importDeskPayloadIntoCurrentDesk(parsedPayload)
+
+      await fetchDeskItems(selectedDeskId)
+      await logDeskActivity({
+        actionType: 'imported',
+        itemType: 'desk',
+        itemId: selectedDeskId,
+        summary: 'imported desk content',
+        metadata: {
+          notes: result.notes,
+          checklists: result.checklists,
+          checklistItems: result.checklistItems,
+          decorations: result.decorations
+        }
+      })
+
+      setDeskMenuError('')
+      setDeskMenuMessage(`Imported ${result.notes} note(s), ${result.checklists} checklist(s), ${result.checklistItems} checklist item(s), ${result.decorations} decoration(s).`)
+    } catch (error) {
+      console.error('Failed to import desk data:', error)
+      setDeskMenuMessage('')
+      if ((error?.message || '').toLowerCase().includes('json')) {
+        setDeskMenuError('Invalid JSON file. Please import a valid desk export.')
+      } else {
+        setDeskMenuError(error?.message || 'Failed to import data.')
+      }
+    }
+  }
+
   function handleSelectDesk(desk) {
     if (!desk || desk.id === selectedDeskId) {
       setShowDeskMenu(false)
@@ -1584,6 +3025,8 @@ function Desk({ user }) {
     setCustomBackgroundUrl(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(desk) : '')
     setCustomBackgroundInput(nextBackgroundMode === 'custom' ? getDeskCustomBackgroundUrl(desk) : '')
     setBackgroundMenuError('')
+    setDeskMenuMessage('')
+    setDeskMenuError('')
     setEditingId(null)
     setEditValue('')
     setChecklistEditItems([])
@@ -1595,7 +3038,7 @@ function Desk({ user }) {
 
   async function fetchDeskItems(deskId) {
     if (!deskId) {
-      setNotes([])
+      setNotesFromRemote([])
       return
     }
 
@@ -1689,7 +3132,7 @@ function Desk({ user }) {
         created_by_name: creatorProfile.preferredName
       }
     })
-    setNotes(combined)
+    setNotesFromRemote(combined)
 
     const maxNoteBottom = combined.reduce((maxY, item) => {
       const itemBottom = (Number(item.y) || 0) + getItemHeight(item)
@@ -1701,14 +3144,17 @@ function Desk({ user }) {
   }
 
   async function addStickyNote() {
+    if (!canCurrentUserEditDeskItems) return
     if (!selectedDeskId) return
+
+    const spawnPosition = findAvailableSpawnPosition({ baseX: 100, baseY: 100, width: 200, height: 120 })
 
     let data = null
     let error = null
 
     const withUserResult = await supabase
       .from('notes')
-      .insert([{ desk_id: selectedDeskId, user_id: user.id, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
+      .insert([{ desk_id: selectedDeskId, user_id: user.id, content: 'New note', color: '#fff59d', font_family: 'inherit', x: spawnPosition.x, y: spawnPosition.y, rotation: 0, width: 200, height: 120 }])
       .select()
 
     data = withUserResult.data
@@ -1717,7 +3163,7 @@ function Desk({ user }) {
     if (error) {
       const fallbackResult = await supabase
         .from('notes')
-        .insert([{ desk_id: selectedDeskId, content: 'New note', color: '#fff59d', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 200, height: 120 }])
+        .insert([{ desk_id: selectedDeskId, content: 'New note', color: '#fff59d', font_family: 'inherit', x: spawnPosition.x, y: spawnPosition.y, rotation: 0, width: 200, height: 120 }])
         .select()
 
       data = fallbackResult.data
@@ -1729,6 +3175,12 @@ function Desk({ user }) {
     if (createdNote) {
       setNotes((prev) => [...prev, { ...createdNote, item_type: 'note' }])
       await fetchDeskItems(selectedDeskId)
+      await logDeskActivity({
+        actionType: 'created',
+        itemType: 'note',
+        itemId: createdNote.id,
+        summary: 'created a note'
+      })
     } else {
       console.error('Failed to create note:', error)
       setEditSaveError(error?.message || 'Failed to create note.')
@@ -1738,14 +3190,17 @@ function Desk({ user }) {
   }
 
   async function addChecklistNote() {
+    if (!canCurrentUserEditDeskItems) return
     if (!selectedDeskId) return
+
+    const spawnPosition = findAvailableSpawnPosition({ baseX: 100, baseY: 100, width: 220, height: 160 })
 
     let data = null
     let error = null
 
     const withUserResult = await supabase
       .from('checklists')
-      .insert([{ desk_id: selectedDeskId, user_id: user.id, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
+      .insert([{ desk_id: selectedDeskId, user_id: user.id, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: spawnPosition.x, y: spawnPosition.y, rotation: 0, width: 220, height: 160 }])
       .select()
 
     data = withUserResult.data
@@ -1754,7 +3209,7 @@ function Desk({ user }) {
     if (error) {
       const fallbackResult = await supabase
         .from('checklists')
-        .insert([{ desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: 100, y: 100, rotation: 0, width: 220, height: 160 }])
+        .insert([{ desk_id: selectedDeskId, title: 'Checklist', color: '#ffffff', font_family: 'inherit', x: spawnPosition.x, y: spawnPosition.y, rotation: 0, width: 220, height: 160 }])
         .select()
 
       data = fallbackResult.data
@@ -1789,17 +3244,26 @@ function Desk({ user }) {
     ])
 
     await fetchDeskItems(selectedDeskId)
+    await logDeskActivity({
+      actionType: 'created',
+      itemType: 'checklist',
+      itemId: createdChecklist.id,
+      summary: 'created a checklist'
+    })
 
     setShowNewNoteMenu(false)
   }
 
   async function addDecoration(kind) {
+    if (!canCurrentUserEditDeskItems) return
     if (!selectedDeskId) return
+
+    const spawnPosition = findAvailableSpawnPosition({ baseX: 110, baseY: 110, width: 88, height: 88 })
 
     const option = getDecorationOption(kind)
     const { data, error } = await supabase
       .from('decorations')
-      .insert([{ desk_id: selectedDeskId, kind: option.key, x: 110, y: 110, rotation: 0, width: 88, height: 88 }])
+      .insert([{ desk_id: selectedDeskId, kind: option.key, x: spawnPosition.x, y: spawnPosition.y, rotation: 0, width: 88, height: 88 }])
       .select()
 
     const createdDecoration = data?.[0]
@@ -1807,6 +3271,12 @@ function Desk({ user }) {
     if (createdDecoration) {
       setNotes((prev) => [...prev, { ...createdDecoration, item_type: 'decoration' }])
       await fetchDeskItems(selectedDeskId)
+      await logDeskActivity({
+        actionType: 'created',
+        itemType: 'decoration',
+        itemId: createdDecoration.id,
+        summary: 'added a decoration'
+      })
     } else {
       console.error('Failed to create decoration:', error)
       setEditSaveError(error?.message || 'Failed to create decoration.')
@@ -2335,6 +3805,8 @@ function Desk({ user }) {
     const item = notesRef.current.find((row) => getItemKey(row) === itemKey)
     if (!item) return null
 
+    markAutoSaveSaving()
+
     const storedRotation = toStoredRotation(rotationValue)
     const table = getItemTableName(item)
     const { error } = await supabase
@@ -2345,9 +3817,11 @@ function Desk({ user }) {
 
     if (error) {
       console.error('Failed to save item rotation:', error)
+      markAutoSaveError(error?.message || 'Failed to save rotation.')
       return null
     }
 
+    markAutoSaveSaved()
     return storedRotation
   }
 
@@ -2355,17 +3829,29 @@ function Desk({ user }) {
     const item = notesRef.current.find((row) => getItemKey(row) === itemKey)
     if (!item) return
 
+    markAutoSaveSaving()
+
     const table = getItemTableName(item)
-    await supabase
+    const { error } = await supabase
       .from(table)
       .update({ x, y, desk_id: selectedDeskId })
       .eq('id', item.id)
       .eq('desk_id', selectedDeskId)
+
+    if (error) {
+      console.error('Failed to save item position:', error)
+      markAutoSaveError(error?.message || 'Failed to save position.')
+      return
+    }
+
+    markAutoSaveSaved()
   }
 
   async function persistItemSize(itemKey, width, height) {
     const item = notesRef.current.find((row) => getItemKey(row) === itemKey)
     if (!item) return
+
+    markAutoSaveSaving()
 
     const table = getItemTableName(item)
     const { error } = await supabase
@@ -2376,7 +3862,11 @@ function Desk({ user }) {
 
     if (error) {
       console.error('Failed to save item size:', error)
+      markAutoSaveError(error?.message || 'Failed to save size.')
+      return
     }
+
+    markAutoSaveSaved()
   }
 
   function moveItemLayer(itemKey, direction) {
@@ -2427,6 +3917,7 @@ function Desk({ user }) {
   }
 
   function handleResizeMouseDown(e, item) {
+    if (!canCurrentUserEditDeskItems) return
     if (typeof e.button === 'number' && e.button !== 0) return
     if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return
 
@@ -2631,7 +4122,8 @@ function Desk({ user }) {
       .map((entry, index) => ({
         text: (entry.text || '').trim(),
         is_checked: Boolean(entry.is_checked),
-        sort_order: index
+        sort_order: index,
+        due_at: normalizeChecklistReminderValue(entry.due_at)
       }))
       .filter((entry) => entry.text.length > 0)
 
@@ -2697,17 +4189,15 @@ function Desk({ user }) {
 
     let insertedItems = []
     if (nextItems.length > 0) {
-      const { data: inserted, error: insertItemsError } = await supabase
-        .from('checklist_items')
-        .insert(nextItems.map((entry) => ({ ...entry, checklist_id: item.id })))
-        .select()
-
-      if (insertItemsError) {
+      try {
+        insertedItems = await insertChecklistItemsWithReminderFallback(
+          nextItems.map((entry) => ({ ...entry, checklist_id: item.id })),
+          { includeSelect: true }
+        )
+      } catch (insertItemsError) {
         console.error('Failed saving checklist items:', insertItemsError)
         return { ok: false, errorMessage: insertItemsError?.message || 'Failed saving checklist items.' }
       }
-
-      insertedItems = inserted || []
     }
 
     setNotes((prev) =>
@@ -2731,8 +4221,10 @@ function Desk({ user }) {
   }
 
   async function commitItemEdits(item) {
+    if (!canCurrentUserEditDeskItems) return
     if (isSavingEdit) return
 
+    markAutoSaveSaving()
     setIsSavingEdit(true)
     setEditSaveError('')
 
@@ -2742,6 +4234,7 @@ function Desk({ user }) {
     } catch (error) {
       console.error('Unexpected save error:', error)
       setEditSaveError('Save failed. Please try again.')
+      markAutoSaveError('Save failed. Please try again.')
       return
     } finally {
       setIsSavingEdit(false)
@@ -2749,6 +4242,7 @@ function Desk({ user }) {
 
     if (!saveResult.ok) {
       setEditSaveError(saveResult.errorMessage || 'Save failed. Please check your connection and try again.')
+      markAutoSaveError(saveResult.errorMessage || 'Save failed. Please check your connection and try again.')
       return
     }
 
@@ -2762,9 +4256,17 @@ function Desk({ user }) {
     setEditFontSize(16)
     setEditFontFamily('inherit')
     setEditSaveError('')
+    await logDeskActivity({
+      actionType: 'edited',
+      itemType: isChecklistItem(item) ? 'checklist' : 'note',
+      itemId: item.id,
+      summary: isChecklistItem(item) ? 'edited a checklist' : 'edited a note'
+    })
+    markAutoSaveSaved()
   }
 
   async function toggleChecklistItem(itemKey, itemIndex) {
+    if (!canCurrentUserEditDeskItems) return
     const checklist = notesRef.current.find((row) => getItemKey(row) === itemKey)
     if (!checklist || !isChecklistItem(checklist)) return
 
@@ -2772,6 +4274,8 @@ function Desk({ user }) {
     if (!targetItem) return
 
     const nextChecked = !targetItem.is_checked
+
+    markAutoSaveSaving()
 
     setNotes((prev) =>
       prev.map((row) =>
@@ -2793,8 +4297,19 @@ function Desk({ user }) {
 
     if (error) {
       console.error('Failed to toggle checklist item:', error)
+      markAutoSaveError(error?.message || 'Failed to save checklist item.')
       await fetchDeskItems(selectedDeskId)
+      return
     }
+
+    await logDeskActivity({
+      actionType: nextChecked ? 'checked' : 'unchecked',
+      itemType: 'checklist item',
+      itemId: targetItem.id,
+      summary: nextChecked ? 'checked off a checklist item' : 'unchecked a checklist item'
+    })
+
+    markAutoSaveSaved()
   }
 
   function getPointerAngleFromCenter(pageX, pageY) {
@@ -2802,6 +4317,7 @@ function Desk({ user }) {
   }
 
   function handleRotateMouseDown(e, item) {
+    if (!canCurrentUserEditDeskItems) return
     if (typeof e.button === 'number' && e.button !== 0) return
     if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return
 
@@ -2892,10 +4408,205 @@ function Desk({ user }) {
   }
 
   function requestDeleteNote(itemKey) {
+    if (!canCurrentUserEditDeskItems) return
     setPendingDeleteId(itemKey)
   }
 
+  function getDuplicatePosition(item) {
+    const offset = 24
+    const nextX = Math.max(0, (Number(item?.x) || 0) + offset)
+    const nextY = Math.max(0, (Number(item?.y) || 0) + offset)
+    return { x: nextX, y: nextY }
+  }
+
+  async function duplicateItem(itemKey) {
+    if (!canCurrentUserEditDeskItems) return
+    if (!selectedDeskId) return
+
+    const sourceItem = notesRef.current.find((row) => getItemKey(row) === itemKey)
+    if (!sourceItem) return
+
+    markAutoSaveSaving()
+
+    const { x: nextX, y: nextY } = getDuplicatePosition(sourceItem)
+
+    try {
+      if (isDecorationItem(sourceItem)) {
+        const { data, error } = await supabase
+          .from('decorations')
+          .insert([{
+            desk_id: selectedDeskId,
+            kind: sourceItem.kind || 'pin',
+            x: nextX,
+            y: nextY,
+            rotation: toStoredRotation(Number(sourceItem.rotation) || 0),
+            width: getItemWidth(sourceItem),
+            height: getItemHeight(sourceItem)
+          }])
+          .select()
+
+        const duplicatedDecoration = data?.[0]
+        if (!duplicatedDecoration || error) {
+          throw error || new Error('Failed to duplicate decoration.')
+        }
+
+        setNotes((prev) => [...prev, { ...duplicatedDecoration, item_type: 'decoration' }])
+        setActiveDecorationHandleId(`decoration-${duplicatedDecoration.id}`)
+        await fetchDeskItems(selectedDeskId)
+        await logDeskActivity({
+          actionType: 'duplicated',
+          itemType: 'decoration',
+          itemId: duplicatedDecoration.id,
+          summary: 'duplicated a decoration'
+        })
+        markAutoSaveSaved()
+        return
+      }
+
+      if (isChecklistItem(sourceItem)) {
+        let checklistData = null
+        let checklistError = null
+
+        const withUserResult = await supabase
+          .from('checklists')
+          .insert([{
+            desk_id: selectedDeskId,
+            user_id: sourceItem.user_id || user.id,
+            title: sourceItem.title || 'Checklist',
+            color: getItemColor(sourceItem),
+            font_family: getItemFontFamily(sourceItem),
+            x: nextX,
+            y: nextY,
+            rotation: toStoredRotation(Number(sourceItem.rotation) || 0),
+            width: getItemWidth(sourceItem),
+            height: getItemHeight(sourceItem)
+          }])
+          .select()
+
+        checklistData = withUserResult.data
+        checklistError = withUserResult.error
+
+        if (checklistError) {
+          const fallbackResult = await supabase
+            .from('checklists')
+            .insert([{
+              desk_id: selectedDeskId,
+              title: sourceItem.title || 'Checklist',
+              color: getItemColor(sourceItem),
+              font_family: getItemFontFamily(sourceItem),
+              x: nextX,
+              y: nextY,
+              rotation: toStoredRotation(Number(sourceItem.rotation) || 0),
+              width: getItemWidth(sourceItem),
+              height: getItemHeight(sourceItem)
+            }])
+            .select()
+
+          checklistData = fallbackResult.data
+          checklistError = fallbackResult.error
+        }
+
+        const createdChecklist = checklistData?.[0]
+        if (!createdChecklist || checklistError) {
+          throw checklistError || new Error('Failed to duplicate checklist.')
+        }
+
+        const sourceItems = (sourceItem.items || []).map((entry, index) => ({
+          checklist_id: createdChecklist.id,
+          text: (entry?.text || '').trim(),
+          is_checked: Boolean(entry?.is_checked),
+          sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index,
+          due_at: normalizeChecklistReminderValue(entry?.due_at)
+        })).filter((entry) => entry.text.length > 0)
+
+        let insertedItems = []
+        if (sourceItems.length > 0) {
+          insertedItems = await insertChecklistItemsWithReminderFallback(sourceItems, { includeSelect: true })
+        }
+
+        setNotes((prev) => [
+          ...prev,
+          {
+            ...createdChecklist,
+            item_type: 'checklist',
+            items: insertedItems
+          }
+        ])
+        await fetchDeskItems(selectedDeskId)
+        await logDeskActivity({
+          actionType: 'duplicated',
+          itemType: 'checklist',
+          itemId: createdChecklist.id,
+          summary: 'duplicated a checklist'
+        })
+        markAutoSaveSaved()
+        return
+      }
+
+      let noteData = null
+      let noteError = null
+
+      const withUserResult = await supabase
+        .from('notes')
+        .insert([{
+          desk_id: selectedDeskId,
+          user_id: sourceItem.user_id || user.id,
+          content: sourceItem.content || 'New note',
+          color: getItemColor(sourceItem),
+          font_family: getItemFontFamily(sourceItem),
+          x: nextX,
+          y: nextY,
+          rotation: toStoredRotation(Number(sourceItem.rotation) || 0),
+          width: getItemWidth(sourceItem),
+          height: getItemHeight(sourceItem)
+        }])
+        .select()
+
+      noteData = withUserResult.data
+      noteError = withUserResult.error
+
+      if (noteError) {
+        const fallbackResult = await supabase
+          .from('notes')
+          .insert([{
+            desk_id: selectedDeskId,
+            content: sourceItem.content || 'New note',
+            color: getItemColor(sourceItem),
+            font_family: getItemFontFamily(sourceItem),
+            x: nextX,
+            y: nextY,
+            rotation: toStoredRotation(Number(sourceItem.rotation) || 0),
+            width: getItemWidth(sourceItem),
+            height: getItemHeight(sourceItem)
+          }])
+          .select()
+
+        noteData = fallbackResult.data
+        noteError = fallbackResult.error
+      }
+
+      const duplicatedNote = noteData?.[0]
+      if (!duplicatedNote || noteError) {
+        throw noteError || new Error('Failed to duplicate note.')
+      }
+
+      setNotes((prev) => [...prev, { ...duplicatedNote, item_type: 'note' }])
+      await fetchDeskItems(selectedDeskId)
+      await logDeskActivity({
+        actionType: 'duplicated',
+        itemType: 'note',
+        itemId: duplicatedNote.id,
+        summary: 'duplicated a note'
+      })
+      markAutoSaveSaved()
+    } catch (error) {
+      console.error('Failed to duplicate item:', error)
+      markAutoSaveError(error?.message || 'Failed to duplicate item.')
+    }
+  }
+
   async function confirmDeleteNote() {
+    if (!canCurrentUserEditDeskItems) return
     if (!pendingDeleteId) return
 
     const item = notesRef.current.find((row) => getItemKey(row) === pendingDeleteId)
@@ -2943,6 +4654,7 @@ function Desk({ user }) {
   }
 
   function handleDragStart(e, item) {
+    if (!canCurrentUserEditDeskItems) return
     if (typeof e.button === 'number' && e.button !== 0) return
     if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return
     if (editingId) return
@@ -2989,11 +4701,13 @@ function Desk({ user }) {
     const maxX = Math.max(0, canvasWidth - activeItemWidth)
     const boundedX = Math.min(Math.max(0, nextX), maxX)
     const boundedY = Math.max(0, nextY)
+    const snappedX = snapToGrid ? Math.min(Math.max(0, Math.round(boundedX / gridSize) * gridSize), maxX) : boundedX
+    const snappedY = snapToGrid ? Math.max(0, Math.round(boundedY / gridSize) * gridSize) : boundedY
 
     setNotes((prev) =>
       prev.map((item) =>
         getItemKey(item) === activeDraggedId
-          ? { ...item, x: boundedX, y: boundedY }
+          ? { ...item, x: snappedX, y: snappedY }
           : item
       )
     )
@@ -3022,9 +4736,11 @@ function Desk({ user }) {
       const activeItem = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
       const canvasWidth = Math.round(deskCanvasRef.current?.clientWidth || getViewportMetrics().width)
       const maxX = Math.max(0, canvasWidth - getItemWidth(activeItem))
+      const boundedX = Math.min(Math.max(0, nextX), maxX)
+      const boundedY = Math.max(0, nextY)
       nextPosition = {
-        x: Math.min(Math.max(0, nextX), maxX),
-        y: Math.max(0, nextY)
+        x: snapToGrid ? Math.min(Math.max(0, Math.round(boundedX / gridSize) * gridSize), maxX) : boundedX,
+        y: snapToGrid ? Math.max(0, Math.round(boundedY / gridSize) * gridSize) : boundedY
       }
 
       setNotes((prev) =>
@@ -3043,7 +4759,21 @@ function Desk({ user }) {
 
   const currentDesk = desks.find((desk) => desk.id === selectedDeskId) || null
   const isMobileLayout = viewportWidth <= 820
+  const isCompactMobileLayout = viewportWidth <= 560
   const isCurrentDeskOwner = Boolean(currentDesk && currentDesk.user_id === user.id)
+  const canCurrentUserEditDeskItems = Boolean(
+    currentDesk
+    && (
+      currentDesk.user_id === user.id
+      || (!selectedDeskMemberRoleLoading && selectedDeskMemberRole === 'editor')
+    )
+  )
+  const isCurrentUserViewer = Boolean(
+    currentDesk
+    && currentDesk.user_id !== user.id
+    && !selectedDeskMemberRoleLoading
+    && selectedDeskMemberRole === 'viewer'
+  )
   const pendingFriendRequestCount = incomingFriendRequests.length
   const totalItemsCount = notes.length
   const joinDate = formatDate(user.created_at)
@@ -3055,6 +4785,9 @@ function Desk({ user }) {
     return accumulator
   }, {})
   const customShelfOptions = getCustomShelfOptions()
+  const topOverlayTop = isMobileLayout ? 12 : 20
+  const topMenuTop = isMobileLayout ? (isCompactMobileLayout ? 64 : 12) : 20
+  const mobileNoteMaxWidth = Math.max(180, viewportWidth - 32)
 
   function renderDeskRow(desk, depth = 0) {
     return (
@@ -3190,7 +4923,10 @@ function Desk({ user }) {
         width: '100%',
         boxSizing: 'border-box',
         minHeight: canvasHeight,
-        padding: isMobileLayout ? 12 : 20,
+        paddingTop: isMobileLayout ? 104 : 20,
+        paddingRight: isMobileLayout ? 12 : 20,
+        paddingBottom: isMobileLayout ? 92 : 20,
+        paddingLeft: isMobileLayout ? 12 : 20,
         backgroundColor,
         backgroundImage,
         backgroundSize,
@@ -3198,10 +4934,79 @@ function Desk({ user }) {
         backgroundRepeat
       }}
     >
+      {snapToGrid && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            backgroundImage: `repeating-linear-gradient(to right, rgba(0,0,0,0.08), rgba(0,0,0,0.08) 1px, transparent 1px, transparent ${gridSize}px), repeating-linear-gradient(to bottom, rgba(0,0,0,0.08), rgba(0,0,0,0.08) 1px, transparent 1px, transparent ${gridSize}px)`,
+            zIndex: 0
+          }}
+        />
+      )}
+
       <div
         style={{
           position: 'absolute',
-          top: isMobileLayout ? 12 : 20,
+          top: topOverlayTop,
+          left: isMobileLayout ? 12 : 20,
+          display: 'flex',
+          gap: 8,
+          zIndex: menuLayerZIndex
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => void undoNotesChange()}
+          disabled={!canUndo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems}
+          title="Undo (Ctrl/Cmd+Z)"
+          style={{
+            padding: isMobileLayout ? '8px 12px' : '7px 12px',
+            fontSize: 12,
+            borderRadius: 6,
+            border: '1px solid #c9d3e3',
+            background: '#ffffffd9',
+            color: '#1e2a3b',
+            cursor: !canUndo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
+            opacity: !canUndo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 0.55 : 1
+          }}
+        >
+          {historySyncing ? 'Syncing...' : 'Undo'}
+        </button>
+        <button
+          type="button"
+          onClick={() => void redoNotesChange()}
+          disabled={!canRedo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems}
+          title="Redo (Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y)"
+          style={{
+            padding: isMobileLayout ? '8px 12px' : '7px 12px',
+            fontSize: 12,
+            borderRadius: 6,
+            border: '1px solid #c9d3e3',
+            background: '#ffffffd9',
+            color: '#1e2a3b',
+            cursor: !canRedo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 'not-allowed' : 'pointer',
+            opacity: !canRedo || hasModalOpen || historySyncing || !canCurrentUserEditDeskItems ? 0.55 : 1
+          }}
+        >
+          Redo
+        </button>
+        <div
+          aria-live="polite"
+          style={{
+            ...autoSaveBadgeStyle,
+            padding: isMobileLayout ? '8px 10px' : autoSaveBadgeStyle.padding
+          }}
+        >
+          {autoSaveLabel}
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: 'absolute',
+          top: topMenuTop,
           right: isMobileLayout ? 12 : 20,
           left: isMobileLayout ? 12 : 'auto',
           display: 'flex',
@@ -3523,6 +5328,82 @@ function Desk({ user }) {
                 </button>
               )}
 
+              {currentDesk && (
+                <button
+                  type="button"
+                  onClick={exportCurrentDesk}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '7px 10px',
+                    border: 'none',
+                    borderRadius: 4,
+                    background: '#fff',
+                    color: '#222',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Export Desk (.json)
+                </button>
+              )}
+
+              {currentDesk && canCurrentUserEditDeskItems && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => importDeskInputRef.current?.click()}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '7px 10px',
+                      border: 'none',
+                      borderRadius: 4,
+                      background: '#fff',
+                      color: '#222',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Import Desk (.json)
+                  </button>
+                  <input
+                    ref={importDeskInputRef}
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={handleImportDeskFileSelection}
+                    style={{ display: 'none' }}
+                  />
+                </>
+              )}
+
+              {currentDesk && canCurrentUserEditDeskItems && (
+                <button
+                  type="button"
+                  onClick={() => setSnapToGrid((prev) => !prev)}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '7px 10px',
+                    border: 'none',
+                    borderRadius: 4,
+                    background: snapToGrid ? '#e8f0fe' : '#fff',
+                    color: snapToGrid ? '#1a73e8' : '#222',
+                    cursor: 'pointer',
+                    fontWeight: snapToGrid ? 600 : 400
+                  }}
+                >
+                  Snap To Grid: {snapToGrid ? 'On' : 'Off'}
+                </button>
+              )}
+
+              {(deskMenuMessage || deskMenuError) && (
+                <div style={{ padding: '6px 10px', fontSize: 12, color: deskMenuError ? '#b71c1c' : '#2e7d32' }}>
+                  {deskMenuError || deskMenuMessage}
+                </div>
+              )}
+
               {currentDesk && isCurrentDeskOwner && (
                 <div style={{ padding: '7px 10px', fontSize: 12, opacity: 0.8 }}>Change Background</div>
               )}
@@ -3674,6 +5555,9 @@ function Desk({ user }) {
               setFriendMessage('')
               if (nextOpen) {
                 fetchCurrentUserProfile()
+                if (selectedDeskId) {
+                  fetchDeskActivity(selectedDeskId)
+                }
               }
             }}
             style={{
@@ -3738,6 +5622,27 @@ function Desk({ user }) {
                   }}
                 >
                   Friends{pendingFriendRequestCount > 0 ? ` (${pendingFriendRequestCount})` : ''}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileTab('activity')
+                    if (selectedDeskId) {
+                      void fetchDeskActivity(selectedDeskId)
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    border: 'none',
+                    borderRadius: 4,
+                    padding: '7px 8px',
+                    background: profileTab === 'activity' ? '#4285F4' : '#eee',
+                    color: profileTab === 'activity' ? '#fff' : '#333',
+                    fontSize: 13,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Activity
                 </button>
               </div>
 
@@ -3839,7 +5744,7 @@ function Desk({ user }) {
                     </button>
                   </div>
                 </div>
-              ) : (
+              ) : profileTab === 'friends' ? (
                 <div>
                   <form onSubmit={handleSendFriendRequest} style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
                     <input
@@ -4039,6 +5944,53 @@ function Desk({ user }) {
                     )}
                   </div>
                 </div>
+              ) : (
+                <div>
+                  {!selectedDeskId ? (
+                    <div style={{ fontSize: 12, opacity: 0.8 }}>Select a desk to view activity.</div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>Recent activity</div>
+                        <button
+                          type="button"
+                          onClick={() => fetchDeskActivity(selectedDeskId)}
+                          disabled={activityLoading}
+                          style={{
+                            padding: '5px 8px',
+                            borderRadius: 4,
+                            border: '1px solid #ccc',
+                            background: '#fff',
+                            color: '#222',
+                            cursor: activityLoading ? 'not-allowed' : 'pointer',
+                            fontSize: 12
+                          }}
+                        >
+                          {activityLoading ? 'Refreshing...' : 'Refresh'}
+                        </button>
+                      </div>
+
+                      {activityError && (
+                        <div style={{ marginBottom: 8, color: '#d32f2f', fontSize: 12 }}>
+                          {activityError}
+                        </div>
+                      )}
+
+                      {activityFeed.length === 0 ? (
+                        <div style={{ fontSize: 12, opacity: 0.75 }}>No desk activity yet.</div>
+                      ) : (
+                        <div>
+                          {activityFeed.map((entry) => (
+                            <div key={entry.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #f1f1f1' }}>
+                              <div style={{ fontSize: 13, color: '#222' }}>{getActivityActionLabel(entry)}</div>
+                              <div style={{ marginTop: 2, fontSize: 11, color: '#666' }}>{formatDate(entry.created_at)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
 
               <div style={{ borderTop: '1px solid #eee', marginTop: 12, paddingTop: 10 }}>
@@ -4084,8 +6036,9 @@ function Desk({ user }) {
       <NewNoteMenu
         menuRef={newNoteMenuRef}
         isOpen={showNewNoteMenu}
+        isMobileLayout={isMobileLayout}
         onToggle={() => setShowNewNoteMenu((prev) => !prev)}
-        isDeskSelected={Boolean(selectedDeskId)}
+        isDeskSelected={Boolean(selectedDeskId && canCurrentUserEditDeskItems)}
         onAddStickyNote={addStickyNote}
         onAddChecklist={addChecklistNote}
         decorationOptions={DECORATION_OPTIONS}
@@ -4100,6 +6053,12 @@ function Desk({ user }) {
         </div>
       )}
 
+      {isCurrentUserViewer && (
+        <div style={{ color: '#6a4f00', background: 'rgba(255,248,225,0.95)', display: 'inline-block', padding: '6px 10px', borderRadius: 6, border: '1px solid #f2d18f', marginTop: 8 }}>
+          Viewer mode: you can view this desk, but only Editors and Owner can make changes.
+        </div>
+      )}
+
       {notes.map((item, index) => {
         const itemKey = getItemKey(item)
         const isChecklist = isChecklistItem(item)
@@ -4107,6 +6066,10 @@ function Desk({ user }) {
         const decorationOption = isDecoration ? getDecorationOption(item.kind) : null
         const shouldShowCreatorLabel = Boolean(currentDesk && isDeskCollaborative(currentDesk) && !isDecoration)
         const creatorLabel = shouldShowCreatorLabel ? getItemCreatorLabel(item, user.id) : ''
+        const itemWidth = getItemWidth(item)
+        const renderedItemWidth = isMobileLayout && !isDecoration
+          ? Math.min(itemWidth, mobileNoteMaxWidth)
+          : itemWidth
         const itemHeight = getItemHeight(item)
         const contentMinHeight = Math.max(40, itemHeight - 40)
         const baseZIndex = index + 1
@@ -4116,7 +6079,11 @@ function Desk({ user }) {
             key={itemKey}
             data-note-id={item.id}
             data-item-key={itemKey}
-            onPointerDown={editingId ? undefined : (e) => handleDragStart(e, item)}
+            onPointerDown={
+              editingId || (isMobileLayout && !isDecoration)
+                ? undefined
+                : (e) => handleDragStart(e, item)
+            }
             onClick={
               isDecoration
                 ? () => setActiveDecorationHandleId((prev) => (prev === itemKey ? null : itemKey))
@@ -4130,15 +6097,17 @@ function Desk({ user }) {
               background: isDecoration ? 'transparent' : (editingId === itemKey ? editColor : getItemColor(item)),
               color: isDecoration ? undefined : (editingId === itemKey ? editTextColor : getItemTextColor(item)),
               padding: isDecoration ? 8 : 20,
-              width: getItemWidth(item),
+              width: renderedItemWidth,
               minHeight: itemHeight,
               borderRadius: 0,
               boxShadow: isDecoration ? 'none' : '3px 3px 10px rgba(0,0,0,0.3)',
               mixBlendMode: 'normal',
               opacity: 1,
               fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
-              touchAction: editingId === itemKey ? 'auto' : 'none',
-              cursor: draggedId === itemKey ? 'grabbing' : 'grab',
+              touchAction: editingId === itemKey ? 'auto' : (isMobileLayout && !isDecoration ? 'pan-y' : 'none'),
+              cursor: draggedId === itemKey
+                ? 'grabbing'
+                : (isMobileLayout && !isDecoration ? 'default' : 'grab'),
               zIndex: draggedId === itemKey
                 ? 3000
                 : (editingId === itemKey || (isDecoration && activeDecorationHandleId === itemKey) ? 2500 : baseZIndex)
@@ -4273,6 +6242,41 @@ function Desk({ user }) {
                       }}
                     >
                       F
+                    </button>
+                    <button
+                      type="button"
+                      onPointerDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void duplicateItem(itemKey)
+                      }}
+                      aria-label="Duplicate decoration"
+                      title="Duplicate decoration"
+                      style={{
+                        position: 'absolute',
+                        left: 42,
+                        top: -6,
+                        width: 22,
+                        height: 22,
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: '#777',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        pointerEvents: 'auto',
+                        fontSize: 11,
+                        lineHeight: 1,
+                        fontWeight: 700
+                      }}
+                    >
+                      D
                     </button>
                     <button
                       type="button"
@@ -4477,7 +6481,7 @@ function Desk({ user }) {
                       {checklistEditItems.map((entry, index) => (
                         <div
                           key={`${itemKey}-edit-${index}`}
-                          style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}
                         >
                           <button
                             type="button"
@@ -4515,6 +6519,7 @@ function Desk({ user }) {
                             }}
                             style={{
                               flex: 1,
+                              minWidth: 120,
                               fontSize: editFontSize,
                               borderRadius: 4,
                               border: '1px solid #ccc',
@@ -4525,6 +6530,55 @@ function Desk({ user }) {
                               boxSizing: 'border-box'
                             }}
                           />
+                          <input
+                            type="datetime-local"
+                            value={toReminderInputValue(entry.due_at)}
+                            onChange={(e) => {
+                              const nextDueAt = normalizeChecklistReminderValue(e.target.value)
+                              if (editSaveError) setEditSaveError('')
+                              setChecklistEditItems((prev) =>
+                                prev.map((current, currentIndex) => (
+                                  currentIndex === index ? { ...current, due_at: nextDueAt } : current
+                                ))
+                              )
+                            }}
+                            aria-label="Checklist reminder"
+                            title="Reminder time"
+                            style={{
+                              width: 170,
+                              fontSize: 12,
+                              borderRadius: 4,
+                              border: '1px solid #ccc',
+                              background: '#f8fbff',
+                              color: '#222',
+                              padding: '4px 6px',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                          {entry.due_at && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (editSaveError) setEditSaveError('')
+                                setChecklistEditItems((prev) =>
+                                  prev.map((current, currentIndex) => (
+                                    currentIndex === index ? { ...current, due_at: null } : current
+                                  ))
+                                )
+                              }}
+                              style={{
+                                padding: '3px 6px',
+                                fontSize: 11,
+                                borderRadius: 4,
+                                border: 'none',
+                                background: '#888',
+                                color: '#fff',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Clear
+                            </button>
+                          )}
                         </div>
                       ))}
 
@@ -4706,6 +6760,21 @@ function Desk({ user }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <button
                       type="button"
+                      onClick={() => void duplicateItem(itemKey)}
+                      style={{
+                        padding: '2px 6px',
+                        fontSize: 11,
+                        borderRadius: 4,
+                        border: 'none',
+                        background: '#6d4c41',
+                        color: '#fff',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Duplicate
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setShowStyleEditor((prev) => !prev)}
                       style={{
                         padding: '2px 6px',
@@ -4738,19 +6807,7 @@ function Desk({ user }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsSavingEdit(false)
-                        setEditSaveError('')
-                        setEditingId(null)
-                        setEditValue('')
-                        setChecklistEditItems([])
-                        setNewChecklistItemText('')
-                        setShowStyleEditor(false)
-                        setEditColor('#fff59d')
-                        setEditTextColor('#222222')
-                        setEditFontSize(16)
-                        setEditFontFamily('inherit')
-                      }}
+                      onClick={closeItemEditor}
                       style={{
                         padding: '2px 6px',
                         fontSize: 11,
@@ -4773,43 +6830,75 @@ function Desk({ user }) {
                 )}
               </form>
             ) : (
-              <div
-                onClick={() => {
-                  setIsSavingEdit(false)
-                  setEditSaveError('')
-                  setEditingId(itemKey)
-                  setShowStyleEditor(false)
-                  setEditColor(getItemColor(item))
-                  setEditTextColor(getItemTextColor(item))
-                  setEditFontSize(getItemFontSize(item))
-                  setEditFontFamily(getItemFontFamily(item))
-                  if (isChecklist) {
-                    const existingTitle = item.title || 'Checklist'
-                    setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
-                    setChecklistEditItems((item.items || []).map((entry) => ({
-                      text: entry.text || '',
-                      is_checked: Boolean(entry.is_checked)
-                    })))
-                    setNewChecklistItemText('')
-                  } else {
-                    const existingContent = item.content || ''
-                    setEditValue(existingContent.trim() === 'New note' ? '' : existingContent)
-                    setChecklistEditItems([])
-                    setNewChecklistItemText('')
-                  }
-                }}
-                style={{
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  cursor: isDecoration ? 'grab' : 'pointer',
-                  minHeight: isDecoration ? 40 : contentMinHeight,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  color: getItemTextColor(item),
-                  fontSize: getItemFontSize(item),
-                  fontFamily: getItemFontFamily(item)
-                }}
-              >
+              <>
+                {isMobileLayout && canCurrentUserEditDeskItems && !isDecoration && (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleDragStart(e, item)
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label="Move item"
+                    title="Hold and drag to move"
+                    style={{
+                      position: 'absolute',
+                      top: 4,
+                      right: 4,
+                      border: 'none',
+                      borderRadius: 999,
+                      background: 'rgba(33,33,33,0.75)',
+                      color: '#fff',
+                      padding: '3px 8px',
+                      fontSize: 10,
+                      lineHeight: 1,
+                      cursor: 'grab',
+                      zIndex: 2
+                    }}
+                  >
+                    Move
+                  </button>
+                )}
+                <div
+                  onClick={() => {
+                    if (!canCurrentUserEditDeskItems) return
+                    setIsSavingEdit(false)
+                    setEditSaveError('')
+                    setEditingId(itemKey)
+                    setShowStyleEditor(false)
+                    setEditColor(getItemColor(item))
+                    setEditTextColor(getItemTextColor(item))
+                    setEditFontSize(getItemFontSize(item))
+                    setEditFontFamily(getItemFontFamily(item))
+                    if (isChecklist) {
+                      const existingTitle = item.title || 'Checklist'
+                      setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
+                      setChecklistEditItems((item.items || []).map((entry) => ({
+                        text: entry.text || '',
+                        is_checked: Boolean(entry.is_checked),
+                        due_at: normalizeChecklistReminderValue(entry.due_at)
+                      })))
+                      setNewChecklistItemText('')
+                    } else {
+                      const existingContent = item.content || ''
+                      setEditValue(existingContent.trim() === 'New note' ? '' : existingContent)
+                      setChecklistEditItems([])
+                      setNewChecklistItemText('')
+                    }
+                  }}
+                  style={{
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    cursor: canCurrentUserEditDeskItems ? (isDecoration ? 'grab' : 'pointer') : 'default',
+                    minHeight: isDecoration ? 40 : contentMinHeight,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    color: getItemTextColor(item),
+                    fontSize: getItemFontSize(item),
+                    fontFamily: getItemFontFamily(item)
+                  }}
+                >
                 {isChecklist ? (
                   <>
                     <div>
@@ -4817,21 +6906,41 @@ function Desk({ user }) {
                       {(item.items || []).length === 0 ? (
                         <div style={{ opacity: 0.7 }}>No checklist items</div>
                       ) : (
-                        (item.items || []).map((checklistItem, index) => (
-                          <label
-                            key={`${item.id}-${checklistItem.id || index}`}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={Boolean(checklistItem.is_checked)}
-                              onChange={() => toggleChecklistItem(itemKey, index)}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <span style={{ textDecoration: checklistItem.is_checked ? 'line-through' : 'none' }}>{checklistItem.text}</span>
-                          </label>
-                        ))
+                        (item.items || []).map((checklistItem, index) => {
+                          const reminderMeta = getChecklistReminderMeta(checklistItem)
+                          return (
+                            <label
+                              key={`${item.id}-${checklistItem.id || index}`}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, cursor: 'pointer' }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={Boolean(checklistItem.is_checked)}
+                                onChange={() => toggleChecklistItem(itemKey, index)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              <span style={{ textDecoration: checklistItem.is_checked ? 'line-through' : 'none' }}>{checklistItem.text}</span>
+                              {reminderMeta && (
+                                <span
+                                  style={{
+                                    marginLeft: 'auto',
+                                    fontSize: 10,
+                                    lineHeight: 1.2,
+                                    padding: '2px 6px',
+                                    borderRadius: 999,
+                                    background: reminderMeta.background,
+                                    color: reminderMeta.color,
+                                    border: `1px solid ${reminderMeta.color}`,
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  {reminderMeta.label}
+                                </span>
+                              )}
+                            </label>
+                          )
+                        })
                       )}
                     </div>
                     {shouldShowCreatorLabel && (
@@ -4857,7 +6966,8 @@ function Desk({ user }) {
                     )}
                   </>
                 )}
-              </div>
+                </div>
+              </>
             )}
           </div>
         )
@@ -4907,6 +7017,7 @@ function Desk({ user }) {
         incomingFriendRequestUserIds={incomingFriendRequests.map((request) => request.sender_id)}
         requestDeskMemberAdd={requestDeskMemberAdd}
         respondDeskMemberRequest={respondDeskMemberRequest}
+        updateDeskMemberRole={updateDeskMemberRole}
         isCurrentDeskOwner={isCurrentDeskOwner}
         closeDeskMembersDialog={closeDeskMembersDialog}
         resizeOverlay={resizeOverlay}

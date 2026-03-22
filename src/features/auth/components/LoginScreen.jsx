@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../../../supabase'
+import { analyzeAuthError } from '../utils/authErrorHandler'
+import LinkPasswordModal from './LinkPasswordModal'
 import './AuthScreen.css'
 
 export default function LoginScreen() {
@@ -9,6 +11,8 @@ export default function LoginScreen() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showLinkPasswordModal, setShowLinkPasswordModal] = useState(false)
+  const [pendingLinkEmail, setPendingLinkEmail] = useState('')
 
   function setModeWithCleanup(nextMode) {
     if (nextMode === 'forgot') {
@@ -25,8 +29,20 @@ export default function LoginScreen() {
     try {
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) setError(error.message)
-        else setSuccess('Logged in!')
+        if (error) {
+          const analyzed = analyzeAuthError(error, email)
+          // If the error suggests OAuth or link password, offer those options
+          if (analyzed.suggestOAuth || analyzed.suggestLinkPassword) {
+            setError(analyzed.message)
+            if (analyzed.suggestLinkPassword) {
+              setPendingLinkEmail(email)
+            }
+          } else {
+            setError(analyzed.message)
+          }
+        } else {
+          setSuccess('Logged in!')
+        }
       } else if (mode === 'forgot') {
         const redirectTo = `${window.location.origin}${window.location.pathname}`
         const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
@@ -37,12 +53,42 @@ export default function LoginScreen() {
         }
       } else {
         const { error } = await supabase.auth.signUp({ email, password })
-        if (error) setError(error.message)
-        else setSuccess('Check your email to confirm your account!')
+        if (error) {
+          const analyzed = analyzeAuthError(error, email)
+          setError(analyzed.message)
+          // If account already exists, offer to link password
+          if (analyzed.suggestLinkPassword) {
+            setPendingLinkEmail(email)
+          }
+        } else {
+          setSuccess('Check your email to confirm your account!')
+        }
       }
     } finally {
       setLoading(false)
     }
+  }
+
+  function handleOpenLinkPasswordModal() {
+    setShowLinkPasswordModal(true)
+  }
+
+  function handleCloseLinkPasswordModal() {
+    setShowLinkPasswordModal(false)
+    setPendingLinkEmail('')
+    setError('')
+  }
+
+  function handleLinkPasswordSuccess() {
+    setShowLinkPasswordModal(false)
+    setPendingLinkEmail('')
+    setError('')
+    setSuccess('Password set! Please log in with your new password.')
+    setTimeout(() => {
+      setModeWithCleanup('login')
+      setEmail('')
+      setPassword('')
+    }, 2000)
   }
 
   return (
@@ -117,6 +163,17 @@ export default function LoginScreen() {
 
           {mode !== 'forgot' && (
             <>
+              {error && pendingLinkEmail && (
+                <button
+                  type="button"
+                  onClick={handleOpenLinkPasswordModal}
+                  className="auth-link-button"
+                  style={{ marginBottom: '15px', textDecoration: 'underline' }}
+                >
+                  Create a password for this account instead
+                </button>
+              )}
+
               <div className="auth-divider" aria-hidden="true">
                 <span>or continue with</span>
               </div>
@@ -129,6 +186,14 @@ export default function LoginScreen() {
                 Continue with Google
               </button>
             </>
+          )}
+
+          {showLinkPasswordModal && (
+            <LinkPasswordModal
+              email={pendingLinkEmail}
+              onClose={handleCloseLinkPasswordModal}
+              onSuccess={handleLinkPasswordSuccess}
+            />
           )}
 
           <div className="auth-switch-row">

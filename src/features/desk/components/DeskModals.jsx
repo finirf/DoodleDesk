@@ -42,10 +42,11 @@ export default function DeskModals({
   incomingFriendRequestUserIds,
   requestDeskMemberAdd,
   respondDeskMemberRequest,
+  updateDeskMemberRole,
   isCurrentDeskOwner,
   closeDeskMembersDialog,
   resizeOverlay,
-  ResizeIconComponent,
+  ResizeIconComponent: _ResizeIconComponent,
   modalOverlayStyle,
   modalCardStyle,
   modalTitleStyle,
@@ -83,6 +84,8 @@ export default function DeskModals({
       const rightName = (right.preferred_name || right.email || '').trim().toLowerCase()
       return leftName.localeCompare(rightName)
     })
+
+  const resizeOverlayIcon = _ResizeIconComponent({ size: 14, color: '#fff' })
 
   return (
     <>
@@ -402,6 +405,7 @@ export default function DeskModals({
               ) : (
                 sortedDeskMembers.map((member) => {
                   const isRemoving = deskMemberActionLoadingId === `remove:${member.user_id}`
+                  const isRoleUpdating = deskMemberActionLoadingId === `role:${member.user_id}`
                   const isOwnerRow = Boolean(member.is_owner)
                   const isSelf = member.user_id === currentUserId
                   const isFriend = friendIds.includes(member.user_id)
@@ -425,11 +429,37 @@ export default function DeskModals({
                         {isOwnerRow && (
                           <div style={{ fontSize: 11, color: '#666' }}>Desk owner</div>
                         )}
+                        {!isOwnerRow && (
+                          <div style={{ fontSize: 11, color: '#666' }}>
+                            {member.role === 'viewer' ? 'Viewer (read-only)' : 'Editor'}
+                          </div>
+                        )}
                         {memberDisplay.secondary && (
                           <div style={{ fontSize: 11, color: '#666' }}>{memberDisplay.secondary}</div>
                         )}
                       </span>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        {isCurrentDeskOwner && !isOwnerRow && (
+                          <select
+                            value={member.role === 'viewer' ? 'viewer' : 'editor'}
+                            onChange={(e) => updateDeskMemberRole(member.user_id, e.target.value)}
+                            disabled={isRoleUpdating}
+                            style={{
+                              border: '1px solid #ccc',
+                              borderRadius: 4,
+                              padding: '3px 6px',
+                              fontSize: 12,
+                              background: '#fff',
+                              color: '#333',
+                              cursor: isRoleUpdating ? 'not-allowed' : 'pointer',
+                              opacity: isRoleUpdating ? 0.7 : 1
+                            }}
+                          >
+                            <option value="editor">Editor</option>
+                            <option value="viewer">Viewer</option>
+                          </select>
+                        )}
+
                         {!isSelf && (
                           <button
                             type="button"
@@ -646,7 +676,7 @@ export default function DeskModals({
             minWidth: 170
           }}
         >
-          <ResizeIconComponent size={14} color="#fff" />
+          {resizeOverlayIcon}
           <input
             type="range"
             min={50}
