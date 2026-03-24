@@ -20,6 +20,7 @@ How to use this file:
 - 2026-03-21: Added task reminders revision for checklist item due times (`checklist_items.due_at`).
 - 2026-03-22: Added responsive/mobile UX revision (no additional backend SQL required).
 - 2026-03-22: Added activity feed migration (`desk_activity` table, realtime publication, and RLS policies).
+- 2026-03-23: Added security hardening migration guidance (force RLS + defensive length constraints).
 
 ---
 
@@ -275,6 +276,29 @@ begin
 end $$;
 ```
 
+### 12.1) Supabase Security Advisor Function Fixes (Search Path Mutable)
+
+Run this remediation if Security Advisor reports mutable search_path on helper/trigger functions.
+
+```sql
+do $$
+begin
+  -- Existing trigger helper in this schema.
+  if to_regprocedure('public.touch_updated_at()') is not null then
+    alter function public.touch_updated_at()
+      security definer
+      set search_path = public, pg_catalog;
+  end if;
+
+  -- Some projects include this legacy helper.
+  if to_regprocedure('public.update_timestamp()') is not null then
+    alter function public.update_timestamp()
+      security definer
+      set search_path = public, pg_catalog;
+  end if;
+end $$;
+```
+
 ---
 
 ## 5) RLS Enablement
@@ -303,6 +327,8 @@ create or replace function public.user_can_access_desk(target_desk_id uuid)
 returns boolean
 language sql
 stable
+security definer
+set search_path = public, pg_catalog
 as $$
   select exists (
     select 1
@@ -671,6 +697,8 @@ create or replace function public.user_can_edit_desk(target_desk_id uuid)
 returns boolean
 language sql
 stable
+security definer
+set search_path = public, pg_catalog
 as $$
   select exists (
     select 1
@@ -837,4 +865,101 @@ for update using (false) with check (false);
 drop policy if exists desk_activity_delete_none on public.desk_activity;
 create policy desk_activity_delete_none on public.desk_activity
 for delete using (false);
+```
+
+---
+
+## 12) Security Hardening Migration
+
+Run this section after Section 11.
+
+```sql
+-- Force RLS so all non-service-role access always goes through policies.
+alter table public.profiles force row level security;
+alter table public.desks force row level security;
+alter table public.notes force row level security;
+alter table public.checklists force row level security;
+alter table public.checklist_items force row level security;
+alter table public.decorations force row level security;
+alter table public.desk_members force row level security;
+alter table public.desk_member_requests force row level security;
+alter table public.friend_requests force row level security;
+alter table public.user_stats force row level security;
+alter table public.desk_shelves force row level security;
+alter table public.desk_shelf_assignments force row level security;
+alter table public.desk_activity force row level security;
+
+-- Defensive payload bounds to reduce abuse and oversized content attacks.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'desks_name_len_chk'
+      and conrelid = 'public.desks'::regclass
+  ) then
+    alter table public.desks
+      add constraint desks_name_len_chk
+      check (char_length(name) between 1 and 120);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'profiles_preferred_name_len_chk'
+      and conrelid = 'public.profiles'::regclass
+  ) then
+    alter table public.profiles
+      add constraint profiles_preferred_name_len_chk
+      check (preferred_name is null or char_length(preferred_name) <= 120);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'notes_content_len_chk'
+      and conrelid = 'public.notes'::regclass
+  ) then
+    alter table public.notes
+      add constraint notes_content_len_chk
+      check (char_length(content) <= 5000);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'checklists_title_len_chk'
+      and conrelid = 'public.checklists'::regclass
+  ) then
+    alter table public.checklists
+      add constraint checklists_title_len_chk
+      check (char_length(title) between 1 and 200);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'checklist_items_text_len_chk'
+      and conrelid = 'public.checklist_items'::regclass
+  ) then
+    alter table public.checklist_items
+      add constraint checklist_items_text_len_chk
+      check (char_length(text) between 1 and 1000);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'desk_activity_action_type_len_chk'
+      and conrelid = 'public.desk_activity'::regclass
+  ) then
+    alter table public.desk_activity
+      add constraint desk_activity_action_type_len_chk
+      check (char_length(action_type) between 1 and 64);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'desk_activity_item_type_len_chk'
+      and conrelid = 'public.desk_activity'::regclass
+  ) then
+    alter table public.desk_activity
+      add constraint desk_activity_item_type_len_chk
+      check (char_length(item_type) between 1 and 64);
+  end if;
+end $$;
 ```

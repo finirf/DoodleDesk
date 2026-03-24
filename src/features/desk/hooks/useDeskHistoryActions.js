@@ -5,6 +5,14 @@ import {
 import { getItemKey } from '../utils/itemUtils'
 import { normalizeChecklistReminderValue } from '../utils/reminderUtils'
 
+const PERSISTABLE_TABLES = new Set(['notes', 'checklists', 'decorations'])
+
+function assertPersistableTable(table) {
+  if (!PERSISTABLE_TABLES.has(table)) {
+    throw new Error(`Unexpected table name "${table}" in history persistence flow.`)
+  }
+}
+
 export default function useDeskHistoryActions({
   supabase,
   userId,
@@ -35,6 +43,7 @@ export default function useDeskHistoryActions({
 }) {
   async function upsertRowsWithSchemaFallback(table, rows) {
     if (!rows.length) return
+    assertPersistableTable(table)
 
     let nextRows = rows
 
@@ -165,6 +174,7 @@ export default function useDeskHistoryActions({
     }
 
     for (const table of ['decorations', 'notes', 'checklists']) {
+      assertPersistableTable(table)
       const idsToDelete = deleteIdsByTable[table]
       if (idsToDelete.length > 0) {
         const { error } = await supabase

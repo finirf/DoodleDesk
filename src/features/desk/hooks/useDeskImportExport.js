@@ -1,5 +1,13 @@
 import { useCallback } from 'react'
 
+const IMPORTABLE_TABLES = new Set(['notes', 'checklists'])
+
+function assertImportableTable(table) {
+  if (!IMPORTABLE_TABLES.has(table)) {
+    throw new Error(`Unexpected table name "${table}" in import flow.`)
+  }
+}
+
 export default function useDeskImportExport({
   supabase,
   desks,
@@ -47,6 +55,7 @@ export default function useDeskImportExport({
 
   const insertRowsWithImportFallback = useCallback(async (table, rows) => {
     if (!rows.length) return []
+    assertImportableTable(table)
 
     let nextRows = rows
 

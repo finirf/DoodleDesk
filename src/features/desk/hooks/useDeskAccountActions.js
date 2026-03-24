@@ -45,7 +45,11 @@ export default function useDeskAccountActions({
     setDeleteAccountDeleting(true)
 
     try {
-      const { error } = await supabase.functions.invoke('delete-account')
+      const { error } = await supabase.functions.invoke('delete-account', {
+        body: {
+          confirmation: 'DELETE'
+        }
+      })
       if (error) {
         const message = `${error?.message || ''}`.toLowerCase()
         if (message.includes('function') || message.includes('404')) {

@@ -1,5 +1,28 @@
 # New Changes
 
+## 2026-03-23 - Documentation Upgrade
+
+### Reworked README into a comprehensive onboarding and architecture guide
+- Rewrote [README.md](README.md) to support both new users and codebase reviewers, including project purpose, major capabilities, and runtime architecture.
+- Added a Mermaid quick-architecture diagram in [README.md](README.md) to visualize app startup, feature boundaries, and Supabase service flow.
+- Added detailed local setup instructions (prerequisites, install, env vars, run/lint/build flow) aligned with actual project scripts and Supabase client requirements.
+- Added backend workflow guidance covering canonical SQL migration source, edge function environment configuration, and production security reminders.
+- Added codebase analysis and troubleshooting sections to accelerate contributor onboarding and reduce setup/debug friction.
+- Preserved documentation ownership boundaries: SQL details remain in [BACKEND_SQL_README.md](BACKEND_SQL_README.md), maintainability conventions remain in [docs/PROJECT_ORGANIZATION.md](docs/PROJECT_ORGANIZATION.md).
+
+## 2026-03-23 - Security Hardening
+
+### Added backend and app-layer defenses against abuse and data exfiltration attempts
+- Resolved Supabase "Function Search Path Mutable" warning by updating helper function definitions in [BACKEND_SQL_README.md](BACKEND_SQL_README.md): `public.user_can_access_desk` and `public.user_can_edit_desk` now use `security definer` with fixed `set search_path = public, pg_catalog`.
+- Added additional Security Advisor remediation SQL in [BACKEND_SQL_README.md](BACKEND_SQL_README.md) Section 12.1 to harden trigger helpers `public.touch_updated_at()` and legacy `public.update_timestamp()` with fixed `search_path` and `security definer` when present.
+- Added explicit Auth hardening guidance in [README.md](README.md) to enable Supabase leaked password protection (HaveIBeenPwned checks).
+- Hardened `delete-account` Supabase Edge Function with strict origin allowlist checks (`ALLOWED_ORIGINS`/`APP_BASE_URL`), `POST`-only enforcement, JSON content-type checks, payload size limit, and explicit server-side confirmation payload validation.
+- Updated account deletion client flow in [src/features/desk/hooks/useDeskAccountActions.js](src/features/desk/hooks/useDeskAccountActions.js) to send signed intent payload (`confirmation: 'DELETE'`) to the edge function.
+- Hardened `friend-request-email` Supabase Edge Function with request size/type validation, constant-time webhook secret comparison, stricter webhook event/status validation, normalized public app URL handling, and reduced provider error leakage.
+- Added defensive table allowlist guards for dynamic import/history persistence helpers in [src/features/desk/hooks/useDeskImportExport.js](src/features/desk/hooks/useDeskImportExport.js) and [src/features/desk/hooks/useDeskHistoryActions.js](src/features/desk/hooks/useDeskHistoryActions.js).
+- Added SQL security migration guidance in [BACKEND_SQL_README.md](BACKEND_SQL_README.md) Section 12: `FORCE ROW LEVEL SECURITY` and bounded input-length constraints for key user-generated text fields.
+- Added deployment security configuration guidance in [README.md](README.md) for required edge-function secrets and origin controls.
+
 ## 2026-03-23 - UX Behavior Fix
 
 ### Enforced single-open dropdown behavior across top menus

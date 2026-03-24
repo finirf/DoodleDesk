@@ -23,6 +23,10 @@ type ProfileRow = {
   preferred_name?: string | null
 }
 
+const MAX_REQUEST_BYTES = 32_768
+const ALLOWED_EVENT_TYPES = new Set(['INSERT', 'UPDATE'])
+const ALLOWED_REQUEST_STATUSES = new Set(['pending', 'accepted', 'declined'])
+
 function jsonResponse(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     status,
@@ -32,6 +36,37 @@ function jsonResponse(status: number, body: Record<string, unknown>) {
 
 function isValidUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function timingSafeEqualText(left: string, right: string) {
+  const leftBytes = new TextEncoder().encode(left)
+  const rightBytes = new TextEncoder().encode(right)
+
+  if (leftBytes.length !== rightBytes.length) {
+    return false
+  }
+
+  let diff = 0
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    diff |= leftBytes[index] ^ rightBytes[index]
+  }
+
+  return diff === 0
+}
+
+function normalizePublicAppUrl(rawValue: string | undefined) {
+  const fallback = 'https://doodledesk.app'
+  const candidate = (rawValue || fallback).trim()
+
+  try {
+    const parsed = new URL(candidate)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return fallback
+    }
+    return parsed.toString().replace(/\/$/, '')
+  } catch {
+    return fallback
+  }
 }
 
 function escapeHtml(value: string) {
@@ -48,16 +83,36 @@ Deno.serve(async (request) => {
     return jsonResponse(405, { error: 'Method not allowed' })
   }
 
+  const contentType = request.headers.get('content-type') || ''
+  if (!contentType.toLowerCase().includes('application/json')) {
+    return jsonResponse(415, { error: 'Content-Type must be application/json' })
+  }
+
+  const contentLength = Number(request.headers.get('content-length') || '')
+  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+    return jsonResponse(413, { error: 'Payload too large' })
+  }
+
   try {
     const webhookSecret = Deno.env.get('FRIEND_REQUEST_WEBHOOK_SECRET')
     if (webhookSecret) {
       const incomingSecret = request.headers.get('x-webhook-secret')
-      if (!incomingSecret || incomingSecret !== webhookSecret) {
+      if (!incomingSecret || !timingSafeEqualText(incomingSecret, webhookSecret)) {
         return jsonResponse(401, { error: 'Unauthorized webhook request' })
       }
     }
 
-    const payload = (await request.json()) as WebhookPayload
+    let payload: WebhookPayload
+    try {
+      payload = (await request.json()) as WebhookPayload
+    } catch {
+      return jsonResponse(400, { error: 'Invalid JSON payload' })
+    }
+
+    if (!ALLOWED_EVENT_TYPES.has(payload?.type || '')) {
+      return jsonResponse(200, { skipped: true, reason: 'Unsupported webhook event type' })
+    }
+
     const row = payload?.record
 
     if (!row) {
@@ -72,13 +127,17 @@ Deno.serve(async (request) => {
       return jsonResponse(400, { error: 'Invalid sender_id/receiver_id in payload' })
     }
 
+    if (!ALLOWED_REQUEST_STATUSES.has(row.status || '')) {
+      return jsonResponse(400, { error: 'Invalid friend request status in payload' })
+    }
+
     const oldRow = payload?.old_record || null
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     const resendApiKey = Deno.env.get('RESEND_API_KEY')
     const fromEmail = Deno.env.get('FRIEND_REQUEST_FROM_EMAIL')
-    const appUrl = Deno.env.get('APP_BASE_URL') || 'https://doodledesk.app'
+    const appUrl = normalizePublicAppUrl(Deno.env.get('APP_BASE_URL'))
 
     if (!supabaseUrl || !serviceRoleKey || !resendApiKey || !fromEmail) {
       return jsonResponse(500, {
@@ -121,7 +180,7 @@ Deno.serve(async (request) => {
     const receiverNameRaw = (receiver.preferred_name || '').trim() || receiver.email
     const senderName = escapeHtml(senderNameRaw)
     const receiverName = escapeHtml(receiverNameRaw)
-    const inboxLink = `${appUrl.replace(/\/$/, '')}/`
+    const inboxLink = `${appUrl}/`
 
     const toEmail = isNewPendingRequest ? receiver.email : sender.email
     const subject = isNewPendingRequest
@@ -161,10 +220,13 @@ Deno.serve(async (request) => {
 
     if (!resendResponse.ok) {
       const errorText = await resendResponse.text()
+      console.error('friend-request-email: provider error', {
+        providerStatus: resendResponse.status,
+        details: errorText.slice(0, 500)
+      })
       return jsonResponse(502, {
         error: 'Email provider returned an error',
-        providerStatus: resendResponse.status,
-        details: errorText
+        providerStatus: resendResponse.status
       })
     }
 
