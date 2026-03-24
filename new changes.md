@@ -1,5 +1,14 @@
 # New Changes
 
+## 2026-03-24 - Mobile UX Improvement
+
+### Matched mobile note interactions to desktop intent
+- Updated [src/features/desk/components/DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) so mobile notes can be dragged by long-pressing anywhere on the note body instead of using a dedicated Move button.
+- Added long-press gesture guards (hold delay + movement cancel threshold) to preserve vertical scrolling when users are not trying to drag.
+- Kept tap-to-edit behavior on note content and added click suppression after a drag start so releasing a drag does not accidentally open the editor.
+- Updated touch behavior during active drag to lock gesture handling to note movement and improve reliable drop-on-release placement.
+- Added drag-scroll prevention in [src/features/desk/hooks/useDeskItemInteractions.js](src/features/desk/hooks/useDeskItemInteractions.js) so mobile pointer moves do not fight with page scrolling while dragging.
+
 ## 2026-03-23 - Documentation Upgrade
 
 ### Reworked README into a comprehensive onboarding and architecture guide

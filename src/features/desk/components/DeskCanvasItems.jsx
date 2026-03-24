@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from 'react'
 import {
   getDecorationOption,
   getItemColor,
@@ -11,6 +12,9 @@ import {
   isDecorationItem
 } from '../utils/itemUtils'
 import FourWayResizeIcon from './FourWayResizeIcon'
+
+const MOBILE_DRAG_HOLD_MS = 170
+const MOBILE_DRAG_CANCEL_DISTANCE_PX = 10
 
 export default function DeskCanvasItems({
   notes,
@@ -64,6 +68,148 @@ export default function DeskCanvasItems({
   toggleChecklistItem,
   getChecklistReminderMeta
 }) {
+  const mobileDragTimerRef = useRef(null)
+  const mobileDragPointerRef = useRef(null)
+  const mobilePointerMoveHandlerRef = useRef(null)
+  const mobileDragClearHandlerRef = useRef(null)
+  const suppressEditClickRef = useRef(false)
+  const suppressEditClickTimerRef = useRef(null)
+
+  function temporarilySuppressEditClick() {
+    suppressEditClickRef.current = true
+    if (suppressEditClickTimerRef.current) {
+      window.clearTimeout(suppressEditClickTimerRef.current)
+    }
+    suppressEditClickTimerRef.current = window.setTimeout(() => {
+      suppressEditClickRef.current = false
+      suppressEditClickTimerRef.current = null
+    }, 280)
+  }
+
+  const clearPendingMobileDrag = useCallback(() => {
+    if (mobileDragTimerRef.current) {
+      window.clearTimeout(mobileDragTimerRef.current)
+      mobileDragTimerRef.current = null
+    }
+
+    const pointerMoveHandler = mobilePointerMoveHandlerRef.current
+    const clearHandler = mobileDragClearHandlerRef.current
+    if (pointerMoveHandler) {
+      window.removeEventListener('pointermove', pointerMoveHandler)
+    }
+    if (clearHandler) {
+      window.removeEventListener('pointerup', clearHandler)
+      window.removeEventListener('pointercancel', clearHandler)
+    }
+
+    mobileDragPointerRef.current = null
+  }, [])
+
+  const handleMobilePointerMove = useCallback((e) => {
+    const pending = mobileDragPointerRef.current
+    if (!pending) return
+    if (pending.pointerId !== null && e.pointerId !== pending.pointerId) return
+    if (pending.hasStartedDrag) return
+
+    const deltaX = Math.abs(e.clientX - pending.startClientX)
+    const deltaY = Math.abs(e.clientY - pending.startClientY)
+
+    if (deltaX > MOBILE_DRAG_CANCEL_DISTANCE_PX || deltaY > MOBILE_DRAG_CANCEL_DISTANCE_PX) {
+      clearPendingMobileDrag()
+    }
+  }, [clearPendingMobileDrag])
+
+  function startMobileDragHold(e, item) {
+    if (!isMobileLayout || isDecorationItem(item) || editingId) return
+    if (!canCurrentUserEditDeskItems) return
+    if (typeof e.button === 'number' && e.button !== 0) return
+    if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return
+
+    clearPendingMobileDrag()
+
+    const pointerId = typeof e.pointerId === 'number' ? e.pointerId : null
+    mobileDragPointerRef.current = {
+      pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      hasStartedDrag: false
+    }
+
+    window.addEventListener('pointermove', handleMobilePointerMove)
+    window.addEventListener('pointerup', clearPendingMobileDrag)
+    window.addEventListener('pointercancel', clearPendingMobileDrag)
+
+    mobileDragTimerRef.current = window.setTimeout(() => {
+      const pending = mobileDragPointerRef.current
+      if (!pending) return
+      pending.hasStartedDrag = true
+      temporarilySuppressEditClick()
+      handleDragStart(e, item)
+      clearPendingMobileDrag()
+    }, MOBILE_DRAG_HOLD_MS)
+  }
+
+  function openItemEditor(itemKey, item, isChecklist) {
+    if (!canCurrentUserEditDeskItems) return
+    if (suppressEditClickRef.current) {
+      suppressEditClickRef.current = false
+      return
+    }
+
+    setIsSavingEdit(false)
+    setEditSaveError('')
+    setEditingId(itemKey)
+    setShowStyleEditor(false)
+    setEditColor(getItemColor(item))
+    setEditTextColor(getItemTextColor(item))
+    setEditFontSize(getItemFontSize(item))
+    setEditFontFamily(getItemFontFamily(item))
+    if (isChecklist) {
+      const existingTitle = item.title || 'Checklist'
+      setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
+      setChecklistEditItems((item.items || []).map((entry) => ({
+        text: entry.text || '',
+        is_checked: Boolean(entry.is_checked),
+        due_at: normalizeChecklistReminderValue(entry.due_at)
+      })))
+      setNewChecklistItemText('')
+    } else {
+      const existingContent = item.content || ''
+      setEditValue(existingContent.trim() === 'New note' ? '' : existingContent)
+      setChecklistEditItems([])
+      setNewChecklistItemText('')
+    }
+  }
+
+  useEffect(() => {
+    mobilePointerMoveHandlerRef.current = handleMobilePointerMove
+    mobileDragClearHandlerRef.current = clearPendingMobileDrag
+  }, [handleMobilePointerMove, clearPendingMobileDrag])
+
+  useEffect(() => {
+    return () => {
+      if (mobileDragTimerRef.current) {
+        window.clearTimeout(mobileDragTimerRef.current)
+        mobileDragTimerRef.current = null
+      }
+      if (suppressEditClickTimerRef.current) {
+        window.clearTimeout(suppressEditClickTimerRef.current)
+        suppressEditClickTimerRef.current = null
+      }
+      const pointerMoveHandler = mobilePointerMoveHandlerRef.current
+      const clearHandler = mobileDragClearHandlerRef.current
+      if (pointerMoveHandler) {
+        window.removeEventListener('pointermove', pointerMoveHandler)
+      }
+      if (clearHandler) {
+        window.removeEventListener('pointerup', clearHandler)
+        window.removeEventListener('pointercancel', clearHandler)
+      }
+      mobileDragPointerRef.current = null
+      suppressEditClickRef.current = false
+    }
+  }, [clearPendingMobileDrag, handleMobilePointerMove])
+
   return notes.map((item, index) => {
     const itemKey = getItemKey(item)
     const isChecklist = isChecklistItem(item)
@@ -85,8 +231,10 @@ export default function DeskCanvasItems({
         data-note-id={item.id}
         data-item-key={itemKey}
         onPointerDown={
-          editingId || (isMobileLayout && !isDecoration)
+          editingId
             ? undefined
+            : (isMobileLayout && !isDecoration)
+              ? (e) => startMobileDragHold(e, item)
             : (e) => handleDragStart(e, item)
         }
         onClick={
@@ -109,7 +257,9 @@ export default function DeskCanvasItems({
           mixBlendMode: 'normal',
           opacity: 1,
           fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
-          touchAction: editingId === itemKey ? 'auto' : (isMobileLayout && !isDecoration ? 'pan-y' : 'none'),
+          touchAction: editingId === itemKey
+            ? 'auto'
+            : (isMobileLayout && !isDecoration && draggedId !== itemKey ? 'pan-y' : 'none'),
           cursor: draggedId === itemKey
             ? 'grabbing'
             : (isMobileLayout && !isDecoration ? 'default' : 'grab'),
@@ -836,62 +986,8 @@ export default function DeskCanvasItems({
           </form>
         ) : (
           <>
-            {isMobileLayout && canCurrentUserEditDeskItems && !isDecoration && (
-              <button
-                type="button"
-                onPointerDown={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  handleDragStart(e, item)
-                }}
-                onClick={(e) => e.stopPropagation()}
-                aria-label="Move item"
-                title="Hold and drag to move"
-                style={{
-                  position: 'absolute',
-                  top: 4,
-                  right: 4,
-                  border: 'none',
-                  borderRadius: 999,
-                  background: 'rgba(33,33,33,0.75)',
-                  color: '#fff',
-                  padding: '3px 8px',
-                  fontSize: 10,
-                  lineHeight: 1,
-                  cursor: 'grab',
-                  zIndex: 2
-                }}
-              >
-                Move
-              </button>
-            )}
             <div
-              onClick={() => {
-                if (!canCurrentUserEditDeskItems) return
-                setIsSavingEdit(false)
-                setEditSaveError('')
-                setEditingId(itemKey)
-                setShowStyleEditor(false)
-                setEditColor(getItemColor(item))
-                setEditTextColor(getItemTextColor(item))
-                setEditFontSize(getItemFontSize(item))
-                setEditFontFamily(getItemFontFamily(item))
-                if (isChecklist) {
-                  const existingTitle = item.title || 'Checklist'
-                  setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
-                  setChecklistEditItems((item.items || []).map((entry) => ({
-                    text: entry.text || '',
-                    is_checked: Boolean(entry.is_checked),
-                    due_at: normalizeChecklistReminderValue(entry.due_at)
-                  })))
-                  setNewChecklistItemText('')
-                } else {
-                  const existingContent = item.content || ''
-                  setEditValue(existingContent.trim() === 'New note' ? '' : existingContent)
-                  setChecklistEditItems([])
-                  setNewChecklistItemText('')
-                }
-              }}
+              onClick={() => openItemEditor(itemKey, item, isChecklist)}
               style={{
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',

@@ -373,6 +373,10 @@ export default function useDeskItemInteractions({
   function handleDragMove(e) {
     if (dragPointerIdRef.current !== null && e.pointerId !== dragPointerIdRef.current) return
 
+    if (e.cancelable) {
+      e.preventDefault()
+    }
+
     const activeDraggedId = draggedIdRef.current
     if (!activeDraggedId) {
       dragLastPositionRef.current = null
