@@ -1,5 +1,11 @@
 # New Changes
 
+## 2026-03-24 - Duplication Fix
+
+### Duplicate now preserves full text styling
+- Updated item duplication payloads in [src/features/desk/hooks/useDeskItemOperations.js](src/features/desk/hooks/useDeskItemOperations.js) so duplicated notes and checklists persist `text_color` and `font_size` in addition to existing content/title, color, and font family.
+- Result: duplicated items now keep both their text content and visual text styling (color/size/family) rather than partially resetting style.
+
 ## 2026-03-24 - Mobile UX Improvement
 
 ### Matched mobile note interactions to desktop intent
