@@ -43,6 +43,46 @@ export function isMissingColumnError(error, columnName) {
   )
 }
 
+export async function insertChecklistItemsWithReminderFallback({
+  supabase,
+  isMissingColumnError,
+  rows,
+  options = {}
+}) {
+  if (!rows.length) {
+    return options.includeSelect ? [] : null
+  }
+
+  let nextRows = rows
+
+  while (true) {
+    let query = supabase
+      .from('checklist_items')
+      .insert(nextRows)
+
+    if (options.includeSelect) {
+      query = query.select()
+    }
+
+    const { data, error } = await query
+
+    if (!error) {
+      return options.includeSelect ? (data || []) : null
+    }
+
+    if (isMissingColumnError(error, 'due_at')) {
+      nextRows = nextRows.map((row) => {
+        const nextRow = { ...row }
+        delete nextRow.due_at
+        return nextRow
+      })
+      continue
+    }
+
+    throw error
+  }
+}
+
 export function normalizeFontSize(value, fallback = 16) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return fallback
@@ -68,6 +108,14 @@ export function getItemWidth(item) {
 
 export function clampDimension(value, min, max) {
   return Math.min(max, Math.max(min, value))
+}
+
+export function normalizeRotation(value) {
+  return ((value % 360) + 360) % 360
+}
+
+export function toStoredRotation(value) {
+  return Math.round(normalizeRotation(value))
 }
 
 export function getAutoDecorationHeight() {

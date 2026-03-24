@@ -64,3 +64,26 @@ export function getViewportMetrics() {
     height: Math.round(visualViewport?.height || window.innerHeight || 800)
   }
 }
+
+export async function withTimeout(promise, timeoutMs) {
+  let timeoutId = null
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(`Query timeout after ${timeoutMs}ms`)),
+      timeoutMs
+    )
+  })
+
+  try {
+    return await Promise.race([promise, timeoutPromise])
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+}
+
+export function isMissingTableError(error, tableName) {
+  if (!error) return false
+  if (error.code === '42P01') return true
+  const searchable = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`.toLowerCase()
+  return searchable.includes('does not exist') && searchable.includes((tableName || '').toLowerCase())
+}

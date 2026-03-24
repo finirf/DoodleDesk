@@ -8,7 +8,7 @@ try {
     window.top.location = window.self.location
   }
 } catch {
-  window.location.href = window.location.href
+  window.location.reload()
 }
 
 createRoot(document.getElementById('root')).render(
