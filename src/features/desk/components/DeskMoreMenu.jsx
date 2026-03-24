@@ -33,6 +33,7 @@ export default function DeskMoreMenu({
   return (
     <div ref={moreMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
       <DeskMenuTriggerButton
+        type="button"
         onClick={() => {
           const nextOpen = !showMoreMenu
           setShowMoreMenu(nextOpen)
@@ -44,7 +45,7 @@ export default function DeskMoreMenu({
         }}
         isMobileLayout={isMobileLayout}
       >
-        More ⋮
+        More ▼
       </DeskMenuTriggerButton>
 
       {showMoreMenu && (

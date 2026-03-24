@@ -1,5 +1,10 @@
 # New Changes
 
+## 2026-03-24 - UI Consistency
+
+### Unified More dropdown trigger with other top menus
+- Updated [src/features/desk/components/DeskMoreMenu.jsx](src/features/desk/components/DeskMoreMenu.jsx) to use the same trigger affordance as the other top dropdowns (`▼`) and explicitly set `type="button"` for consistent button behavior.
+
 ## 2026-03-24 - Duplication Fix
 
 ### Duplicate now preserves full text styling
