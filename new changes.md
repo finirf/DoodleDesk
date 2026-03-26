@@ -11,11 +11,10 @@
 
 ## 2026-03-26 - Mobile Menu Positioning
 
-### Fixed dropdown menus to stay fixed on mobile screens
-- Updated [src/features/desk/components/DeskUiPrimitives.jsx](src/features/desk/components/DeskUiPrimitives.jsx) menu panel positioning: on mobile, panels now use `position: 'fixed'` instead of `position: 'absolute'`, positioning from the bottom-right corner of the viewport.
-- Modified [src/features/desk/components/DeskWorkspaceMenu.jsx](src/features/desk/components/DeskWorkspaceMenu.jsx), [src/features/desk/components/DeskProfileMenu.jsx](src/features/desk/components/DeskProfileMenu.jsx), and [src/features/desk/components/DeskMoreMenu.jsx](src/features/desk/components/DeskMoreMenu.jsx) to use `position: 'static'` on mobile instead of `position: 'relative'`, preventing them from establishing a positioning context for their menu panels.
-- Added `maxHeight: 'calc(100vh - 100px)'` with `overflowY: 'auto'` on mobile menu panels for scroll support on small screens.
-- Result: The "Current Desk", "Profile", and "More" dropdowns now remain statically positioned in the top-right corner of mobile screens instead of moving with scrollable content.
+### Fixed dropdown menus to desk canvas on mobile
+- Menu containers for Current Desk, Profile, and More use `position: 'relative'` to establish positioning context relative to the desk canvas.
+- Menu panels use `position: 'absolute'` on all layouts (mobile and desktop), positioning them relative to the desk canvas (top-right area: `top: '100%'`, `right: 0`).
+- Result: The "Current Desk", "Profile", and "More" dropdowns now stay in the top-right corner of the desk canvas and move with the canvas as users pan around on mobile.
 
 ## 2026-03-26 - GitHub Public Release Readiness
 
