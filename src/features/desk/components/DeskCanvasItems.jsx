@@ -188,7 +188,7 @@ export default function DeskCanvasItems({
     }
 
     clearPendingMobileDrag()
-  }, [clearPendingMobileDrag, toggleItemGrouping])
+  }, [clearPendingMobileDrag, groupedItemKeys, toggleItemGrouping])
 
   function startMobileDragHold(e, item) {
     if (!isMobileLayout || isDecorationItem(item) || editingId) return
@@ -203,7 +203,6 @@ export default function DeskCanvasItems({
     if (e.cancelable) {
       e.preventDefault()
     }
-  }, [clearPendingMobileDrag, groupedItemKeys, toggleItemGrouping])
 
     clearPendingMobileDrag()
 
@@ -1236,7 +1235,6 @@ export default function DeskCanvasItems({
         )}
       </div>
     )
-  })
       })}
     </>
   )

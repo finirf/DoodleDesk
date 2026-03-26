@@ -1,5 +1,14 @@
 # New Changes
 
+## 2026-03-26 - Build Hotfix (Mobile Drag Handler)
+
+### Fixed production build failure from malformed mobile drag callback
+- Resolved syntax error in [src/features/desk/components/DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) where a stray callback dependency segment was accidentally inserted inside `startMobileDragHold(...)`.
+- Updated `handleMobilePointerUp` hook dependencies to include `getItemKey` and `groupedItemKeys` after mobile grouping feedback logic changes.
+- Removed an extra JSX/map closing token in [src/features/desk/components/DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) that triggered an esbuild parse warning during production build.
+- Follow-up cleanup: removed unnecessary `getItemKey` from a `useCallback` dependency array in [src/features/desk/components/DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx), clearing the final ESLint hook warning.
+- Result: `npm run build` parse error (`Unexpected ","`) is resolved for Vercel production builds.
+
 ## 2026-03-26 - Mobile Top-Right Menu Axis Alignment
 
 ### Aligned top-right dropdown triggers to a single horizontal row on mobile
