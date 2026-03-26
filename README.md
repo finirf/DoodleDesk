@@ -154,6 +154,17 @@ Recommended workflow:
 2. Confirm tables/policies/publication state in Supabase SQL editor.
 3. Test end-to-end app flows locally.
 
+### Security hardening checklist (before production)
+
+- [ ] Run all SQL sections from `BACKEND_SQL_README.md` Section 12
+- [ ] Enable "Havebeenpwned" password checks in Supabase Auth settings
+- [ ] Verify all RLS policies are in place with `select tablename from pg_tables where schemaname='public'`
+- [ ] Check that realtime publication is configured for all required tables
+- [ ] Test that viewers cannot edit desks or items
+- [ ] Test that users cannot access other users' private desks
+- [ ] Rotate any shared secrets (webhook credentials, etc.) used in production
+- [ ] Review `SECURITY.md` for vulnerability reporting process
+
 ## Edge function configuration (production)
 
 Set these Supabase Edge Function environment variables:

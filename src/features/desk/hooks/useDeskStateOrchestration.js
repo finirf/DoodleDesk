@@ -1,5 +1,39 @@
 import { useDesksState } from './useDesksState'
 
+/**
+ * @typedef DeskStateOrchestrationConfig
+ * @property {Function} getViewportMetrics - Utility to calculate viewport dimensions
+ */
+
+/**
+ * Orchestrates all primary desk UI state: desks, notes, editing, menu visibility, and shelf organization.
+ * 
+ * This hook is the foundation of desk state management. It aggregates state from
+ * useDesksState and exposes it grouped by domain (desk management, note editing, UI menus, etc.)
+ * for consumption by derived state and action orchestration hooks.
+ * 
+ * **Output domains:**
+ * - Desk management (desks, selectedDeskId)
+ * - Note editing (editingId, editValue, editColor, editTextColor, editFontSize, editFontFamily, showStyleEditor)
+ * - Checklist editing (checklistEditItems, newChecklistItemText)
+ * - Menu visibility (showNewNoteMenu, showDeskMenu, showProfileMenu, profileTab)
+ * - Shelf hierarchy (newShelfNameInput, newShelfParentId, deskShelves, deskShelfAssignments, expandedDeskShelves)
+ * - Background & canvas (backgroundMode, customBackgroundUrl, snapToGrid, canvasWidth, canvasHeight)
+ * - Friends & collaboration (friends, incomingFriendRequests, outgoingFriendRequests, deskMembers, deskMemberRequests)
+ * - UI state (confirmDialog, activeDecorationHandleId, autosave status)
+ * - Refs for event handlers, timeouts, and input elements
+ * 
+ * @param {DeskStateOrchestrationConfig} config
+ * @returns {Object} State object with setters for all managed domains
+ * 
+ * @example
+ * const {
+ *   desks, setDesks,
+ *   selectedDeskId, setSelectedDeskId,
+ *   editingId, setEditingId,
+ *   // ... and ~150+ more
+ * } = useDeskStateOrchestration({ getViewportMetrics })
+ */
 export default function useDeskStateOrchestration({ getViewportMetrics }) {
   const deskState = useDesksState({ getViewportMetrics })
 

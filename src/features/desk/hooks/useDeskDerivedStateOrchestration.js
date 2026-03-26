@@ -11,6 +11,29 @@ import {
   modalStyles
 } from '../index'
 
+/**
+ * Orchestrates derived state computed from primary state: background styles, UI config,
+ * modal styles, history capabilities, access control, and ref callbacks.
+ * 
+ * This hook consumes primary state from useDeskStateOrchestration and derives
+ * read-only computed values used across the app (styling, permissions, history state).
+ * It also bridges refs between state orchestration and action orchestration.
+ * 
+ * **Output domains:**
+ * - History (historyPastRef, historyFutureRef, canUndo, canRedo, setHistoryVersion, cloneNotesSnapshot, etc.)
+ * - Background rendering (backgroundImage, backgroundColor, backgroundSize, backgroundPosition, backgroundRepeat)
+ * - Desk access (currentDesk, isCurrentDeskOwner, canCurrentUserEditDeskItems)
+ * - Modal styles (modalOverlayStyle, modalCardStyle, modalTitleStyle, etc.)
+ * - UI config (growThreshold, gridSize, menuLayerZIndex, menuPanelZIndex, snapPrefsStorageKey, etc.)
+ * - Realtime channels (deskLiveChannelName, deskMembersLiveChannelName)
+ * - Callbacks (realtimeFetchDesks, realtimeFetchDeskItems, realtimeFetchDeskActivity, handleSelectedDeskActivated, handleSelectedDeskCleared)
+ * - Ref bridges (hasActivePointerInteractionRef for coordinating interaction state across hooks)
+ * 
+ * @param {Object} config
+ * @param {Object} config.deskState - Primary state from useDeskStateOrchestration
+ * @param {Object} config.userContext - User info (userId, email if available)
+ * @returns {Object} Derived state and computed utilities
+ */
 export default function useDeskDerivedStateOrchestration({
   deskState,
   userContext

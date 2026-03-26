@@ -146,6 +146,9 @@ export default function DeskModals({
             ...modalOverlayStyle,
             zIndex: 1000
           }}
+          role="alertdialog"
+          aria-labelledby="delete-note-title"
+          aria-describedby="delete-note-description"
         >
           <div
             style={{
@@ -154,7 +157,8 @@ export default function DeskModals({
               textAlign: 'center'
             }}
           >
-            <div style={{ marginBottom: 12, color: 'var(--ui-ink)' }}>Delete this note?</div>
+            <div id="delete-note-title" style={{ marginBottom: 12, color: 'var(--ui-ink)', fontWeight: 500 }}>Delete this note?</div>
+            <div id="delete-note-description" style={{ fontSize: 12, color: 'var(--ui-ink-soft)', marginBottom: 16 }}>This action cannot be undone.</div>
             <button
               type="button"
               onClick={confirmDeleteNote}
@@ -162,6 +166,7 @@ export default function DeskModals({
                 ...modalDangerButtonStyle,
                 marginRight: 8,
               }}
+              aria-label="Confirm delete note"
             >
               Delete
             </button>
@@ -169,6 +174,7 @@ export default function DeskModals({
               type="button"
               onClick={() => setPendingDeleteId(null)}
               style={modalSecondaryButtonStyle}
+              aria-label="Cancel delete note"
             >
               Cancel
             </button>
@@ -182,6 +188,9 @@ export default function DeskModals({
             ...modalOverlayStyle,
             zIndex: 1100
           }}
+          role="alertdialog"
+          aria-labelledby="confirm-dialog-title"
+          aria-describedby="confirm-dialog-message"
         >
           <div
             style={{
@@ -190,8 +199,8 @@ export default function DeskModals({
               textAlign: 'center'
             }}
           >
-            <div style={{ ...modalTitleStyle, marginBottom: 12 }}>{confirmDialog.title || 'Confirm Action'}</div>
-            <div style={{ ...modalBodyTextStyle, marginBottom: 14 }}>{confirmDialog.message}</div>
+            <div id="confirm-dialog-title" style={{ ...modalTitleStyle, marginBottom: 12 }}>{confirmDialog.title || 'Confirm Action'}</div>
+            <div id="confirm-dialog-message" style={{ ...modalBodyTextStyle, marginBottom: 14 }}>{confirmDialog.message}</div>
             <button
               type="button"
               onClick={confirmDialogAction}
@@ -202,6 +211,8 @@ export default function DeskModals({
                 cursor: confirmDialogLoading ? 'not-allowed' : 'pointer',
                 opacity: confirmDialogLoading ? 0.7 : 1
               }}
+              aria-label={confirmDialog.confirmLabel}
+              aria-busy={confirmDialogLoading}
             >
               {confirmDialogLoading ? 'Working...' : confirmDialog.confirmLabel}
             </button>
@@ -214,6 +225,7 @@ export default function DeskModals({
                 cursor: confirmDialogLoading ? 'not-allowed' : 'pointer',
                 opacity: confirmDialogLoading ? 0.7 : 1
               }}
+              aria-label="Cancel"
             >
               Cancel
             </button>
@@ -227,6 +239,9 @@ export default function DeskModals({
             ...modalOverlayStyle,
             zIndex: 1120
           }}
+          role="alertdialog"
+          aria-labelledby="delete-account-title"
+          aria-describedby="delete-account-description"
         >
           <form
             onSubmit={submitDeleteAccountDialog}
@@ -235,8 +250,8 @@ export default function DeskModals({
               width: 360
             }}
           >
-            <div style={modalTitleStyle}>Delete Account</div>
-            <div style={modalBodyTextStyle}>
+            <div id="delete-account-title" style={modalTitleStyle}>Delete Account</div>
+            <div id="delete-account-description" style={modalBodyTextStyle}>
               This permanently deletes your DoodleDesk profile data, desks, shelves, and friend data. This action cannot be undone.
             </div>
             <div style={modalHintTextStyle}>Type DELETE to confirm.</div>
@@ -249,6 +264,7 @@ export default function DeskModals({
               autoFocus
               placeholder="DELETE"
               style={modalInputStyle}
+              aria-label="Type DELETE to confirm account deletion"
             />
 
             <div style={modalActionsStyle}>
@@ -287,6 +303,8 @@ export default function DeskModals({
             ...modalOverlayStyle,
             zIndex: 1200
           }}
+          role="dialog"
+          aria-labelledby="desk-name-dialog-title"
         >
           <form
             onSubmit={submitDeskNameDialog}
@@ -295,7 +313,7 @@ export default function DeskModals({
               width: 320,
             }}
           >
-            <div style={modalTitleStyle}>
+            <div id="desk-name-dialog-title" style={modalTitleStyle}>
               {deskNameDialog.mode === 'create' ? 'Create New Desk' : 'Rename Desk'}
             </div>
 
@@ -309,6 +327,7 @@ export default function DeskModals({
               autoFocus
               placeholder="Desk name"
               style={modalInputStyle}
+              aria-label="Desk name"
             />
 
             {deskNameDialog.mode === 'create' && (

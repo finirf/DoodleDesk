@@ -20,3 +20,26 @@ export const BUILT_IN_SHELVES = [
   { id: '__shared', label: 'Shared' },
   { id: '__sharing', label: 'Sharing' }
 ]
+
+/**
+ * Interaction behavior constants for mouse/touch interactions
+ */
+export const INTERACTION_CONSTANTS = {
+  // Resize constraints
+  MIN_SCALE: 0.1,
+  
+  // Stack offset when notes are dropped on top of each other (pixels)
+  STACK_OFFSET_X: 8,
+  STACK_OFFSET_Y: 8,
+  
+  // Long-press gesture timing (milliseconds)
+  LONG_PRESS_DELAY: 350,
+  LONG_PRESS_MOVE_THRESHOLD: 10,
+  
+  // Group visibility thresholds
+  MIN_GROUPED_ITEMS_FOR_OUTLINE: 2,
+  
+  // Drag-scroll prevention (mobile)
+  DRAG_SCROLL_LOCK_THRESHOLD: 5
+}
+

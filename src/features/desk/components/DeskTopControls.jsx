@@ -35,6 +35,8 @@ export default function DeskTopControls({
         gap: 8,
         zIndex: menuLayerZIndex
       }}
+      role="toolbar"
+      aria-label="Desk history and save controls"
     >
       <DeskTopControlButton
         type="button"
@@ -42,6 +44,8 @@ export default function DeskTopControls({
         isMobileLayout={isMobileLayout}
         disabled={!canUndo || hasModalOpen || !canCurrentUserEditDeskItems}
         title="Undo (Ctrl/Cmd+Z)"
+        aria-label="Undo last action"
+        aria-disabled={!canUndo || hasModalOpen || !canCurrentUserEditDeskItems}
       >
         {historySyncing ? 'Syncing...' : 'Undo'}
       </DeskTopControlButton>
@@ -51,6 +55,8 @@ export default function DeskTopControls({
         isMobileLayout={isMobileLayout}
         disabled={!canRedo || hasModalOpen || !canCurrentUserEditDeskItems}
         title="Redo (Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y)"
+        aria-label="Redo last undone action"
+        aria-disabled={!canRedo || hasModalOpen || !canCurrentUserEditDeskItems}
       >
         Redo
       </DeskTopControlButton>
@@ -61,6 +67,8 @@ export default function DeskTopControls({
         disabled={isForceSaveDisabled}
         title="Force-save current desk content and clear undo/redo history"
         aria-live="polite"
+        aria-label={forceSaveInProgress ? 'Saving desk' : 'Save desk and clear history'}
+        aria-disabled={isForceSaveDisabled}
         style={{
           ...autoSaveBadgeStyle,
           padding: isMobileLayout ? '8px 10px' : autoSaveBadgeStyle.padding,

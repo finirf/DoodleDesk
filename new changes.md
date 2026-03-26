@@ -1,5 +1,39 @@
 # New Changes
 
+## 2026-03-26 - GitHub Public Release Readiness
+
+### Added security documentation for public repository
+- Created [SECURITY.md](SECURITY.md) with vulnerability reporting process, in-scope security issues, and responsible disclosure timeline.
+- Created [.env.example](.env.example) template for contributor environment setup guidance.
+- Added production security hardening checklist to [README.md](README.md) Section "Backend and database setup" covering auth hardening, RLS verification, and secret rotation.
+- Validated that `.env` is properly excluded from git tracking and that no hardcoded credentials exist in codebase.
+- Confirmed Supabase anon key is safely exposed (by design); backend RLS policies enforce data access control.
+- Verified Content-Security-Policy and CORS origin validation are configured in [index.html](index.html).
+- Result: Codebase is now ready for public GitHub publication with clear security practices documented.
+
+## 2026-03-26 - Developer Experience & Accessibility Improvements
+
+### Added comprehensive JSDoc documentation to orchestration hooks
+- Documented [src/features/desk/hooks/useDeskStateOrchestration.js](src/features/desk/hooks/useDeskStateOrchestration.js): Primary state orchestration covering desk management, note editing, UI menus, and shelf hierarchy.
+- Documented [src/features/desk/hooks/useDeskDerivedStateOrchestration.js](src/features/desk/hooks/useDeskDerivedStateOrchestration.js): Derived state for background styles, modal styles, history capabilities, and access control.
+- Documented [src/features/desk/hooks/useDeskOperationsOrchestration.js](src/features/desk/hooks/useDeskOperationsOrchestration.js): Remote sync, autosave, checklist helpers, activity logging, and data queries operations.
+- Documented [src/features/desk/hooks/useDeskActionOrchestration.js](src/features/desk/hooks/useDeskActionOrchestration.js): User-driven actions across all desk domains (70+ action methods).
+- Documented [src/features/desk/hooks/useDeskUiOrchestration.js](src/features/desk/hooks/useDeskUiOrchestration.js): UI rendering logic, computed display values, and shelf tree layout.
+- Documented [src/features/desk/hooks/useDeskLifecycleOrchestration.js](src/features/desk/hooks/useDeskLifecycleOrchestration.js): Side effects, subscriptions, and lifecycle hooks organized into 10 effect domains.
+- Result: Navigating the 6 core orchestration hooks is now significantly clearer with documented output domains, config parameters, and usage examples.
+
+### Extracted interaction behavior constants to [src/features/desk/constants/deskConstants.js](src/features/desk/constants/deskConstants.js)
+- Added `INTERACTION_CONSTANTS` export with documented magic numbers: MIN_SCALE, STACK_OFFSET_(X/Y), LONG_PRESS_DELAY, LONG_PRESS_MOVE_THRESHOLD, MIN_GROUPED_ITEMS_FOR_OUTLINE, and DRAG_SCROLL_LOCK_THRESHOLD.
+- Centralized interaction thresholds make behavior tweaking easier and improve code readability.
+
+### Enhanced accessibility with ARIA labels and semantic landmarks
+- Updated [src/features/desk/components/DeskTopControls.jsx](src/features/desk/components/DeskTopControls.jsx) to add `role="toolbar"` container and improved aria-label descriptions for Undo, Redo, and Force Save buttons.
+- Updated [src/features/desk/components/DeskModals.jsx](src/features/desk/components/DeskModals.jsx) to add proper `role="alertdialog"` and `role="dialog"` landmarks on all modals (delete note, confirm action, delete account, desk name).
+- Added `aria-labelledby` and `aria-describedby` on alert dialogs to associate titles and descriptions with modal containers.
+- Added `aria-label` attributes on all modal form inputs and action buttons for screen reader users.
+- Added `aria-busy` states on async action buttons to indicate loading state to assistive technologies.
+- Result: Screen reader users and keyboard-only users now have better context and can navigate modals more reliably.
+
 ## 2026-03-26 - Multi-Group Support
 
 ### Enabled multiple independent note groups on a single desk

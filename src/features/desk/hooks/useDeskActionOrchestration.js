@@ -16,6 +16,31 @@ import useDeskShelfSyncActions from './useDeskShelfSyncActions'
 import useDeskShelfHierarchyActions from './useDeskShelfHierarchyActions'
 import useDeskHistoryActions from './useDeskHistoryActions'
 
+/**
+ * Orchestrates user-driven actions across all desk domains.
+ * 
+ * This is the primary action hook. It aggregates action handlers from 14+ domain-specific
+ * hooks and exposes a unified interface for the UI. All user interactions flow through here:
+ * profile updates, collection/desk operations, item CRUD, interactions, collaboration,
+ * account management, and history control.
+ * 
+ * **Action domains:**
+ * - Profile & user data (updatePreferredNameInput, savePreferredName, fetchCurrentUserProfile, fetchUserStats)
+ * - Social (fetchFriends, handleSendFriendRequest, respondToFriendRequest, removeFriend, etc.)
+ * - Desk collection (fetchDesks, handleSelectDesk, openCreateDeskDialog, deleteCurrentDesk, leaveCurrentDesk)
+ * - Item CRUD (addStickyNote, addChecklistNote, duplicateItem, requestDeleteNote, confirmDeleteNote)
+ * - Item interactions (grouping, dragging, rotating, resizing)
+ * - Dialogs (desk name, delete account, member requests)
+ * - Account (handleLogout, handleDeleteAccount)
+ * - Membership (respondDeskMemberRequest, addDeskMember, removeDeskMember, updateDeskMemberRole)
+ * - Background (setCurrentDeskBackground, setCurrentDeskCustomBackground)
+ * - Import/export (exportCurrentDesk, handleImportDeskFileSelection)
+ * - Shelf hierarchy (createDeskShelf, renameDeskShelf, deleteDeskShelf, toggleDeskShelfExpanded)
+ * - History (undoNotesChange, redoNotesChange, forceSaveAndClearHistory)
+ * 
+ * @param {Object} config - Large configuration object with 14+ sub-configs for each domain
+ * @returns {Object} Actions object with 70+ methods for all user-driven state mutations
+ */
 export default function useDeskActionOrchestration({
   profileData,
   socialData,
