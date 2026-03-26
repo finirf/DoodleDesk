@@ -146,8 +146,8 @@ export default forwardRef(function DeskCanvasContainer({
         // Apply pan transform for smooth two-finger scrolling
         transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
         transition: isPanning ? 'none' : 'transform 0.1s ease-out',
-        // Only prevent default on two-finger touches (handled by preventDefault in handlers)
-        touchAction: 'auto'
+        // Disable default touch scrolling - all gestures handled by our code
+        touchAction: 'none'
       }}
     >
       {children}

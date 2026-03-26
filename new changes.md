@@ -2,6 +2,33 @@
 
 ## 2026-03-26 - Comprehensive Mobile/Desktop Integration Overhaul
 
+### ✅ Added interactive mobile group selection interface
+- **Feature**: Users can now tap the "Group" button in the mobile context menu to enter an interactive group selection mode
+- **Interface Details**:
+  - Grayed-out overlay appears behind all notes (using semi-transparent black background with 0.5 opacity)
+  - Notes remain fully visible and interactive within the overlay
+  - Users can scroll around the desk freely while selecting notes
+  - Selected notes show a prominent green border (3px rgba(76, 175, 80, 0.95)) to distinguish from grouped items (blue outline)
+  - Bottom toolbar displays: "Cancel" button | "X selected" counter | "Group" button (disabled until notes are selected)
+- **Interaction Flow**:
+  1. Long-press on note → Context menu appears
+  2. Tap "Group" → Enter group selection mode (initial note pre-selected)
+  3. Tap other notes to toggle their selection on/off
+  4. Tap the grayed-out desk area OR tap "Group" button → Confirm grouping and exit mode
+  5. Tap "Cancel" → Exit without grouping
+- **Already Grouped Items**: If a note is already grouped, tapping "Group" immediately ungroups it (without entering selection mode)
+- **Visual Feedback**: Green selection border (3px) appears around selected notes, making it clear which items will be grouped
+- Implementation: [DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) with toggleGroupItemSelection callback and handleGroupSelectionConfirm handler
+
+### ✅ Fixed touch scroll conflict with note dragging
+- **Issue**: One-finger drag was triggering default browser scroll, preventing notes from moving
+- **Solution**: Set `touchAction: 'none'` on [DeskCanvasContainer](src/features/desk/components/DeskCanvasContainer.jsx) to disable browser default touch scrolling
+- **Details**: 
+  - Container now takes full control of all touch gestures (one-finger for notes, two-finger for pan)
+  - Individual notes use conditional `touchAction`: 'auto' when editing (allows text selection), 'none' when not editing (prevents scroll interference)
+  - Result: One-finger drag now properly moves notes without triggering page scroll
+  - Two-finger panning still works correctly as the primary canvas scroll mechanism
+
 ### ✅ Implemented mobile touch gestures for note interaction
 - **One-finger drag**: Hold finger on note for 170ms then drag to move (long-press detection with automatic drag activation)
 - **Two-finger pan**: Place two fingers on canvas to pan smoothly at 2.2x multiplier 
