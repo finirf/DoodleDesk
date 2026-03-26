@@ -68,7 +68,7 @@ export default function DeskProfileMenu({
   handleLogout
 }) {
   return (
-    <div ref={profileMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
+    <div ref={profileMenuRef} style={{ position: isMobileLayout ? 'static' : 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
       <DeskMenuTriggerButton
         type="button"
         onClick={() => {

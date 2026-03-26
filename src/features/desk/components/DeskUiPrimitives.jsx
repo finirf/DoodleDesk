@@ -32,11 +32,12 @@ function getMenuTriggerStyle({ isMobileLayout, disabled }) {
 
 function getMenuPanelStyle({ isMobileLayout, menuPanelZIndex, minWidth, width }) {
   return {
-    position: 'absolute',
-    top: '100%',
-    right: isMobileLayout ? 'auto' : 0,
-    left: isMobileLayout ? 0 : 'auto',
-    marginTop: 6,
+    position: isMobileLayout ? 'fixed' : 'absolute',
+    top: isMobileLayout ? 'auto' : '100%',
+    bottom: isMobileLayout ? 12 : 'auto',
+    right: isMobileLayout ? 12 : 0,
+    left: isMobileLayout ? 12 : 'auto',
+    marginTop: isMobileLayout ? 0 : 6,
     background: 'var(--ui-glass)',
     border: '1px solid var(--ui-border)',
     borderRadius: 12,
@@ -45,7 +46,9 @@ function getMenuPanelStyle({ isMobileLayout, menuPanelZIndex, minWidth, width })
     color: 'var(--ui-ink)',
     zIndex: menuPanelZIndex,
     minWidth: isMobileLayout ? 0 : minWidth,
-    width: isMobileLayout ? '100%' : width,
+    width: isMobileLayout ? 'calc(100% - 24px)' : width,
+    maxHeight: isMobileLayout ? 'calc(100vh - 100px)' : 'auto',
+    overflowY: isMobileLayout ? 'auto' : 'visible',
     padding: 6,
     animation: 'deskPanelIn var(--motion-base) cubic-bezier(0.18, 0.85, 0.27, 1)'
   }

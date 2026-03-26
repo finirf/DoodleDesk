@@ -1,5 +1,22 @@
 # New Changes
 
+## 2026-03-26 - Mobile Touch Gesture Differentiation
+
+### Separated single-touch note dragging from multi-touch canvas panning
+- Updated [src/features/desk/components/DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) `startMobileDragHold()` to check `e.touches.length` and only initiate note drag for single-touch (`touches.length === 1`).
+- Multi-touch detection now cancels pending note drag, allowing browser-native canvas scrolling/panning with two fingers.
+- Updated `handleMobilePointerMove()` to detect multi-touch and cancel active drag-hold if additional touches are detected.
+- Updated `handleMobilePointerUp()` to skip grouping logic if multi-touch is still active on pointer up.
+- Result: One-finger long-press now moves notes; two-finger drag pans the canvas naturally on mobile devices.
+
+## 2026-03-26 - Mobile Menu Positioning
+
+### Fixed dropdown menus to stay fixed on mobile screens
+- Updated [src/features/desk/components/DeskUiPrimitives.jsx](src/features/desk/components/DeskUiPrimitives.jsx) menu panel positioning: on mobile, panels now use `position: 'fixed'` instead of `position: 'absolute'`, positioning from the bottom-right corner of the viewport.
+- Modified [src/features/desk/components/DeskWorkspaceMenu.jsx](src/features/desk/components/DeskWorkspaceMenu.jsx), [src/features/desk/components/DeskProfileMenu.jsx](src/features/desk/components/DeskProfileMenu.jsx), and [src/features/desk/components/DeskMoreMenu.jsx](src/features/desk/components/DeskMoreMenu.jsx) to use `position: 'static'` on mobile instead of `position: 'relative'`, preventing them from establishing a positioning context for their menu panels.
+- Added `maxHeight: 'calc(100vh - 100px)'` with `overflowY: 'auto'` on mobile menu panels for scroll support on small screens.
+- Result: The "Current Desk", "Profile", and "More" dropdowns now remain statically positioned in the top-right corner of mobile screens instead of moving with scrollable content.
+
 ## 2026-03-26 - GitHub Public Release Readiness
 
 ### Added security documentation for public repository

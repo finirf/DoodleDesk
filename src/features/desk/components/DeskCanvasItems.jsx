@@ -117,6 +117,13 @@ export default function DeskCanvasItems({
     if (pending.pointerId !== null && e.pointerId !== pending.pointerId) return
     if (pending.hasStartedDrag) return
 
+    // Cancel drag if multi-touch detected (allow canvas panning)
+    const touchCount = e.touches?.length ?? 1
+    if (touchCount > 1) {
+      clearPendingMobileDrag()
+      return
+    }
+
     const deltaX = Math.abs(e.clientX - pending.startClientX)
     const deltaY = Math.abs(e.clientY - pending.startClientY)
 
@@ -143,6 +150,13 @@ export default function DeskCanvasItems({
     }
     if (pending.pointerId !== null && e.pointerId !== pending.pointerId) return
 
+    // Cancel if multi-touch is present
+    const touchCount = e.touches?.length ?? 0
+    if (touchCount > 0) {
+      clearPendingMobileDrag()
+      return
+    }
+
     const deltaX = Math.abs(e.clientX - pending.startClientX)
     const deltaY = Math.abs(e.clientY - pending.startClientY)
     const didMovePastThreshold = deltaX > MOBILE_DRAG_CANCEL_DISTANCE_PX || deltaY > MOBILE_DRAG_CANCEL_DISTANCE_PX
@@ -160,6 +174,10 @@ export default function DeskCanvasItems({
     if (!canCurrentUserEditDeskItems) return
     if (typeof e.button === 'number' && e.button !== 0) return
     if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return
+
+    // Only start drag hold for single-touch; multi-touch allows canvas panning
+    const touchCount = e.touches?.length ?? 1
+    if (touchCount !== 1) return
 
     clearPendingMobileDrag()
 

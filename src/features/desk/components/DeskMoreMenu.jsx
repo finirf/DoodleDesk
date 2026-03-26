@@ -31,7 +31,7 @@ export default function DeskMoreMenu({
   setSnapToGrid
 }) {
   return (
-    <div ref={moreMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
+    <div ref={moreMenuRef} style={{ position: isMobileLayout ? 'static' : 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
       <DeskMenuTriggerButton
         type="button"
         onClick={() => {
