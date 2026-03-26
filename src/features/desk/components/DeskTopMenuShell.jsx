@@ -7,10 +7,10 @@ export default function DeskTopMenuShell({
   return (
     <div
       style={{
-        position: 'fixed',
+        position: isMobileLayout ? 'absolute' : 'fixed',
         top: topMenuTop,
         right: isMobileLayout ? 12 : 20,
-        left: isMobileLayout ? 12 : 'auto',
+        left: 'auto',
         display: 'flex',
         flexDirection: isMobileLayout ? 'column' : 'row',
         gap: 8,

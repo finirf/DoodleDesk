@@ -14,6 +14,8 @@
 ### Fixed dropdown menus to desk canvas on mobile
 - Menu containers for Current Desk, Profile, and More use `position: 'relative'` to establish positioning context relative to the desk canvas.
 - Menu panels use `position: 'absolute'` on all layouts (mobile and desktop), positioning them relative to the desk canvas (top-right area: `top: '100%'`, `right: 0`).
+- Updated [src/features/desk/components/DeskTopMenuShell.jsx](src/features/desk/components/DeskTopMenuShell.jsx) to match the same mobile anchoring model as Undo/Redo/Changes Saved: `position: 'absolute'` on mobile and `position: 'fixed'` on desktop.
+- Refined mobile shell alignment to stay anchored at the desk's top-right (`left: 'auto'`, `right: 12`) rather than stretching across the top.
 - Result: The "Current Desk", "Profile", and "More" dropdowns now stay in the top-right corner of the desk canvas and move with the canvas as users pan around on mobile.
 
 ## 2026-03-26 - GitHub Public Release Readiness
