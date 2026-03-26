@@ -1,5 +1,13 @@
 # New Changes
 
+## 2026-03-26 - Mobile Grouping Feedback & Long-Press Selection Guard
+
+### Improved mobile long-press UX for grouping
+- Updated [src/features/desk/components/DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) to prevent accidental text selection on long press for non-editing notes (`userSelect: 'none'`, `WebkitUserSelect: 'none'`, `WebkitTouchCallout: 'none'`).
+- Added a mobile long-press guard to call `preventDefault()` for single-touch note hold interactions, reducing native text-selection/callout behavior.
+- Added a temporary mobile grouping status chip that appears after long-press toggles: shows `Grouped` or `Ungrouped` for quick visual confirmation.
+- Result: Long-press on mobile no longer highlights note text, and users now receive clear visual feedback when grouping mode is toggled.
+
 ## 2026-03-26 - Mobile Touch Gesture Differentiation
 
 ### Separated single-touch note dragging from multi-touch canvas panning

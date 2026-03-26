@@ -78,8 +78,21 @@ export default function DeskCanvasItems({
   const mobileDragClearHandlerRef = useRef(null)
   const suppressEditClickRef = useRef(false)
   const suppressEditClickTimerRef = useRef(null)
+  const mobileGroupingHintTimerRef = useRef(null)
   const [isAltHeld, setIsAltHeld] = useState(false)
   const [isCtrlHeld, setIsCtrlHeld] = useState(false)
+  const [mobileGroupingHint, setMobileGroupingHint] = useState('')
+
+  function showMobileGroupingHint(message) {
+    setMobileGroupingHint(message)
+    if (mobileGroupingHintTimerRef.current) {
+      window.clearTimeout(mobileGroupingHintTimerRef.current)
+    }
+    mobileGroupingHintTimerRef.current = window.setTimeout(() => {
+      setMobileGroupingHint('')
+      mobileGroupingHintTimerRef.current = null
+    }, 950)
+  }
 
   function temporarilySuppressEditClick() {
     suppressEditClickRef.current = true
@@ -163,7 +176,12 @@ export default function DeskCanvasItems({
 
     if (pending.longPressActivated && !pending.hasStartedDrag && !didMovePastThreshold) {
       temporarilySuppressEditClick()
-      toggleItemGrouping?.(pending.item)
+      const itemKey = getItemKey(pending.item)
+      const wasGrouped = groupedItemKeys.includes(itemKey)
+      const didToggle = toggleItemGrouping?.(pending.item)
+      if (didToggle) {
+        showMobileGroupingHint(wasGrouped ? 'Ungrouped' : 'Grouped')
+      }
     }
 
     clearPendingMobileDrag()
@@ -178,6 +196,11 @@ export default function DeskCanvasItems({
     // Only start drag hold for single-touch; multi-touch allows canvas panning
     const touchCount = e.touches?.length ?? 1
     if (touchCount !== 1) return
+
+    if (e.cancelable) {
+      e.preventDefault()
+    }
+  }, [clearPendingMobileDrag, groupedItemKeys, toggleItemGrouping])
 
     clearPendingMobileDrag()
 
@@ -271,6 +294,10 @@ export default function DeskCanvasItems({
         window.clearTimeout(suppressEditClickTimerRef.current)
         suppressEditClickTimerRef.current = null
       }
+      if (mobileGroupingHintTimerRef.current) {
+        window.clearTimeout(mobileGroupingHintTimerRef.current)
+        mobileGroupingHintTimerRef.current = null
+      }
       const pointerMoveHandler = mobilePointerMoveHandlerRef.current
       const clearHandler = mobileDragClearHandlerRef.current
       if (pointerMoveHandler) {
@@ -282,10 +309,36 @@ export default function DeskCanvasItems({
       }
       mobileDragPointerRef.current = null
       suppressEditClickRef.current = false
+      setMobileGroupingHint('')
     }
   }, [handleMobilePointerMove, handleMobilePointerUp])
 
-  return notes.map((item, index) => {
+  return (
+    <>
+      {isMobileLayout && mobileGroupingHint && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 72,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '6px 10px',
+            borderRadius: 999,
+            background: 'rgba(33,33,33,0.82)',
+            color: '#fff',
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: 0.2,
+            zIndex: 5000,
+            pointerEvents: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.28)'
+          }}
+        >
+          {mobileGroupingHint}
+        </div>
+      )}
+
+      {notes.map((item, index) => {
     const itemKey = getItemKey(item)
     const isChecklist = isChecklistItem(item)
     const isDecoration = isDecorationItem(item)
@@ -361,6 +414,9 @@ export default function DeskCanvasItems({
           touchAction: editingId === itemKey
             ? 'auto'
             : 'none',
+          WebkitTouchCallout: editingId === itemKey ? 'default' : 'none',
+          userSelect: editingId === itemKey ? 'text' : 'none',
+          WebkitUserSelect: editingId === itemKey ? 'text' : 'none',
           cursor: draggedId === itemKey
             ? 'grabbing'
             : (isMobileLayout && !isDecoration ? 'default' : 'grab'),
@@ -1100,7 +1156,9 @@ export default function DeskCanvasItems({
                 flexDirection: 'column',
                 color: getItemTextColor(item),
                 fontSize: getItemFontSize(item),
-                fontFamily: getItemFontFamily(item)
+                fontFamily: getItemFontFamily(item),
+                userSelect: isMobileLayout ? 'none' : 'auto',
+                WebkitUserSelect: isMobileLayout ? 'none' : 'auto'
               }}
             >
               {isChecklist ? (
@@ -1176,4 +1234,7 @@ export default function DeskCanvasItems({
       </div>
     )
   })
+      })}
+    </>
+  )
 }
