@@ -1,11 +1,20 @@
 # New Changes
 
+## 2026-03-26 - Mobile Top-Right Menu Axis Alignment
+
+### Aligned top-right dropdown triggers to a single horizontal row on mobile
+- Updated [src/features/desk/components/DeskTopMenuShell.jsx](src/features/desk/components/DeskTopMenuShell.jsx) to keep menu children in a single row on mobile (`flexDirection: 'row'`, `flexWrap: 'nowrap'`, centered alignment).
+- Updated [src/features/desk/components/DeskWorkspaceMenu.jsx](src/features/desk/components/DeskWorkspaceMenu.jsx), [src/features/desk/components/DeskProfileMenu.jsx](src/features/desk/components/DeskProfileMenu.jsx), and [src/features/desk/components/DeskMoreMenu.jsx](src/features/desk/components/DeskMoreMenu.jsx) so trigger wrappers are auto-width with `flexShrink: 0`.
+- Added mobile trigger style overrides in those three menu components so buttons size to content instead of full-width (`width: 'auto'`, compact padding, `whiteSpace: 'nowrap'`).
+- Result: Current Desk, Profile, and More now sit on the same horizontal axis level at the top-right on mobile instead of stacking vertically.
+
 ## 2026-03-26 - Mobile Grouping Feedback & Long-Press Selection Guard
 
 ### Improved mobile long-press UX for grouping
 - Updated [src/features/desk/components/DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) to prevent accidental text selection on long press for non-editing notes (`userSelect: 'none'`, `WebkitUserSelect: 'none'`, `WebkitTouchCallout: 'none'`).
 - Added a mobile long-press guard to call `preventDefault()` for single-touch note hold interactions, reducing native text-selection/callout behavior.
 - Added a temporary mobile grouping status chip that appears after long-press toggles: shows `Grouped` or `Ungrouped` for quick visual confirmation.
+- Restored one-finger note movement without waiting for long-press: moving past the drag threshold now starts note drag immediately on mobile; long-press without movement still toggles grouping.
 - Result: Long-press on mobile no longer highlights note text, and users now receive clear visual feedback when grouping mode is toggled.
 
 ## 2026-03-26 - Mobile Touch Gesture Differentiation

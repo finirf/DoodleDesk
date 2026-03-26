@@ -31,7 +31,7 @@ export default function DeskWorkspaceMenu({
   deskMenuError
 }) {
   return (
-    <div ref={deskMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
+    <div ref={deskMenuRef} style={{ position: 'relative', width: 'auto', flexShrink: 0, zIndex: menuLayerZIndex }}>
       <DeskMenuTriggerButton
         onClick={() => {
           const nextOpen = !showDeskMenu
@@ -43,6 +43,7 @@ export default function DeskWorkspaceMenu({
           }
         }}
         isMobileLayout={isMobileLayout}
+        style={isMobileLayout ? { width: 'auto', padding: '8px 10px', whiteSpace: 'nowrap' } : undefined}
       >
         {currentDesk ? currentDeskName : 'Select Desk'} ▼
       </DeskMenuTriggerButton>

@@ -151,6 +151,9 @@ export default function DeskCanvasItems({
     }
 
     if (deltaX > MOBILE_DRAG_CANCEL_DISTANCE_PX || deltaY > MOBILE_DRAG_CANCEL_DISTANCE_PX) {
+      pending.hasStartedDrag = true
+      temporarilySuppressEditClick()
+      handleDragStart(e, pending.item)
       clearPendingMobileDrag()
     }
   }, [clearPendingMobileDrag, handleDragStart])

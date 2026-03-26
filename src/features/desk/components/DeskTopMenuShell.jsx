@@ -12,9 +12,10 @@ export default function DeskTopMenuShell({
         right: isMobileLayout ? 12 : 20,
         left: 'auto',
         display: 'flex',
-        flexDirection: isMobileLayout ? 'column' : 'row',
-        gap: 8,
-        alignItems: 'stretch',
+        flexDirection: 'row',
+        gap: isMobileLayout ? 6 : 8,
+        alignItems: 'center',
+        flexWrap: 'nowrap',
         zIndex: menuLayerZIndex
       }}
     >

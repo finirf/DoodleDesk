@@ -68,7 +68,7 @@ export default function DeskProfileMenu({
   handleLogout
 }) {
   return (
-    <div ref={profileMenuRef} style={{ position: 'relative', width: isMobileLayout ? '100%' : 'auto', zIndex: menuLayerZIndex }}>
+    <div ref={profileMenuRef} style={{ position: 'relative', width: 'auto', flexShrink: 0, zIndex: menuLayerZIndex }}>
       <DeskMenuTriggerButton
         type="button"
         onClick={() => {
@@ -87,6 +87,7 @@ export default function DeskProfileMenu({
           }
         }}
         isMobileLayout={isMobileLayout}
+        style={isMobileLayout ? { width: 'auto', padding: '8px 10px', whiteSpace: 'nowrap' } : undefined}
       >
         Profile{pendingFriendRequestCount > 0 ? ` (${pendingFriendRequestCount})` : ''} ▼
       </DeskMenuTriggerButton>
