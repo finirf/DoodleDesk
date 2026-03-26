@@ -8,6 +8,7 @@
 - Added group-merging behavior: while in an active Ctrl grouping session, clicking a note in another existing group now merges that full group into the active group.
 - Updated drag behavior so dragging a grouped note only moves notes in that note's group (not every grouped note on the desk).
 - Wired per-item group size metadata through [src/features/desk/hooks/useDeskActionOrchestration.js](src/features/desk/hooks/useDeskActionOrchestration.js) and [src/App.jsx](src/App.jsx) into [src/features/desk/components/DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) so outline logic is group-aware per note.
+- Added singleton cleanup rules in [src/features/desk/hooks/useDeskItemInteractions.js](src/features/desk/hooks/useDeskItemInteractions.js): 1-note groups are now treated as transient during active Ctrl grouping and are automatically pruned on Ctrl release/blur or after ungroup operations.
 
 ## 2026-03-26 - Drag Persistence Stability
 

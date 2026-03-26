@@ -46,6 +46,7 @@ export default function useDeskItemInteractions({
   const dragLastGroupPositionsRef = useRef({})
   const groupedItemGroupMapRef = useRef({})
   const ctrlGroupSessionIdRef = useRef(null)
+  const isCtrlPressedRef = useRef(false)
   const isDraggingRef = useRef(false)
   const isResizingRef = useRef(false)
   const isRotatingRef = useRef(false)
@@ -110,6 +111,24 @@ export default function useDeskItemInteractions({
     setGroupedItemGroupMap(nextMap)
   }
 
+  function pruneSingletonGroups(inputMap, preserveGroupId = null) {
+    const groupCounts = {}
+    Object.values(inputMap).forEach((groupId) => {
+      if (!groupId) return
+      groupCounts[groupId] = (groupCounts[groupId] || 0) + 1
+    })
+
+    const nextMap = {}
+    Object.entries(inputMap).forEach(([itemKey, groupId]) => {
+      if (!groupId) return
+      if (groupCounts[groupId] > 1 || groupId === preserveGroupId) {
+        nextMap[itemKey] = groupId
+      }
+    })
+
+    return nextMap
+  }
+
   function sanitizeGroupedMap() {
     const validKeys = new Set(notesRef.current.map((entry) => getItemKey(entry)))
     const currentMap = groupedItemGroupMapRef.current
@@ -121,27 +140,57 @@ export default function useDeskItemInteractions({
       }
     })
 
-    if (Object.keys(nextMap).length !== Object.keys(currentMap).length) {
-      setGroupedMap(nextMap)
+    const preserveGroupId = isCtrlPressedRef.current ? ctrlGroupSessionIdRef.current : null
+    const normalizedMap = pruneSingletonGroups(nextMap, preserveGroupId)
+
+    if (
+      Object.keys(normalizedMap).length !== Object.keys(currentMap).length
+      || Object.keys(normalizedMap).some((key) => normalizedMap[key] !== currentMap[key])
+    ) {
+      setGroupedMap(normalizedMap)
     }
 
-    return nextMap
+    return normalizedMap
   }
 
   useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Control') {
+        isCtrlPressedRef.current = true
+      }
+    }
+
     const handleKeyUp = (event) => {
       if (event.key === 'Control') {
+        isCtrlPressedRef.current = false
+        const normalizedMap = pruneSingletonGroups(groupedItemGroupMapRef.current)
+        if (
+          Object.keys(normalizedMap).length !== Object.keys(groupedItemGroupMapRef.current).length
+          || Object.keys(normalizedMap).some((key) => normalizedMap[key] !== groupedItemGroupMapRef.current[key])
+        ) {
+          setGroupedMap(normalizedMap)
+        }
         ctrlGroupSessionIdRef.current = null
       }
     }
 
     const handleWindowBlur = () => {
+      isCtrlPressedRef.current = false
+      const normalizedMap = pruneSingletonGroups(groupedItemGroupMapRef.current)
+      if (
+        Object.keys(normalizedMap).length !== Object.keys(groupedItemGroupMapRef.current).length
+        || Object.keys(normalizedMap).some((key) => normalizedMap[key] !== groupedItemGroupMapRef.current[key])
+      ) {
+        setGroupedMap(normalizedMap)
+      }
       ctrlGroupSessionIdRef.current = null
     }
 
+    window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
     window.addEventListener('blur', handleWindowBlur)
     return () => {
+      window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleWindowBlur)
     }
@@ -200,7 +249,7 @@ export default function useDeskItemInteractions({
 
       const nextMap = { ...currentMap }
       delete nextMap[itemKey]
-      setGroupedMap(nextMap)
+      setGroupedMap(pruneSingletonGroups(nextMap))
 
       if (!Object.values(nextMap).includes(existingGroupId) && ctrlGroupSessionIdRef.current === existingGroupId) {
         ctrlGroupSessionIdRef.current = null
@@ -238,7 +287,7 @@ export default function useDeskItemInteractions({
     }
 
     setGroupedMap({
-      ...currentMap,
+      ...pruneSingletonGroups(currentMap, sessionGroupId),
       [itemKey]: sessionGroupId
     })
     return true
