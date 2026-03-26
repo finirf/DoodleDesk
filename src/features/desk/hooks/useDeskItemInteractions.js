@@ -1,11 +1,10 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export default function useDeskItemInteractions({
   canCurrentUserEditDeskItems,
   editingId,
   notesRef,
   setNotes,
-  canvasWidth,
   sectionHeight,
   growThreshold,
   gridSize,
@@ -21,17 +20,32 @@ export default function useDeskItemInteractions({
   persistItemPosition,
   persistItemSize,
   persistRotation,
-  flushDeferredRemoteNotes
+  flushDeferredRemoteNotes,
+  clearDeferredRemoteNotes
 }) {
   const [draggedId, setDraggedId] = useState(null)
   const [rotatingId, setRotatingId] = useState(null)
   const [resizingId, setResizingId] = useState(null)
   const [resizeOverlay, setResizeOverlay] = useState(null)
+  const [groupedItemGroupMap, setGroupedItemGroupMap] = useState({})
+
+  const groupedItemKeys = Object.keys(groupedItemGroupMap)
+  const groupedItemSizes = groupedItemKeys.reduce((accumulator, itemKey) => {
+    const groupId = groupedItemGroupMap[itemKey]
+    if (!groupId) return accumulator
+    accumulator[itemKey] = groupedItemKeys.filter((key) => groupedItemGroupMap[key] === groupId).length
+    return accumulator
+  }, {})
 
   const draggedIdRef = useRef(null)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
   const dragPointerIdRef = useRef(null)
   const dragLastPositionRef = useRef(null)
+  const dragGroupKeysRef = useRef([])
+  const dragGroupStartPositionsRef = useRef({})
+  const dragLastGroupPositionsRef = useRef({})
+  const groupedItemGroupMapRef = useRef({})
+  const ctrlGroupSessionIdRef = useRef(null)
   const isDraggingRef = useRef(false)
   const isResizingRef = useRef(false)
   const isRotatingRef = useRef(false)
@@ -80,6 +94,215 @@ export default function useDeskItemInteractions({
       pageY: event?.pageY ?? 0,
       clientX: event?.clientX ?? 0,
       clientY: event?.clientY ?? 0
+    }
+  }
+
+  function isGroupableItem(item) {
+    return !isDecorationItem(item)
+  }
+
+  function createGroupId() {
+    return `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  }
+
+  function setGroupedMap(nextMap) {
+    groupedItemGroupMapRef.current = nextMap
+    setGroupedItemGroupMap(nextMap)
+  }
+
+  function sanitizeGroupedMap() {
+    const validKeys = new Set(notesRef.current.map((entry) => getItemKey(entry)))
+    const currentMap = groupedItemGroupMapRef.current
+    const nextMap = {}
+
+    Object.entries(currentMap).forEach(([itemKey, groupId]) => {
+      if (validKeys.has(itemKey)) {
+        nextMap[itemKey] = groupId
+      }
+    })
+
+    if (Object.keys(nextMap).length !== Object.keys(currentMap).length) {
+      setGroupedMap(nextMap)
+    }
+
+    return nextMap
+  }
+
+  useEffect(() => {
+    const handleKeyUp = (event) => {
+      if (event.key === 'Control') {
+        ctrlGroupSessionIdRef.current = null
+      }
+    }
+
+    const handleWindowBlur = () => {
+      ctrlGroupSessionIdRef.current = null
+    }
+
+    window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', handleWindowBlur)
+    return () => {
+      window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('blur', handleWindowBlur)
+    }
+  }, [])
+
+  function handleGroupSelectionClick(event, item) {
+    if (!canCurrentUserEditDeskItems) return false
+    if (editingId) return false
+    if (!isGroupableItem(item)) return false
+
+    const itemKey = getItemKey(item)
+
+    const currentMap = sanitizeGroupedMap()
+
+    if (event.ctrlKey) {
+      const existingGroupId = currentMap[itemKey]
+      const sessionGroupId = ctrlGroupSessionIdRef.current
+
+      if (existingGroupId) {
+        if (!sessionGroupId) {
+          ctrlGroupSessionIdRef.current = existingGroupId
+          return true
+        }
+
+        if (sessionGroupId === existingGroupId) {
+          return true
+        }
+
+        const nextMap = { ...currentMap }
+        Object.keys(nextMap).forEach((key) => {
+          if (nextMap[key] === existingGroupId) {
+            nextMap[key] = sessionGroupId
+          }
+        })
+
+        setGroupedMap(nextMap)
+        return true
+      }
+
+      let nextSessionGroupId = sessionGroupId
+      if (!nextSessionGroupId) {
+        nextSessionGroupId = createGroupId()
+        ctrlGroupSessionIdRef.current = nextSessionGroupId
+      }
+
+      setGroupedMap({
+        ...currentMap,
+        [itemKey]: nextSessionGroupId
+      })
+      return true
+    }
+
+    if (event.altKey) {
+      const existingGroupId = currentMap[itemKey]
+      if (!existingGroupId) return true
+
+      const nextMap = { ...currentMap }
+      delete nextMap[itemKey]
+      setGroupedMap(nextMap)
+
+      if (!Object.values(nextMap).includes(existingGroupId) && ctrlGroupSessionIdRef.current === existingGroupId) {
+        ctrlGroupSessionIdRef.current = null
+      }
+      return true
+    }
+
+    return false
+  }
+
+  function toggleItemGrouping(item) {
+    if (!canCurrentUserEditDeskItems) return false
+    if (editingId) return false
+    if (!isGroupableItem(item)) return false
+
+    const itemKey = getItemKey(item)
+    const currentMap = sanitizeGroupedMap()
+    const existingGroupId = currentMap[itemKey]
+
+    if (existingGroupId) {
+      const nextMap = { ...currentMap }
+      delete nextMap[itemKey]
+      setGroupedMap(nextMap)
+
+      if (!Object.values(nextMap).includes(existingGroupId) && ctrlGroupSessionIdRef.current === existingGroupId) {
+        ctrlGroupSessionIdRef.current = null
+      }
+      return true
+    }
+
+    let sessionGroupId = ctrlGroupSessionIdRef.current
+    if (!sessionGroupId) {
+      sessionGroupId = createGroupId()
+      ctrlGroupSessionIdRef.current = sessionGroupId
+    }
+
+    setGroupedMap({
+      ...currentMap,
+      [itemKey]: sessionGroupId
+    })
+    return true
+  }
+
+  function buildGroupDragResult(pageX, pageY, activeDraggedId) {
+    const startPositions = dragGroupStartPositionsRef.current
+    const activeStart = startPositions[activeDraggedId]
+    if (!activeStart) return null
+
+    const groupEntries = dragGroupKeysRef.current
+      .map((key) => {
+        const item = notesRef.current.find((entry) => getItemKey(entry) === key)
+        if (!item) return null
+        const start = startPositions[key]
+        if (!start) return null
+        return { key, item, start }
+      })
+      .filter(Boolean)
+
+    if (!groupEntries.length) return null
+
+    const minStartX = Math.min(...groupEntries.map((entry) => entry.start.x))
+    const minStartY = Math.min(...groupEntries.map((entry) => entry.start.y))
+
+    const rawNextX = pageX - dragOffsetRef.current.x
+    const rawNextY = pageY - dragOffsetRef.current.y
+    let deltaX = rawNextX - activeStart.x
+    let deltaY = rawNextY - activeStart.y
+
+    deltaX = Math.max(deltaX, -minStartX)
+    deltaY = Math.max(deltaY, -minStartY)
+
+    let activeNextX = activeStart.x + deltaX
+    let activeNextY = activeStart.y + deltaY
+
+    if (snapToGrid) {
+      activeNextX = Math.max(0, Math.round(activeNextX / gridSize) * gridSize)
+      activeNextY = Math.max(0, Math.round(activeNextY / gridSize) * gridSize)
+      deltaX = activeNextX - activeStart.x
+      deltaY = activeNextY - activeStart.y
+      deltaX = Math.max(deltaX, -minStartX)
+      deltaY = Math.max(deltaY, -minStartY)
+    }
+
+    const positions = {}
+    let maxRight = 0
+    let maxBottom = 0
+
+    groupEntries.forEach((entry) => {
+      const nextX = entry.start.x + deltaX
+      const nextY = entry.start.y + deltaY
+      positions[entry.key] = { x: nextX, y: nextY }
+
+      const rightEdge = nextX + getItemWidth(entry.item)
+      const bottomEdge = nextY + getItemHeight(entry.item)
+      if (rightEdge > maxRight) maxRight = rightEdge
+      if (bottomEdge > maxBottom) maxBottom = bottomEdge
+    })
+
+    return {
+      positions,
+      requiredWidth: Math.ceil(maxRight + growThreshold),
+      requiredHeight: maxBottom + growThreshold
     }
   }
 
@@ -233,7 +456,9 @@ export default function useDeskItemInteractions({
     await persistItemSize(activeItemKey, nextDimensions.width, nextDimensions.height)
     resizeStartRef.current.itemKey = null
     resizeLastDimensionsRef.current = null
-    flushDeferredRemoteNotes()
+    if (typeof clearDeferredRemoteNotes === 'function') {
+      clearDeferredRemoteNotes()
+    }
   }
 
   function getPointerAngleFromCenter(pageX, pageY) {
@@ -357,11 +582,31 @@ export default function useDeskItemInteractions({
     const { pageX, pageY } = getEventPosition(e)
 
     const itemKey = getItemKey(item)
+    const currentMap = sanitizeGroupedMap()
+    const itemGroupId = currentMap[itemKey]
+    const dragGroupKeys = itemGroupId
+      ? Object.keys(currentMap).filter((key) => currentMap[key] === itemGroupId)
+      : [itemKey]
+
+    const groupStartPositions = {}
+    dragGroupKeys.forEach((key) => {
+      const targetItem = notesRef.current.find((entry) => getItemKey(entry) === key)
+      if (!targetItem) return
+      groupStartPositions[key] = {
+        x: Number(targetItem.x) || 0,
+        y: Number(targetItem.y) || 0
+      }
+    })
+
+    dragGroupKeysRef.current = Object.keys(groupStartPositions)
+    dragGroupStartPositionsRef.current = groupStartPositions
+
     isDraggingRef.current = true
     setDraggedId(itemKey)
     draggedIdRef.current = itemKey
     dragPointerIdRef.current = typeof e.pointerId === 'number' ? e.pointerId : null
     dragLastPositionRef.current = { x: item.x, y: item.y }
+    dragLastGroupPositionsRef.current = { ...groupStartPositions }
 
     dragOffsetRef.current = { x: pageX - item.x, y: pageY - item.y }
 
@@ -385,38 +630,39 @@ export default function useDeskItemInteractions({
 
     const { pageX, pageY } = getEventPosition(e)
 
-    const activeItem = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
-    const activeItemWidth = getItemWidth(activeItem)
-    const activeItemHeight = getItemHeight(activeItem)
+    const dragResult = buildGroupDragResult(pageX, pageY, activeDraggedId)
+    if (!dragResult) {
+      dragLastPositionRef.current = null
+      dragLastGroupPositionsRef.current = {}
+      return
+    }
 
-    const nextX = pageX - dragOffsetRef.current.x
-    const nextY = pageY - dragOffsetRef.current.y
-    const requiredWidth = Math.ceil(nextX + activeItemWidth + growThreshold)
-    const effectiveCanvasWidth = Math.max(canvasWidth, requiredWidth)
+    const activePosition = dragResult.positions[activeDraggedId]
+    if (!activePosition) {
+      dragLastPositionRef.current = null
+      dragLastGroupPositionsRef.current = {}
+      return
+    }
 
     setCanvasWidth((prev) => {
-      if (requiredWidth <= prev) return prev
-      return requiredWidth
+      if (dragResult.requiredWidth <= prev) return prev
+      return dragResult.requiredWidth
     })
 
     setCanvasHeight((prev) => {
-      if (nextY + activeItemHeight + growThreshold <= prev) return prev
-      const requiredHeight = nextY + activeItemHeight + growThreshold
+      if (dragResult.requiredHeight <= prev) return prev
+      const requiredHeight = dragResult.requiredHeight
       const requiredSections = Math.ceil(requiredHeight / sectionHeight)
       return Math.max(prev, requiredSections * sectionHeight)
     })
 
-    const maxX = Math.max(0, effectiveCanvasWidth - activeItemWidth)
-    const boundedX = Math.min(Math.max(0, nextX), maxX)
-    const boundedY = Math.max(0, nextY)
-    const snappedX = snapToGrid ? Math.min(Math.max(0, Math.round(boundedX / gridSize) * gridSize), maxX) : boundedX
-    const snappedY = snapToGrid ? Math.max(0, Math.round(boundedY / gridSize) * gridSize) : boundedY
-    dragLastPositionRef.current = { x: snappedX, y: snappedY }
+    dragLastPositionRef.current = { x: activePosition.x, y: activePosition.y }
+    dragLastGroupPositionsRef.current = dragResult.positions
 
     setNotes((prev) =>
       prev.map((item) =>
-        getItemKey(item) === activeDraggedId
-          ? { ...item, x: snappedX, y: snappedY }
+        dragResult.positions[getItemKey(item)]
+          ? { ...item, x: dragResult.positions[getItemKey(item)].x, y: dragResult.positions[getItemKey(item)].y }
           : item
       )
     )
@@ -437,46 +683,62 @@ export default function useDeskItemInteractions({
 
     if (!activeDraggedId) {
       dragLastPositionRef.current = null
+      dragLastGroupPositionsRef.current = {}
+      dragGroupKeysRef.current = []
+      dragGroupStartPositionsRef.current = {}
       return
     }
 
-    let nextPosition = null
-    const lastPosition = dragLastPositionRef.current
+    let finalPositions = dragLastGroupPositionsRef.current
 
-    if (lastPosition) {
-      nextPosition = lastPosition
-    } else if (e) {
+    if (!Object.keys(finalPositions).length && e) {
       const { pageX, pageY } = getEventPosition(e)
-      const nextX = pageX - dragOffsetRef.current.x
-      const nextY = pageY - dragOffsetRef.current.y
-      const activeItem = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
-      const activeItemWidth = getItemWidth(activeItem)
-      const requiredWidth = Math.ceil(nextX + activeItemWidth + growThreshold)
-      const availableWidth = Math.max(canvasWidth, requiredWidth)
-      const maxX = Math.max(0, availableWidth - activeItemWidth)
-      const boundedX = Math.min(Math.max(0, nextX), maxX)
-      const boundedY = Math.max(0, nextY)
-      nextPosition = {
-        x: snapToGrid ? Math.min(Math.max(0, Math.round(boundedX / gridSize) * gridSize), maxX) : boundedX,
-        y: snapToGrid ? Math.max(0, Math.round(boundedY / gridSize) * gridSize) : boundedY
+      const dragResult = buildGroupDragResult(pageX, pageY, activeDraggedId)
+      if (dragResult) {
+        finalPositions = dragResult.positions
+        setCanvasWidth((prev) => Math.max(prev, dragResult.requiredWidth))
+        setCanvasHeight((prev) => {
+          if (dragResult.requiredHeight <= prev) return prev
+          const requiredSections = Math.ceil(dragResult.requiredHeight / sectionHeight)
+          return Math.max(prev, requiredSections * sectionHeight)
+        })
       }
+    }
 
-      setCanvasWidth((prev) => Math.max(prev, requiredWidth))
-    } else {
-      const itemToPersist = notesRef.current.find((item) => getItemKey(item) === activeDraggedId)
-      if (!itemToPersist) return
-      nextPosition = { x: itemToPersist.x, y: itemToPersist.y }
+    const dragGroupKeys = dragGroupKeysRef.current
+    if (!Object.keys(finalPositions).length) {
+      finalPositions = {}
+      dragGroupKeys.forEach((key) => {
+        const item = notesRef.current.find((entry) => getItemKey(entry) === key)
+        if (!item) return
+        finalPositions[key] = { x: Number(item.x) || 0, y: Number(item.y) || 0 }
+      })
     }
 
     setNotes((prev) =>
-      prev.map((item) =>
-        getItemKey(item) === activeDraggedId ? { ...item, x: nextPosition.x, y: nextPosition.y } : item
+      prev.map((item) => {
+        const key = getItemKey(item)
+        const nextPosition = finalPositions[key]
+        if (!nextPosition) return item
+        return { ...item, x: nextPosition.x, y: nextPosition.y }
+      })
+    )
+
+    await Promise.all(
+      Object.entries(finalPositions).map(([itemKey, position]) =>
+        persistItemPosition(itemKey, position.x, position.y)
       )
     )
 
-    await persistItemPosition(activeDraggedId, nextPosition.x, nextPosition.y)
     dragLastPositionRef.current = null
-    flushDeferredRemoteNotes()
+    dragLastGroupPositionsRef.current = {}
+    dragGroupKeysRef.current = []
+    dragGroupStartPositionsRef.current = {}
+    if (typeof clearDeferredRemoteNotes === 'function') {
+      clearDeferredRemoteNotes()
+    } else {
+      flushDeferredRemoteNotes()
+    }
   }
 
   return {
@@ -484,7 +746,11 @@ export default function useDeskItemInteractions({
     rotatingId,
     resizingId,
     resizeOverlay,
+    groupedItemKeys,
+    groupedItemSizes,
     hasActivePointerInteraction,
+    handleGroupSelectionClick,
+    toggleItemGrouping,
     handleDragStart,
     handleResizeMouseDown,
     handleRotateMouseDown

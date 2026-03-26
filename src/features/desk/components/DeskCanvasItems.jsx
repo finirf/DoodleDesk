@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getDecorationOption,
   getItemColor,
@@ -29,10 +29,14 @@ export default function DeskCanvasItems({
   editTextColor,
   editFontFamily,
   draggedId,
+  groupedItemKeys,
+  groupedItemSizes,
   activeDecorationHandleId,
   setActiveDecorationHandleId,
   rotatingId,
   resizingId,
+  handleGroupSelectionClick,
+  toggleItemGrouping,
   handleDragStart,
   handleRotateMouseDown,
   handleResizeMouseDown,
@@ -74,6 +78,8 @@ export default function DeskCanvasItems({
   const mobileDragClearHandlerRef = useRef(null)
   const suppressEditClickRef = useRef(false)
   const suppressEditClickTimerRef = useRef(null)
+  const [isAltHeld, setIsAltHeld] = useState(false)
+  const [isCtrlHeld, setIsCtrlHeld] = useState(false)
 
   function temporarilySuppressEditClick() {
     suppressEditClickRef.current = true
@@ -114,10 +120,40 @@ export default function DeskCanvasItems({
     const deltaX = Math.abs(e.clientX - pending.startClientX)
     const deltaY = Math.abs(e.clientY - pending.startClientY)
 
+    if (pending.longPressActivated) {
+      if (deltaX > MOBILE_DRAG_CANCEL_DISTANCE_PX || deltaY > MOBILE_DRAG_CANCEL_DISTANCE_PX) {
+        pending.hasStartedDrag = true
+        temporarilySuppressEditClick()
+        handleDragStart(e, pending.item)
+        clearPendingMobileDrag()
+      }
+      return
+    }
+
     if (deltaX > MOBILE_DRAG_CANCEL_DISTANCE_PX || deltaY > MOBILE_DRAG_CANCEL_DISTANCE_PX) {
       clearPendingMobileDrag()
     }
-  }, [clearPendingMobileDrag])
+  }, [clearPendingMobileDrag, handleDragStart])
+
+  const handleMobilePointerUp = useCallback((e) => {
+    const pending = mobileDragPointerRef.current
+    if (!pending) {
+      clearPendingMobileDrag()
+      return
+    }
+    if (pending.pointerId !== null && e.pointerId !== pending.pointerId) return
+
+    const deltaX = Math.abs(e.clientX - pending.startClientX)
+    const deltaY = Math.abs(e.clientY - pending.startClientY)
+    const didMovePastThreshold = deltaX > MOBILE_DRAG_CANCEL_DISTANCE_PX || deltaY > MOBILE_DRAG_CANCEL_DISTANCE_PX
+
+    if (pending.longPressActivated && !pending.hasStartedDrag && !didMovePastThreshold) {
+      temporarilySuppressEditClick()
+      toggleItemGrouping?.(pending.item)
+    }
+
+    clearPendingMobileDrag()
+  }, [clearPendingMobileDrag, toggleItemGrouping])
 
   function startMobileDragHold(e, item) {
     if (!isMobileLayout || isDecorationItem(item) || editingId) return
@@ -130,22 +166,21 @@ export default function DeskCanvasItems({
     const pointerId = typeof e.pointerId === 'number' ? e.pointerId : null
     mobileDragPointerRef.current = {
       pointerId,
+      item,
       startClientX: e.clientX,
       startClientY: e.clientY,
-      hasStartedDrag: false
+      hasStartedDrag: false,
+      longPressActivated: false
     }
 
     window.addEventListener('pointermove', handleMobilePointerMove)
-    window.addEventListener('pointerup', clearPendingMobileDrag)
-    window.addEventListener('pointercancel', clearPendingMobileDrag)
+    window.addEventListener('pointerup', handleMobilePointerUp)
+    window.addEventListener('pointercancel', handleMobilePointerUp)
 
     mobileDragTimerRef.current = window.setTimeout(() => {
       const pending = mobileDragPointerRef.current
       if (!pending) return
-      pending.hasStartedDrag = true
-      temporarilySuppressEditClick()
-      handleDragStart(e, item)
-      clearPendingMobileDrag()
+      pending.longPressActivated = true
     }, MOBILE_DRAG_HOLD_MS)
   }
 
@@ -182,9 +217,31 @@ export default function DeskCanvasItems({
   }
 
   useEffect(() => {
+    const handleModifierKeyChange = (event) => {
+      setIsAltHeld(Boolean(event.altKey))
+      setIsCtrlHeld(Boolean(event.ctrlKey))
+    }
+
+    const resetModifiers = () => {
+      setIsAltHeld(false)
+      setIsCtrlHeld(false)
+    }
+
+    window.addEventListener('keydown', handleModifierKeyChange)
+    window.addEventListener('keyup', handleModifierKeyChange)
+    window.addEventListener('blur', resetModifiers)
+
+    return () => {
+      window.removeEventListener('keydown', handleModifierKeyChange)
+      window.removeEventListener('keyup', handleModifierKeyChange)
+      window.removeEventListener('blur', resetModifiers)
+    }
+  }, [])
+
+  useEffect(() => {
     mobilePointerMoveHandlerRef.current = handleMobilePointerMove
-    mobileDragClearHandlerRef.current = clearPendingMobileDrag
-  }, [handleMobilePointerMove, clearPendingMobileDrag])
+    mobileDragClearHandlerRef.current = handleMobilePointerUp
+  }, [handleMobilePointerMove, handleMobilePointerUp])
 
   useEffect(() => {
     return () => {
@@ -208,7 +265,7 @@ export default function DeskCanvasItems({
       mobileDragPointerRef.current = null
       suppressEditClickRef.current = false
     }
-  }, [clearPendingMobileDrag, handleMobilePointerMove])
+  }, [handleMobilePointerMove, handleMobilePointerUp])
 
   return notes.map((item, index) => {
     const itemKey = getItemKey(item)
@@ -224,18 +281,40 @@ export default function DeskCanvasItems({
     const itemHeight = getItemHeight(item)
     const contentMinHeight = Math.max(40, itemHeight - 40)
     const baseZIndex = index + 1
+    const isGrouped = groupedItemKeys.includes(itemKey)
+    const groupSize = groupedItemSizes?.[itemKey] || 0
+    const hasMultipleGroupedNotes = groupSize > 1
+    const shouldShowGroupOutline = isGrouped && (
+      (hasMultipleGroupedNotes && (isAltHeld || isCtrlHeld))
+      || (!hasMultipleGroupedNotes && isCtrlHeld)
+    )
 
     return (
       <div
         key={itemKey}
         data-note-id={item.id}
         data-item-key={itemKey}
+        onClickCapture={
+          isDecoration
+            ? undefined
+            : (e) => {
+              if (handleGroupSelectionClick?.(e, item)) {
+                e.preventDefault()
+                e.stopPropagation()
+              }
+            }
+        }
         onPointerDown={
           editingId
             ? undefined
-            : (isMobileLayout && !isDecoration)
-              ? (e) => startMobileDragHold(e, item)
-            : (e) => handleDragStart(e, item)
+            : (e) => {
+              if (e.ctrlKey || e.altKey) return
+              if (isMobileLayout && !isDecoration) {
+                startMobileDragHold(e, item)
+                return
+              }
+              handleDragStart(e, item)
+            }
         }
         onClick={
           isDecoration
@@ -253,7 +332,11 @@ export default function DeskCanvasItems({
           width: renderedItemWidth,
           minHeight: itemHeight,
           borderRadius: 0,
-          boxShadow: isDecoration ? 'none' : '3px 3px 10px rgba(0,0,0,0.3)',
+          boxShadow: isDecoration
+            ? 'none'
+            : (shouldShowGroupOutline
+              ? '0 0 0 2px rgba(66,133,244,0.95), 3px 3px 10px rgba(0,0,0,0.3)'
+              : '3px 3px 10px rgba(0,0,0,0.3)'),
           mixBlendMode: 'normal',
           opacity: 1,
           fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
@@ -987,7 +1070,9 @@ export default function DeskCanvasItems({
         ) : (
           <>
             <div
-              onClick={() => openItemEditor(itemKey, item, isChecklist)}
+              onClick={() => {
+                openItemEditor(itemKey, item, isChecklist)
+              }}
               style={{
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',

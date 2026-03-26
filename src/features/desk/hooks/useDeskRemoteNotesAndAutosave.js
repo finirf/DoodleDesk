@@ -11,6 +11,10 @@ export default function useDeskRemoteNotesAndAutosave({
   setAutoSaveStatus,
   setEditSaveError
 }) {
+  const clearDeferredRemoteNotes = useCallback(() => {
+    deferredRemoteNotesRef.current = null
+  }, [deferredRemoteNotesRef])
+
   const flushDeferredRemoteNotes = useCallback(() => {
     if (historySyncingRef.current || hasActivePointerInteraction()) return
     if (!deferredRemoteNotesRef.current) return
@@ -74,6 +78,7 @@ export default function useDeskRemoteNotesAndAutosave({
   }, [clearAutoSaveStatusTimeout, setAutoSaveStatus, setEditSaveError])
 
   return {
+    clearDeferredRemoteNotes,
     flushDeferredRemoteNotes,
     setNotesFromRemote,
     clearAutoSaveStatusTimeout,

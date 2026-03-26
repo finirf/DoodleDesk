@@ -1,5 +1,45 @@
 # New Changes
 
+## 2026-03-26 - Multi-Group Support
+
+### Enabled multiple independent note groups on a single desk
+- Refactored grouping state in [src/features/desk/hooks/useDeskItemInteractions.js](src/features/desk/hooks/useDeskItemInteractions.js) from a single flat grouped list to per-note group IDs, enabling more than one group at once.
+- Added Ctrl-session grouping behavior so notes clicked while Ctrl is held are added to the current session group, and a new Ctrl session can start a separate group.
+- Added group-merging behavior: while in an active Ctrl grouping session, clicking a note in another existing group now merges that full group into the active group.
+- Updated drag behavior so dragging a grouped note only moves notes in that note's group (not every grouped note on the desk).
+- Wired per-item group size metadata through [src/features/desk/hooks/useDeskActionOrchestration.js](src/features/desk/hooks/useDeskActionOrchestration.js) and [src/App.jsx](src/App.jsx) into [src/features/desk/components/DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) so outline logic is group-aware per note.
+
+## 2026-03-26 - Drag Persistence Stability
+
+### Fixed occasional note snap-back after drag release
+- Updated [src/features/desk/hooks/useDeskRemoteNotesAndAutosave.js](src/features/desk/hooks/useDeskRemoteNotesAndAutosave.js) with `clearDeferredRemoteNotes` to explicitly discard stale deferred remote snapshots.
+- Wired the new helper through [src/features/desk/hooks/useDeskOperationsOrchestration.js](src/features/desk/hooks/useDeskOperationsOrchestration.js) and [src/App.jsx](src/App.jsx) into item interactions.
+- Updated [src/features/desk/hooks/useDeskItemInteractions.js](src/features/desk/hooks/useDeskItemInteractions.js) drag-end flow to clear stale deferred remote notes after local position persistence, preventing old remote snapshots from reapplying and pulling notes back toward their pre-drag position.
+- Follow-up audit fix: ensured the drag-end path still uses deferred-state clearing (not deferred flush) after grouped drag persistence so stale remote snapshots cannot override released positions.
+
+## 2026-03-25 - Note Grouping Workflow
+
+### Replaced overlap stacking with explicit Shift/Ctrl grouping controls
+- Updated [src/features/desk/hooks/useDeskItemInteractions.js](src/features/desk/hooks/useDeskItemInteractions.js) to remove stack-on-overlap drag behavior and add explicit note grouping state.
+- Shift+click now groups notes; Ctrl+click removes/releases notes from the group.
+- Dragging any grouped note now moves the full group together, while preserving Snap To Grid behavior and canvas growth.
+- Updated [src/features/desk/components/DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) to route Shift/Ctrl clicks into grouping actions, prevent modifier-clicks from starting drag, and visually highlight grouped notes.
+- Added mobile parity: long press now toggles group/ungroup on a note, and long-press then move starts drag so grouped-note movement still works on touch devices.
+- Updated grouped-note outline behavior in [src/features/desk/components/DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) to act as a modifier-mode cue: grouped outlines show only while Shift or Ctrl is actively held.
+- Shift release now hides grouping outlines, Ctrl-hold reveals grouped outlines for ungroup targeting, and Ctrl-clicking a grouped note removes it from the group and immediately removes its outline.
+- Modifier-mode clicks remain action-only (group/ungroup) and do not open the note editor.
+- Group outlines now require at least two grouped notes; a single grouped note no longer shows the blue outline.
+- Remapped desktop modifier controls: hold `Ctrl` to group notes on click and hold `Alt` to ungroup on click (replacing the previous Shift/Ctrl mapping).
+- Refined single-note feedback: when only one note is grouped, its blue outline is visible while `Ctrl` is held and hides when `Ctrl` is released.
+- Group/ungroup modifier-click now registers on the entire note container (not only the text content area), so Ctrl/Alt clicks work anywhere on the note while in grouping mode.
+
+## 2026-03-25 - Sticky Note Stacking
+
+### Sticky notes now stack when dropped on top of another sticky note
+- Updated [src/features/desk/hooks/useDeskItemInteractions.js](src/features/desk/hooks/useDeskItemInteractions.js) drag-end behavior to detect sticky-on-sticky overlap and convert it into a stack placement.
+- When overlap is detected, the dragged sticky note now snaps to a small stack offset from the target note and is moved to the front layer, making stacked notes easier to manage.
+- Stack placement respects Snap To Grid when enabled and still expands the canvas bounds as needed.
+
 ## 2026-03-24 - UI Consistency
 
 ### Unified More dropdown trigger with other top menus

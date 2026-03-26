@@ -10,6 +10,7 @@ export default function useDeskOperationsOrchestration({
   dataQueries
 }) {
   const {
+    clearDeferredRemoteNotes,
     flushDeferredRemoteNotes,
     setNotesFromRemote,
     clearAutoSaveStatusTimeout,
@@ -35,6 +36,7 @@ export default function useDeskOperationsOrchestration({
   } = useDeskDataQueries({ ...dataQueries, setNotesFromRemote })
 
   return {
+    clearDeferredRemoteNotes,
     flushDeferredRemoteNotes,
     setNotesFromRemote,
     clearAutoSaveStatusTimeout,
