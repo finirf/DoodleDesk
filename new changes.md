@@ -7,6 +7,8 @@
 - Multi-touch detection now cancels pending note drag, allowing browser-native canvas scrolling/panning with two fingers.
 - Updated `handleMobilePointerMove()` to detect multi-touch and cancel active drag-hold if additional touches are detected.
 - Updated `handleMobilePointerUp()` to skip grouping logic if multi-touch is still active on pointer up.
+- Added explicit two-finger pan handling in [src/features/desk/components/DeskCanvasContainer.jsx](src/features/desk/components/DeskCanvasContainer.jsx) using touch center tracking and `window.scrollBy(...)` on mobile.
+- Disabled native one-finger browser panning on the desk layer (`touchAction: 'none'` on mobile) and on note surfaces (`touchAction: 'none'` unless actively editing), so one-finger is reserved for note interactions.
 - Result: One-finger long-press now moves notes; two-finger drag pans the canvas naturally on mobile devices.
 
 ## 2026-03-26 - Mobile Menu Positioning

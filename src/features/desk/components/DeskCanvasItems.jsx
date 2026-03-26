@@ -360,7 +360,7 @@ export default function DeskCanvasItems({
           fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
           touchAction: editingId === itemKey
             ? 'auto'
-            : (isMobileLayout && !isDecoration && draggedId !== itemKey ? 'pan-y' : 'none'),
+            : 'none',
           cursor: draggedId === itemKey
             ? 'grabbing'
             : (isMobileLayout && !isDecoration ? 'default' : 'grab'),
