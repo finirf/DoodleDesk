@@ -36,7 +36,6 @@ export default function DeskCanvasItems({
   rotatingId,
   resizingId,
   handleGroupSelectionClick,
-  toggleItemGrouping,
   handleDragStart,
   handleRotateMouseDown,
   handleResizeMouseDown,
@@ -78,21 +77,10 @@ export default function DeskCanvasItems({
   const mobileDragClearHandlerRef = useRef(null)
   const suppressEditClickRef = useRef(false)
   const suppressEditClickTimerRef = useRef(null)
-  const mobileGroupingHintTimerRef = useRef(null)
   const [isAltHeld, setIsAltHeld] = useState(false)
   const [isCtrlHeld, setIsCtrlHeld] = useState(false)
-  const [mobileGroupingHint, setMobileGroupingHint] = useState('')
-
-  function showMobileGroupingHint(message) {
-    setMobileGroupingHint(message)
-    if (mobileGroupingHintTimerRef.current) {
-      window.clearTimeout(mobileGroupingHintTimerRef.current)
-    }
-    mobileGroupingHintTimerRef.current = window.setTimeout(() => {
-      setMobileGroupingHint('')
-      mobileGroupingHintTimerRef.current = null
-    }, 950)
-  }
+  const [mobileContextMenuItemKey, setMobileContextMenuItemKey] = useState(null)
+  const [mobileContextMenuPos, setMobileContextMenuPos] =useState(null)
 
   function temporarilySuppressEditClick() {
     suppressEditClickRef.current = true
@@ -158,6 +146,52 @@ export default function DeskCanvasItems({
     }
   }, [clearPendingMobileDrag, handleDragStart])
 
+  const handleDesktopNoteClick = useCallback((itemKey, item, isChecklist) => {
+    if (!canCurrentUserEditDeskItems) return
+    if (suppressEditClickRef.current) {
+      suppressEditClickRef.current = false
+      return
+    }
+
+    setIsSavingEdit(false)
+    setEditSaveError('')
+    setEditingId(itemKey)
+    setShowStyleEditor(false)
+    setEditColor(getItemColor(item))
+    setEditTextColor(getItemTextColor(item))
+    setEditFontSize(getItemFontSize(item))
+    setEditFontFamily(getItemFontFamily(item))
+    if (isChecklist) {
+      const existingTitle = item.title || 'Checklist'
+      setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
+      setChecklistEditItems((item.items || []).map((entry) => ({
+        text: entry.text || '',
+        is_checked: Boolean(entry.is_checked),
+        due_at: normalizeChecklistReminderValue(entry.due_at)
+      })))
+      setNewChecklistItemText('')
+    } else {
+      const existingContent = item.content || ''
+      setEditValue(existingContent.trim() === 'New note' ? '' : existingContent)
+      setChecklistEditItems([])
+      setNewChecklistItemText('')
+    }
+  }, [
+    canCurrentUserEditDeskItems,
+    setIsSavingEdit,
+    setEditSaveError,
+    setEditingId,
+    setShowStyleEditor,
+    setEditColor,
+    setEditTextColor,
+    setEditFontSize,
+    setEditFontFamily,
+    setEditValue,
+    setChecklistEditItems,
+    setNewChecklistItemText,
+    normalizeChecklistReminderValue
+  ])
+
   const handleMobilePointerUp = useCallback((e) => {
     const pending = mobileDragPointerRef.current
     if (!pending) {
@@ -178,17 +212,66 @@ export default function DeskCanvasItems({
     const didMovePastThreshold = deltaX > MOBILE_DRAG_CANCEL_DISTANCE_PX || deltaY > MOBILE_DRAG_CANCEL_DISTANCE_PX
 
     if (pending.longPressActivated && !pending.hasStartedDrag && !didMovePastThreshold) {
+      // Long-press: Show context menu
       temporarilySuppressEditClick()
       const itemKey = getItemKey(pending.item)
-      const wasGrouped = groupedItemKeys.includes(itemKey)
-      const didToggle = toggleItemGrouping?.(pending.item)
-      if (didToggle) {
-        showMobileGroupingHint(wasGrouped ? 'Ungrouped' : 'Grouped')
-      }
+      setMobileContextMenuItemKey(itemKey)
+      setMobileContextMenuPos({
+        x: e.clientX,
+        y: e.clientY
+      })
+    } else if (!pending.hasStartedDrag && !pending.longPressActivated && !didMovePastThreshold) {
+      // Single tap: Open editor
+      temporarilySuppressEditClick()
+      const itemKey = getItemKey(pending.item)
+      const item = pending.item
+      // Use a deferred callback to open the editor after state clears
+      window.requestAnimationFrame(() => {
+        if (!canCurrentUserEditDeskItems) return
+
+        setIsSavingEdit(false)
+        setEditSaveError('')
+        setEditingId(itemKey)
+        setShowStyleEditor(false)
+        setEditColor(getItemColor(item))
+        setEditTextColor(getItemTextColor(item))
+        setEditFontSize(getItemFontSize(item))
+        setEditFontFamily(getItemFontFamily(item))
+        if (isChecklistItem(item)) {
+          const existingTitle = item.title || 'Checklist'
+          setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
+          setChecklistEditItems((item.items || []).map((entry) => ({
+            text: entry.text || '',
+            is_checked: Boolean(entry.is_checked),
+            due_at: normalizeChecklistReminderValue(entry.due_at)
+          })))
+          setNewChecklistItemText('')
+        } else {
+          const existingContent = item.content || ''
+          setEditValue(existingContent.trim() === 'New note' ? '' : existingContent)
+          setChecklistEditItems([])
+          setNewChecklistItemText('')
+        }
+      })
     }
 
     clearPendingMobileDrag()
-  }, [clearPendingMobileDrag, groupedItemKeys, toggleItemGrouping])
+  }, [
+    clearPendingMobileDrag,
+    canCurrentUserEditDeskItems,
+    setIsSavingEdit,
+    setEditSaveError,
+    setEditingId,
+    setShowStyleEditor,
+    setEditColor,
+    setEditTextColor,
+    setEditFontSize,
+    setEditFontFamily,
+    setEditValue,
+    setChecklistEditItems,
+    setNewChecklistItemText,
+    normalizeChecklistReminderValue
+  ])
 
   function startMobileDragHold(e, item) {
     if (!isMobileLayout || isDecorationItem(item) || editingId) return
@@ -225,38 +308,6 @@ export default function DeskCanvasItems({
       if (!pending) return
       pending.longPressActivated = true
     }, MOBILE_DRAG_HOLD_MS)
-  }
-
-  function openItemEditor(itemKey, item, isChecklist) {
-    if (!canCurrentUserEditDeskItems) return
-    if (suppressEditClickRef.current) {
-      suppressEditClickRef.current = false
-      return
-    }
-
-    setIsSavingEdit(false)
-    setEditSaveError('')
-    setEditingId(itemKey)
-    setShowStyleEditor(false)
-    setEditColor(getItemColor(item))
-    setEditTextColor(getItemTextColor(item))
-    setEditFontSize(getItemFontSize(item))
-    setEditFontFamily(getItemFontFamily(item))
-    if (isChecklist) {
-      const existingTitle = item.title || 'Checklist'
-      setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
-      setChecklistEditItems((item.items || []).map((entry) => ({
-        text: entry.text || '',
-        is_checked: Boolean(entry.is_checked),
-        due_at: normalizeChecklistReminderValue(entry.due_at)
-      })))
-      setNewChecklistItemText('')
-    } else {
-      const existingContent = item.content || ''
-      setEditValue(existingContent.trim() === 'New note' ? '' : existingContent)
-      setChecklistEditItems([])
-      setNewChecklistItemText('')
-    }
   }
 
   useEffect(() => {
@@ -296,10 +347,6 @@ export default function DeskCanvasItems({
         window.clearTimeout(suppressEditClickTimerRef.current)
         suppressEditClickTimerRef.current = null
       }
-      if (mobileGroupingHintTimerRef.current) {
-        window.clearTimeout(mobileGroupingHintTimerRef.current)
-        mobileGroupingHintTimerRef.current = null
-      }
       const pointerMoveHandler = mobilePointerMoveHandlerRef.current
       const clearHandler = mobileDragClearHandlerRef.current
       if (pointerMoveHandler) {
@@ -311,32 +358,203 @@ export default function DeskCanvasItems({
       }
       mobileDragPointerRef.current = null
       suppressEditClickRef.current = false
-      setMobileGroupingHint('')
     }
   }, [handleMobilePointerMove, handleMobilePointerUp])
 
   return (
     <>
-      {isMobileLayout && mobileGroupingHint && (
+      {/* Mobile Context Menu Backdrop */}
+      {isMobileLayout && mobileContextMenuItemKey && mobileContextMenuPos && (
         <div
           style={{
-            position: 'absolute',
-            top: 72,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            padding: '6px 10px',
-            borderRadius: 999,
-            background: 'rgba(33,33,33,0.82)',
-            color: '#fff',
-            fontSize: 12,
-            fontWeight: 700,
-            letterSpacing: 0.2,
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 4999,
+            pointerEvents: 'auto'
+          }}
+          onClick={() => {
+            setMobileContextMenuItemKey(null)
+            setMobileContextMenuPos(null)
+          }}
+        />
+      )}
+
+      {/* Mobile Context Menu */}
+      {isMobileLayout && mobileContextMenuItemKey && mobileContextMenuPos && (
+        <div
+          style={{
+            position: 'fixed',
+            left: Math.min(mobileContextMenuPos.x, window.innerWidth - 160),
+            top: Math.min(mobileContextMenuPos.y, window.innerHeight - 200),
+            background: '#fff',
+            borderRadius: 8,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
             zIndex: 5000,
-            pointerEvents: 'none',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.28)'
+            pointerEvents: 'auto',
+            overflow: 'hidden',
+            minWidth: 140
           }}
         >
-          {mobileGroupingHint}
+          {notes.find((n) => getItemKey(n) === mobileContextMenuItemKey) && (
+            <>
+              <button
+                onClick={() => {
+                  const item = notes.find((n) => getItemKey(n) === mobileContextMenuItemKey)
+                  if (item && canCurrentUserEditDeskItems && !suppressEditClickRef.current) {
+                    setIsSavingEdit(false)
+                    setEditSaveError('')
+                    setEditingId(mobileContextMenuItemKey)
+                    setShowStyleEditor(false)
+                    setEditColor(getItemColor(item))
+                    setEditTextColor(getItemTextColor(item))
+                    setEditFontSize(getItemFontSize(item))
+                    setEditFontFamily(getItemFontFamily(item))
+                    if (isChecklistItem(item)) {
+                      const existingTitle = item.title || 'Checklist'
+                      setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
+                      setChecklistEditItems((item.items || []).map((entry) => ({
+                        text: entry.text || '',
+                        is_checked: Boolean(entry.is_checked),
+                        due_at: normalizeChecklistReminderValue(entry.due_at)
+                      })))
+                      setNewChecklistItemText('')
+                    } else {
+                      const existingContent = item.content || ''
+                      setEditValue(existingContent.trim() === 'New note' ? '' : existingContent)
+                      setChecklistEditItems([])
+                      setNewChecklistItemText('')
+                    }
+                  }
+                  setMobileContextMenuItemKey(null)
+                  setMobileContextMenuPos(null)
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: 'none',
+                  background: '#fff',
+                  color: '#222',
+                  fontSize: 13,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid #eee'
+                }}
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => {
+                  const item = notes.find((n) => getItemKey(n) === mobileContextMenuItemKey)
+                  if (item) {
+                    handleGroupSelectionClick?.({ ctrlKey: true }, item)
+                  }
+                  setMobileContextMenuItemKey(null)
+                  setMobileContextMenuPos(null)
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: 'none',
+                  background: '#fff',
+                  color: '#222',
+                  fontSize: 13,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid #eee'
+                }}
+              >
+                {groupedItemKeys.includes(mobileContextMenuItemKey) ? 'Ungroup' : 'Group'}
+              </button>
+              <button
+                onClick={() => {
+                  moveItemLayer(mobileContextMenuItemKey, 'front')
+                  setMobileContextMenuItemKey(null)
+                  setMobileContextMenuPos(null)
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: 'none',
+                  background: '#fff',
+                  color: '#222',
+                  fontSize: 13,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid #eee'
+                }}
+              >
+                Bring to front
+              </button>
+              <button
+                onClick={() => {
+                  moveItemLayer(mobileContextMenuItemKey, 'back')
+                  setMobileContextMenuItemKey(null)
+                  setMobileContextMenuPos(null)
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: 'none',
+                  background: '#fff',
+                  color: '#222',
+                  fontSize: 13,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid #eee'
+                }}
+              >
+                Send to back
+              </button>
+              <button
+                onClick={() => {
+                  void duplicateItem(mobileContextMenuItemKey)
+                  setMobileContextMenuItemKey(null)
+                  setMobileContextMenuPos(null)
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: 'none',
+                  background: '#fff',
+                  color: '#222',
+                  fontSize: 13,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid #eee'
+                }}
+              >
+                Duplicate
+              </button>
+              <button
+                onClick={() => {
+                  requestDeleteNote(mobileContextMenuItemKey)
+                  setMobileContextMenuItemKey(null)
+                  setMobileContextMenuPos(null)
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: 'none',
+                  background: '#fff',
+                  color: '#d32f2f',
+                  fontSize: 13,
+                  textAlign: 'left',
+                  cursor: 'pointer'
+                }}
+              >
+                Delete
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -1147,7 +1365,7 @@ export default function DeskCanvasItems({
           <>
             <div
               onClick={() => {
-                openItemEditor(itemKey, item, isChecklist)
+                handleDesktopNoteClick(itemKey, item, isChecklist)
               }}
               style={{
                 whiteSpace: 'pre-wrap',

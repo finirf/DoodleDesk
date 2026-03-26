@@ -33,7 +33,47 @@ export default function useDeskUiDerivedValues({
 
   const customShelfOptions = useMemo(() => getCustomShelfOptions(), [getCustomShelfOptions])
 
+  const inputCapabilities = useMemo(() => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      return {
+        hasTouchPoints: false,
+        hasCoarsePointer: false,
+        hasNoHover: false,
+        isBrowserReportedMobile: false,
+        isTouchPrimaryInput: false
+      }
+    }
+
+    const hasTouchPoints = (navigator.maxTouchPoints || 0) > 0
+    const hasCoarsePointer = Boolean(
+      window.matchMedia?.('(pointer: coarse)')?.matches
+      || window.matchMedia?.('(any-pointer: coarse)')?.matches
+    )
+    const hasNoHover = Boolean(
+      window.matchMedia?.('(hover: none)')?.matches
+      || window.matchMedia?.('(any-hover: none)')?.matches
+    )
+
+    const browserReportedMobile = typeof navigator.userAgentData?.mobile === 'boolean'
+      ? navigator.userAgentData.mobile
+      : /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '')
+
+    const isTouchPrimaryInput = Boolean(
+      hasCoarsePointer
+      || (hasTouchPoints && (hasNoHover || browserReportedMobile))
+    )
+
+    return {
+      hasTouchPoints,
+      hasCoarsePointer,
+      hasNoHover,
+      isBrowserReportedMobile: browserReportedMobile,
+      isTouchPrimaryInput
+    }
+  }, [])
+
   const isMobileLayout = viewportWidth <= 820
+  const isTouchInteractionMode = isMobileLayout || inputCapabilities.isTouchPrimaryInput
   const isCompactMobileLayout = viewportWidth <= 560
   const isCurrentUserViewer = Boolean(
     currentDesk
@@ -150,6 +190,7 @@ export default function useDeskUiDerivedValues({
   return {
     sortedDesks,
     isMobileLayout,
+    isTouchInteractionMode,
     isCurrentUserViewer,
     pendingFriendRequestCount,
     totalItemsCount,

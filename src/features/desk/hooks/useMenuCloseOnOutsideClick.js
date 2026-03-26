@@ -27,8 +27,9 @@ export default function useMenuCloseOnOutsideClick({
       }
     }
 
-    window.addEventListener('mousedown', handleClickOutside)
-    return () => window.removeEventListener('mousedown', handleClickOutside)
+    // Use pointerdown for better touch device support
+    window.addEventListener('pointerdown', handleClickOutside)
+    return () => window.removeEventListener('pointerdown', handleClickOutside)
   }, [showNewNoteMenu, showDeskMenu, showProfileMenu, setShowNewNoteMenu, setShowDeskMenu, setShowProfileMenu])
 
   return {
