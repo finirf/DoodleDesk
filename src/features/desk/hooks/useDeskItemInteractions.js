@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 export default function useDeskItemInteractions({
   canCurrentUserEditDeskItems,
   editingId,
+  notes,
   notesRef,
   setNotes,
   sectionHeight,
@@ -20,6 +21,7 @@ export default function useDeskItemInteractions({
   persistItemPosition,
   persistItemSize,
   persistRotation,
+  persistItemGroup,
   flushDeferredRemoteNotes,
   clearDeferredRemoteNotes
 }) {
@@ -45,6 +47,7 @@ export default function useDeskItemInteractions({
   const dragGroupStartPositionsRef = useRef({})
   const dragLastGroupPositionsRef = useRef({})
   const groupedItemGroupMapRef = useRef({})
+  const persistedGroupedItemMapRef = useRef({})
   const ctrlGroupSessionIdRef = useRef(null)
   const isCtrlPressedRef = useRef(false)
   const isDraggingRef = useRef(false)
@@ -106,10 +109,30 @@ export default function useDeskItemInteractions({
     return `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   }
 
-  function setGroupedMap(nextMap) {
+  const setGroupedMap = useCallback((nextMap) => {
     groupedItemGroupMapRef.current = nextMap
     setGroupedItemGroupMap(nextMap)
-  }
+    setNotes((prev) => {
+      let hasAnyChange = false
+      const nextItems = prev.map((item) => {
+        if (isDecorationItem(item)) return item
+        const itemKey = getItemKey(item)
+        const nextGroupId = nextMap[itemKey] || null
+        const currentGroupId = typeof item?.group_id === 'string' && item.group_id.trim()
+          ? item.group_id.trim()
+          : null
+
+        if (currentGroupId === nextGroupId) return item
+        hasAnyChange = true
+        return {
+          ...item,
+          group_id: nextGroupId
+        }
+      })
+
+      return hasAnyChange ? nextItems : prev
+    })
+  }, [getItemKey, isDecorationItem, setNotes])
 
   function pruneSingletonGroups(inputMap, preserveGroupId = null) {
     const groupCounts = {}
@@ -154,6 +177,60 @@ export default function useDeskItemInteractions({
   }
 
   useEffect(() => {
+    let rafId = null
+    const hydratedMap = {}
+    notes.forEach((item) => {
+      if (isDecorationItem(item)) return
+      const groupId = typeof item?.group_id === 'string' ? item.group_id.trim() : ''
+      if (!groupId) return
+      hydratedMap[getItemKey(item)] = groupId
+    })
+
+    const normalizedHydratedMap = pruneSingletonGroups(hydratedMap)
+    const currentMap = groupedItemGroupMapRef.current
+    const hasDiff = Object.keys(normalizedHydratedMap).length !== Object.keys(currentMap).length
+      || Object.keys(normalizedHydratedMap).some((key) => normalizedHydratedMap[key] !== currentMap[key])
+
+    if (hasDiff) {
+      rafId = window.requestAnimationFrame(() => {
+        setGroupedMap(normalizedHydratedMap)
+      })
+    }
+
+    persistedGroupedItemMapRef.current = normalizedHydratedMap
+    return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId)
+      }
+    }
+  }, [notes, getItemKey, isDecorationItem, setGroupedMap])
+
+  useEffect(() => {
+    if (typeof persistItemGroup !== 'function') return
+
+    const currentMap = groupedItemGroupMapRef.current
+    const previousPersistedMap = persistedGroupedItemMapRef.current
+    const candidateKeys = new Set([...Object.keys(previousPersistedMap), ...Object.keys(currentMap)])
+    const changedKeys = [...candidateKeys].filter((itemKey) => previousPersistedMap[itemKey] !== currentMap[itemKey])
+
+    if (!changedKeys.length) return
+
+    persistedGroupedItemMapRef.current = { ...currentMap }
+    void Promise.all(changedKeys.map((itemKey) => persistItemGroup(itemKey, currentMap[itemKey] || null)))
+  }, [groupedItemGroupMap, persistItemGroup])
+
+  const finalizeGroupingSession = useCallback(() => {
+    const normalizedMap = pruneSingletonGroups(groupedItemGroupMapRef.current)
+    if (
+      Object.keys(normalizedMap).length !== Object.keys(groupedItemGroupMapRef.current).length
+      || Object.keys(normalizedMap).some((key) => normalizedMap[key] !== groupedItemGroupMapRef.current[key])
+    ) {
+      setGroupedMap(normalizedMap)
+    }
+    ctrlGroupSessionIdRef.current = null
+  }, [setGroupedMap])
+
+  useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === 'Control') {
         isCtrlPressedRef.current = true
@@ -194,7 +271,7 @@ export default function useDeskItemInteractions({
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleWindowBlur)
     }
-  }, [])
+  }, [setGroupedMap])
 
   function handleGroupSelectionClick(event, item) {
     if (!canCurrentUserEditDeskItems) return false
@@ -290,6 +367,48 @@ export default function useDeskItemInteractions({
       ...pruneSingletonGroups(currentMap, sessionGroupId),
       [itemKey]: sessionGroupId
     })
+    return true
+  }
+
+  function groupItemsByKeys(itemKeys) {
+    if (!canCurrentUserEditDeskItems) return false
+    if (editingId) return false
+    if (!Array.isArray(itemKeys) || itemKeys.length < 2) return false
+
+    const currentMap = sanitizeGroupedMap()
+    const validGroupableKeys = new Set(
+      notesRef.current
+        .filter((item) => isGroupableItem(item))
+        .map((item) => getItemKey(item))
+    )
+
+    const selectedKeys = [...new Set(itemKeys.filter((key) => validGroupableKeys.has(key)))]
+    if (selectedKeys.length < 2) return false
+
+    let targetGroupId = selectedKeys
+      .map((key) => currentMap[key])
+      .find((groupId) => Boolean(groupId))
+
+    if (!targetGroupId) {
+      targetGroupId = createGroupId()
+    }
+
+    const nextMap = { ...currentMap }
+
+    selectedKeys.forEach((key) => {
+      const existingGroupId = nextMap[key]
+      if (existingGroupId && existingGroupId !== targetGroupId) {
+        Object.keys(nextMap).forEach((mapKey) => {
+          if (nextMap[mapKey] === existingGroupId) {
+            nextMap[mapKey] = targetGroupId
+          }
+        })
+      }
+      nextMap[key] = targetGroupId
+    })
+
+    setGroupedMap(pruneSingletonGroups(nextMap, targetGroupId))
+    ctrlGroupSessionIdRef.current = targetGroupId
     return true
   }
 
@@ -795,8 +914,11 @@ export default function useDeskItemInteractions({
     rotatingId,
     resizingId,
     resizeOverlay,
+    groupedItemGroupMap,
     groupedItemKeys,
     groupedItemSizes,
+    finalizeGroupingSession,
+    groupItemsByKeys,
     hasActivePointerInteraction,
     handleGroupSelectionClick,
     toggleItemGrouping,

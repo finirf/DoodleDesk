@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import {
   getDecorationOption,
   getDefaultItemColor,
@@ -98,6 +98,8 @@ export function useDeskItemOperations({
   setActiveDecorationHandleId,
   setShowStyleEditor
 }) {
+  const groupIdPersistenceUnsupportedRef = useRef(false)
+
   // ===== Item Creation =====
 
   // Pre-define findAvailableSpawnPosition since it's used by creation functions
@@ -479,6 +481,35 @@ export function useDeskItemOperations({
       markAutoSaveSaved()
     },
     [notesRef, selectedDeskId, supabase, markAutoSaveSaving, markAutoSaveSaved, markAutoSaveError]
+  )
+
+  const persistItemGroup = useCallback(
+    async (itemKey, groupId) => {
+      if (groupIdPersistenceUnsupportedRef.current) return false
+
+      const item = notesRef.current.find((row) => getItemKey(row) === itemKey)
+      if (!item) return false
+
+      const table = getItemTableName(item)
+      const nextGroupId = typeof groupId === 'string' && groupId.trim() ? groupId.trim() : null
+      const { error } = await supabase
+        .from(table)
+        .update({ group_id: nextGroupId, desk_id: selectedDeskId })
+        .eq('id', item.id)
+        .eq('desk_id', selectedDeskId)
+
+      if (error) {
+        if (isMissingColumnError(error, 'group_id')) {
+          groupIdPersistenceUnsupportedRef.current = true
+          return false
+        }
+        console.error('Failed to persist item group:', error)
+        return false
+      }
+
+      return true
+    },
+    [notesRef, selectedDeskId, supabase]
   )
 
   // ===== Item Layering =====
@@ -1124,6 +1155,7 @@ export function useDeskItemOperations({
     persistRotation,
     persistItemPosition,
     persistItemSize,
+    persistItemGroup,
     // Item layering
     moveItemLayer,
     // Item editing

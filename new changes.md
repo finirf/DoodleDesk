@@ -1,8 +1,234 @@
 # New Changes
 
+## 2026-03-27 - Group Color Consistency Across Multiple Groups
+
+### ✅ Added stable per-group note colors
+- **Issue**: Multiple groups could exist, but grouped notes did not share a clear, consistent visual color by group.
+- **Solution**:
+  - Exposed the full item-to-group map from grouping interactions (`groupedItemGroupMap`).
+  - Passed group map through orchestration into the canvas renderer.
+  - Added deterministic color assignment per group ID using a fixed palette + stable hash.
+  - Applied group color to all notes in that group, with automatic readable text color.
+- **Result**:
+  - Notes in the same group now always share the same color.
+  - Different groups maintain independent, consistent colors.
+  - Group colors stay stable across re-renders while group membership remains unchanged.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+  - `src/features/desk/hooks/useDeskActionOrchestration.js`
+  - `src/App.jsx`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-03-27 - Ungroup Mode Click Release Behavior
+
+### ✅ Shift+Ctrl ungroup mode now releases notes on click
+- **Issue**: In desktop ungroup mode, clicking a grouped note did not reliably release it and gray it out with ungrouped notes.
+- **Solution**: Updated ungroup mode click handling to route grouped-note clicks through the ungroup path (`Alt`-style release logic with singleton pruning) instead of normal Ctrl grouping flow.
+- **Result**:
+  - Clicking a grouped note in Shift+Ctrl mode immediately removes it from grouping.
+  - The note immediately appears gray/dimmed like other ungrouped notes while still in ungroup mode.
+  - If a group becomes a singleton, remaining items are also released by existing prune logic.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-03-27 - Group/Ungroup Visual + Cleanup Refinement
+
+### ✅ Switched to border-only group colors and hardened singleton cleanup
+- **Update**: Grouped notes no longer change fill/background color. Group identity is now shown only as an outer highlight/border while desktop group/ungroup mode is active.
+- **Behavior**:
+  - In desktop **group mode** (`Ctrl`) and **ungroup mode** (`Shift+Ctrl`), grouped notes get an outside highlight colored by group.
+  - Note body colors stay unchanged.
+  - Green selection highlight still takes priority for active selection interactions.
+- **Cleanup Guarantee**:
+  - Added explicit grouping-session finalization on mode exit to prune singleton groups when leaving either group mode or ungroup mode.
+  - This runs in addition to existing keyup/blur cleanup safeguards.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+  - `src/features/desk/hooks/useDeskActionOrchestration.js`
+  - `src/App.jsx`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-03-27 - Unified Color After Group Merge
+
+### ✅ Merging two groups now yields one border color consistently
+- **Issue**: When combining existing groups, notes could still appear as separate colored subgroups during desktop group flow.
+- **Solution**:
+  - Implemented explicit desktop group apply logic that runs on **Release** and when leaving desktop Ctrl group mode.
+  - Selected notes (including notes from different existing groups) are merged through the same Ctrl grouping path into a single resulting group id.
+- **Result**:
+  - Once groups are combined, all notes in the merged group resolve to one group id and one border color.
+  - No split-color subgroup appearance after merge completion.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-03-27 - Ungroup Mode Immediate Release Reliability
+
+### ✅ Shift+Ctrl ungroup now releases on pointer-down
+- **Issue**: In some interactions, relying on click-capture could delay or miss ungroup release timing.
+- **Solution**: Moved grouped-note release behavior in desktop ungroup mode to `onPointerDown` (with prevent/stop), keeping note release immediate and consistent.
+- **Result**:
+  - Clicking/tapping a grouped note in ungroup mode immediately removes its group membership.
+  - The note consistently dims right away with ungrouped notes.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-03-27 - Distinct Colors For Separate Groups
+
+### ✅ Separate active groups now use different border colors
+- **Issue**: Hash-based color mapping could assign the same border color to different groups.
+- **Solution**: Updated group color assignment to resolve collisions across active groups so each group gets a distinct border color (with deterministic fallback colors when palette is exhausted).
+- **Result**:
+  - Separate groups now render with different border colors while in group/ungroup mode.
+  - Merged groups still resolve to one group id and one color.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-03-27 - Group Persistence Across Reloads
+
+### ✅ Group membership now persists after refresh/reload
+- **Feature**: Group map is now hydrated from stored `group_id` values on items and persisted back to Supabase when grouping changes.
+- **Implementation**:
+  - Added `persistItemGroup(itemKey, groupId)` operation with safe fallback if `group_id` columns are not available yet.
+  - Grouping hook now:
+    - Hydrates in-memory group map from loaded note/checklist `group_id` values.
+    - Persists group-map deltas to database as users group/ungroup.
+  - Wired `notes` into interactions layer so hydration can run on remote reloads.
+- **SQL Migration Added**:
+  - `SUPABASE_UPDATES_2026_03_27_GROUP_PERSISTENCE.sql`
+  - Adds `group_id` columns to `notes` and `checklists` plus `(desk_id, group_id)` indexes.
+- **Result**:
+  - Groups survive full page reloads once migration is applied.
+
+## 2026-03-27 - Ctrl Release Grouping Reliability
+
+### ✅ Selected notes now group atomically on release
+- **Issue**: Selecting multiple notes then releasing Ctrl could fail to keep them grouped due to incremental grouping interacting with singleton pruning.
+- **Solution**: Added a batch grouping action that groups selected keys in one atomic pass, and wired desktop Release/Ctrl-up plus mobile confirm flows to use it.
+- **Result**: Multi-selection grouping now persists correctly when Ctrl is released.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+  - `src/features/desk/hooks/useDeskActionOrchestration.js`
+  - `src/App.jsx`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+
+## 2026-03-27 - Bug Fix: Ctrl-Click Selection Flicker
+
+### ✅ Fixed green-border flicker and failed selection in desktop group mode
+- **Issue**: In Ctrl group mode, clicking a note briefly showed the green border, then immediately removed it, preventing multi-selection and grouping
+- **Root Cause**: Selection was being toggled twice per click: once in `onPointerDown` and again in `onClickCapture`
+- **Solution**: Removed the duplicate desktop group-selection toggle block from `onClickCapture`; selection now runs only in `onPointerDown`
+- **Code Change**: [DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) in the note container event handlers
+- **Result**:
+  - Ctrl+click reliably selects notes and keeps the green border
+  - Multiple notes can be selected without flicker
+  - Releasing Ctrl now groups the selected notes as intended
+- **Build Validation**: ✅ Clean lint, successful build in 1.24s
+
+## 2026-03-27 - Bug Fix: Group Selection Click Handling
+
+### ✅ Fixed notes moving when clicking during Ctrl group selection mode
+- **Issue**: When holding Ctrl and clicking two notes, they would drag/move separately instead of being selected for grouping
+- **Root Cause**: Group selection logic was in `onClickCapture` handler (fire phase), but drag initiation was in `onPointerDown` handler (earlier phase). The drag start wasn't being prevented in the right place.
+- **Solution**: Moved desktop group selection mode logic from `onClickCapture` to `onPointerDown` handler, placed BEFORE the drag initialization, with proper `preventDefault()` and `stopPropagation()` calls
+- **Code Change**: [DeskCanvasItems.jsx lines 853-890](src/features/desk/components/DeskCanvasItems.jsx#L853-L890) - restructured pointerdown handler to check:
+  1. Mobile group selection mode (existing)
+  2. **Desktop group selection mode (Ctrl)** - NEW position (was in onClickCapture)
+  3. **Desktop ungroup mode (Shift+Ctrl)** - NEW position (was in onClickCapture, only blocks ungrouped items)
+  4. Then proceed with drag logic
+- **Result**: 
+  - Ctrl+Click on first note → Selected (green border), note stays in place
+  - Ctrl+Click on second note → Selected (green border), note stays in place
+  - Both notes are now ready to group
+  - Release Ctrl to group them together
+- **Build Validation**: ✅ Clean lint, successful build in 2.47s
+- **User Experience**: Desktop group selection now works intuitively - clicks select items instead of dragging them
+
+## 2026-03-27 - Final Mode Separation Refinement
+
+### ✅ Clarified group/ungroup mode separation
+- **Issue**: Desktop group mode overlay was showing when holding Ctrl+Shift, causing overlap between group and ungroup modes
+- **Solution**: Added `&& !isShiftHeld` condition to desktop group selection overlay trigger
+- **Result**: 
+  - **Ctrl alone** = Group selection mode (can select notes to group together)
+  - **Shift+Ctrl** = Ungroup mode (can interact with grouped items to ungroup them)
+  - No condition overlap - each mode has distinct visual behavior
+  - Group mode overlay & toolbar only visible when Ctrl held without Shift
+  - Ungroup mode overlay & visual focus only visible when both Shift+Ctrl held together
+- **Code Change**: [DeskCanvasItems.jsx line 694](src/features/desk/components/DeskCanvasItems.jsx#L694) - modified desktop group overlay condition from `{!isMobileLayout && isCtrlHeld && (` to `{!isMobileLayout && isCtrlHeld && !isShiftHeld && (`
+- **Build Validation**: ✅ Clean lint (0 errors, 0 warnings), successful build in 1.94s
+- **User Experience**: Crystal-clear mode distinction - modal state is unambiguous when using keyboard modifiers
+
 ## 2026-03-26 - Comprehensive Mobile/Desktop Integration Overhaul
 
+### ✅ Fixed overlay z-index so notes remain visible in selection modes
+- **Issue**: Notes were appearing greyed out behind the overlay in both mobile and desktop group selection modes
+- **Solution**: 
+  - Lowered overlay z-index from 4999 to 100 (stays below notes)
+  - Raised note base z-index from `index + 1` to `index + 201` to ensure all notes are above overlay
+  - Result: Notes now remain fully visible and interactive while desk area is greyed out
+- **Applies to**:
+  - Desktop group selection (Ctrl held)
+  - Desktop ungroup mode (Ctrl + Alt held)
+  - Mobile group selection mode
+
+### ✅ Added Shift+Ctrl (ungroup) mode with visual focus
+- **Feature**: Desktop users can now hold Shift+Ctrl to enter ungroup mode with visual distinction
+- **Behavior**:
+  - Grayed-out overlay appears (same as group mode)
+  - Only grouped items remain fully visible (opacity 1)
+  - Ungrouped items are dimmed to 30% opacity (0.3)
+  - Clicks on ungrouped items are blocked during this mode
+  - Alt+Click on grouped items ungroups them as usual
+- **Visual Feedback**:
+  - Grouped items stand out clearly against the dimmed ungrouped items
+  - Same grey overlay as group mode but with selective item visibility
+  - Provides clear focus on which items can be ungrouped
+- **UX Intent**: Mirrors the group selection mode but inverted - instead of selecting items to group, user sees which items are already grouped and can ungroup them
+
+### ✅ Added interactive desktop group selection interface (hold Ctrl)
+- **Feature**: Desktop users can now hold Ctrl to enter an interactive group selection mode
+- **Interface Details** (mirrors mobile group selection):
+  - Grayed-out overlay appears behind all notes (using semi-transparent black background with 0.5 opacity)
+  - Notes remain fully visible and interactive within the overlay
+  - Users can scroll around the desk freely while selecting notes
+  - Selected notes show a prominent green border (3px rgba(76, 175, 80, 0.95)) to distinguish from grouped items (blue outline)
+  - Bottom toolbar displays: "Cancel" button | "X items" counter | "Release" button
+- **Interaction Flow**:
+  1. Hold Ctrl → Enter group selection mode with grayed overlay
+  2. Click any note to toggle its selection (green border appears)
+  3. Scroll desk freely while keeping Ctrl held 
+  4. Release Ctrl OR click "Cancel" → Exit without grouping
+  5. Release Ctrl while notes selected → Groups all currently selected notes together
+- **Visual Feedback**: 
+  - Green selection border (3px) appears around selected notes
+  - Overlay grays out the desk, maintaining focus on notes and selection toolbar
+  - Counter shows real-time selection count
+- **Behavior**:
+  - Existing group outlines (blue) remain visible but don't interfere with selection
+  - Releasing Ctrl triggers grouping and returns to normal mode
+  - Clicking outside the notes (on grayed desk) goes back to normal mode
+- Implementation: [DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) with `isCtrlHeld` state integration
+
 ### ✅ Added interactive mobile group selection interface
+- **Feature**: Users can now tap the "Group" button in the mobile context menu to enter an interactive group selection mode
+- **Interface Details**:
+  - Grayed-out overlay appears behind all notes (using semi-transparent black background with 0.5 opacity)
+  - Notes remain fully visible and interactive within the overlay
+  - Users can scroll around the desk freely while selecting notes
+  - Selected notes show a prominent green border (3px rgba(76, 175, 80, 0.95)) to distinguish from grouped items (blue outline)
+  - Bottom toolbar displays: "Cancel" button | "X selected" counter | "Group" button (disabled until notes are selected)
+- **Interaction Flow**:
+  1. Long-press on note → Context menu appears
+  2. Tap "Group" → Enter group selection mode (initial note pre-selected)
+  3. Tap other notes to toggle their selection on/off
+  4. Tap the grayed-out desk area OR tap "Group" button → Confirm grouping and exit mode
+  5. Tap "Cancel" → Exit without grouping
+- **Already Grouped Items**: If a note is already grouped, tapping "Group" immediately ungroups it (without entering selection mode)
+- **Visual Feedback**: Green selection border (3px) appears around selected notes, making it clear which items will be grouped
+- Implementation: [DeskCanvasItems.jsx](src/features/desk/components/DeskCanvasItems.jsx) with toggleGroupItemSelection callback and handleGroupSelectionConfirm handler
+
+### ✅ Fixed touch scroll conflict with note dragging
 - **Feature**: Users can now tap the "Group" button in the mobile context menu to enter an interactive group selection mode
 - **Interface Details**:
   - Grayed-out overlay appears behind all notes (using semi-transparent black background with 0.5 opacity)

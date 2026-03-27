@@ -101,6 +101,7 @@ export default function useDeskActionOrchestration({
     persistRotation,
     persistItemPosition,
     persistItemSize,
+    persistItemGroup,
     moveItemLayer,
     addChecklistEditItem,
     closeItemEditor,
@@ -116,8 +117,11 @@ export default function useDeskActionOrchestration({
     rotatingId,
     resizingId,
     resizeOverlay,
+    groupedItemGroupMap,
     groupedItemKeys,
     groupedItemSizes,
+    finalizeGroupingSession,
+    groupItemsByKeys,
     hasActivePointerInteraction,
     handleGroupSelectionClick,
     toggleItemGrouping,
@@ -128,7 +132,8 @@ export default function useDeskActionOrchestration({
     ...itemInteractions,
     persistItemPosition,
     persistItemSize,
-    persistRotation
+    persistRotation,
+    persistItemGroup
   })
 
   useEffect(() => {
@@ -287,8 +292,11 @@ export default function useDeskActionOrchestration({
     rotatingId,
     resizingId,
     resizeOverlay,
+    groupedItemGroupMap,
     groupedItemKeys,
     groupedItemSizes,
+    finalizeGroupingSession,
+    groupItemsByKeys,
     hasActivePointerInteraction,
     handleGroupSelectionClick,
     toggleItemGrouping,
