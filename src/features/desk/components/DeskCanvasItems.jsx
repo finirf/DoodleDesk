@@ -197,6 +197,18 @@ export default function DeskCanvasItems({
     setSelectedGroupItemKeys(new Set())
   }, [selectedGroupItemKeys, groupItemsByKeys])
 
+  const ungroupMobileItemGroup = useCallback((itemKey) => {
+    const groupId = groupedItemGroupMap?.[itemKey]
+    if (!groupId) return
+
+    const groupedKeys = Object.keys(groupedItemGroupMap).filter((key) => groupedItemGroupMap[key] === groupId)
+    groupedKeys.forEach((groupedKey) => {
+      const groupedItem = notes.find((entry) => getItemKey(entry) === groupedKey)
+      if (!groupedItem) return
+      handleGroupSelectionClick?.({ altKey: true, ctrlKey: false }, groupedItem)
+    })
+  }, [getItemKey, groupedItemGroupMap, handleGroupSelectionClick, notes])
+
   const handleMobilePointerMove = useCallback((e) => {
     const pending = mobileDragPointerRef.current
     if (!pending) return
@@ -250,6 +262,7 @@ export default function DeskCanvasItems({
       const existingTitle = item.title || 'Checklist'
       setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
       setChecklistEditItems((item.items || []).map((entry) => ({
+        id: entry.id ?? null,
         text: entry.text || '',
         is_checked: Boolean(entry.is_checked),
         due_at: normalizeChecklistReminderValue(entry.due_at)
@@ -326,6 +339,7 @@ export default function DeskCanvasItems({
           const existingTitle = item.title || 'Checklist'
           setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
           setChecklistEditItems((item.items || []).map((entry) => ({
+            id: entry.id ?? null,
             text: entry.text || '',
             is_checked: Boolean(entry.is_checked),
             due_at: normalizeChecklistReminderValue(entry.due_at)
@@ -520,6 +534,7 @@ export default function DeskCanvasItems({
                       const existingTitle = item.title || 'Checklist'
                       setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
                       setChecklistEditItems((item.items || []).map((entry) => ({
+                        id: entry.id ?? null,
                         text: entry.text || '',
                         is_checked: Boolean(entry.is_checked),
                         due_at: normalizeChecklistReminderValue(entry.due_at)
@@ -555,11 +570,8 @@ export default function DeskCanvasItems({
                   const isCurrentlyGrouped = groupedItemKeys.includes(mobileContextMenuItemKey)
                   
                   if (isCurrentlyGrouped) {
-                    // Ungroup: Find all items in this group and ungroup them
-                    const item = notes.find((n) => getItemKey(n) === mobileContextMenuItemKey)
-                    if (item) {
-                      handleGroupSelectionClick?.({ ctrlKey: true }, item)
-                    }
+                    // Ungroup all items in the tapped item's group.
+                    ungroupMobileItemGroup(mobileContextMenuItemKey)
                     setMobileContextMenuItemKey(null)
                     setMobileContextMenuPos(null)
                   } else {
@@ -583,7 +595,7 @@ export default function DeskCanvasItems({
                   borderBottom: '1px solid #eee'
                 }}
               >
-                {groupedItemKeys.includes(mobileContextMenuItemKey) ? 'Ungroup' : 'Group'}
+                {groupedItemGroupMap?.[mobileContextMenuItemKey] ? 'Ungroup' : 'Group'}
               </button>
               <button
                 onClick={() => {

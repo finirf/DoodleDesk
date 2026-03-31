@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+const REMOTE_GROUP_DOWNGRADE_GUARD_MS = 15000
+
 export default function useDeskItemInteractions({
+  selectedDeskId,
   canCurrentUserEditDeskItems,
   editingId,
   notes,
@@ -32,6 +35,7 @@ export default function useDeskItemInteractions({
   const [groupedItemGroupMap, setGroupedItemGroupMap] = useState({})
 
   const groupedItemKeys = Object.keys(groupedItemGroupMap)
+  const pendingGroupStorageKey = selectedDeskId ? `doodledesk.pendingGroupMap.${selectedDeskId}` : null
   const groupedItemSizes = groupedItemKeys.reduce((accumulator, itemKey) => {
     const groupId = groupedItemGroupMap[itemKey]
     if (!groupId) return accumulator
@@ -48,6 +52,9 @@ export default function useDeskItemInteractions({
   const dragLastGroupPositionsRef = useRef({})
   const groupedItemGroupMapRef = useRef({})
   const persistedGroupedItemMapRef = useRef({})
+  const hasPendingGroupPersistenceRef = useRef(false)
+  const groupPersistenceRetryTimeoutRef = useRef(null)
+  const lastLocalGroupMutationAtRef = useRef(0)
   const ctrlGroupSessionIdRef = useRef(null)
   const isCtrlPressedRef = useRef(false)
   const isDraggingRef = useRef(false)
@@ -71,6 +78,28 @@ export default function useDeskItemInteractions({
   const hasActivePointerInteraction = useCallback(() => {
     return Boolean(isDraggingRef.current || isResizingRef.current || isRotatingRef.current)
   }, [])
+
+  const persistPendingGroupMap = useCallback((nextMap) => {
+    if (!pendingGroupStorageKey || typeof window === 'undefined') return
+
+    try {
+      const hasEntries = nextMap && Object.keys(nextMap).length > 0
+      if (!hasEntries) {
+        window.localStorage.removeItem(pendingGroupStorageKey)
+        return
+      }
+
+      window.localStorage.setItem(
+        pendingGroupStorageKey,
+        JSON.stringify({
+          updatedAt: Date.now(),
+          map: nextMap
+        })
+      )
+    } catch {
+      // Ignore localStorage errors in private/blocked environments.
+    }
+  }, [pendingGroupStorageKey])
 
   function getEventPosition(event) {
     if (event?.touches?.length) {
@@ -109,7 +138,11 @@ export default function useDeskItemInteractions({
     return `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   }
 
-  const setGroupedMap = useCallback((nextMap) => {
+  const setGroupedMap = useCallback((nextMap, source = 'local') => {
+    if (source !== 'remote') {
+      lastLocalGroupMutationAtRef.current = Date.now()
+    }
+
     groupedItemGroupMapRef.current = nextMap
     setGroupedItemGroupMap(nextMap)
     setNotes((prev) => {
@@ -177,7 +210,52 @@ export default function useDeskItemInteractions({
   }
 
   useEffect(() => {
+    if (!pendingGroupStorageKey || typeof window === 'undefined') return
+
+    try {
+      const rawValue = window.localStorage.getItem(pendingGroupStorageKey)
+      if (!rawValue) return
+
+      const parsed = JSON.parse(rawValue)
+      const storedMap = parsed?.map && typeof parsed.map === 'object' ? parsed.map : {}
+      const currentMap = groupedItemGroupMapRef.current
+      const mergedMap = { ...currentMap, ...storedMap }
+      const normalizedMergedMap = pruneSingletonGroups(mergedMap)
+      const hasDiff =
+        Object.keys(normalizedMergedMap).length !== Object.keys(currentMap).length
+        || Object.keys(normalizedMergedMap).some((key) => normalizedMergedMap[key] !== currentMap[key])
+
+      if (!hasDiff) {
+        return
+      }
+
+      hasPendingGroupPersistenceRef.current = true
+      setGroupedMap(normalizedMergedMap)
+    } catch {
+      window.localStorage.removeItem(pendingGroupStorageKey)
+    }
+  }, [pendingGroupStorageKey, setGroupedMap])
+
+  useEffect(() => {
     let rafId = null
+    const hasGroupIdField = notes.some((item) => {
+      if (isDecorationItem(item)) return false
+      return Object.prototype.hasOwnProperty.call(item, 'group_id')
+    })
+
+    if (!hasGroupIdField) {
+      return () => {}
+    }
+
+    if (hasPendingGroupPersistenceRef.current) {
+      return () => {}
+    }
+
+    const hasRecentLocalGroupMutation = Date.now() - lastLocalGroupMutationAtRef.current < REMOTE_GROUP_DOWNGRADE_GUARD_MS
+    if (hasRecentLocalGroupMutation) {
+      return () => {}
+    }
+
     const hydratedMap = {}
     notes.forEach((item) => {
       if (isDecorationItem(item)) return
@@ -188,12 +266,21 @@ export default function useDeskItemInteractions({
 
     const normalizedHydratedMap = pruneSingletonGroups(hydratedMap)
     const currentMap = groupedItemGroupMapRef.current
+    const hasRemoteDowngrade = Object.keys(currentMap).some((key) => {
+      const currentGroupId = currentMap[key]
+      if (!currentGroupId) return false
+      return normalizedHydratedMap[key] !== currentGroupId
+    })
+    if (hasRemoteDowngrade) {
+      return () => {}
+    }
+
     const hasDiff = Object.keys(normalizedHydratedMap).length !== Object.keys(currentMap).length
       || Object.keys(normalizedHydratedMap).some((key) => normalizedHydratedMap[key] !== currentMap[key])
 
     if (hasDiff) {
       rafId = window.requestAnimationFrame(() => {
-        setGroupedMap(normalizedHydratedMap)
+        setGroupedMap(normalizedHydratedMap, 'remote')
       })
     }
 
@@ -213,11 +300,72 @@ export default function useDeskItemInteractions({
     const candidateKeys = new Set([...Object.keys(previousPersistedMap), ...Object.keys(currentMap)])
     const changedKeys = [...candidateKeys].filter((itemKey) => previousPersistedMap[itemKey] !== currentMap[itemKey])
 
-    if (!changedKeys.length) return
+    if (!changedKeys.length) {
+      hasPendingGroupPersistenceRef.current = false
+      persistPendingGroupMap({})
+      return
+    }
 
-    persistedGroupedItemMapRef.current = { ...currentMap }
-    void Promise.all(changedKeys.map((itemKey) => persistItemGroup(itemKey, currentMap[itemKey] || null)))
-  }, [groupedItemGroupMap, persistItemGroup])
+    hasPendingGroupPersistenceRef.current = true
+
+    void Promise.all(
+      changedKeys.map(async (itemKey) => ({
+        itemKey,
+        result: await persistItemGroup(itemKey, currentMap[itemKey] || null)
+      }))
+    ).then((results) => {
+      const nextPersistedMap = { ...persistedGroupedItemMapRef.current }
+      let hasTransientFailure = false
+
+      results.forEach(({ itemKey, result }) => {
+        if (result === true || result === 'unsupported') {
+          const nextGroupId = currentMap[itemKey] || null
+          if (nextGroupId) {
+            nextPersistedMap[itemKey] = nextGroupId
+          } else {
+            delete nextPersistedMap[itemKey]
+          }
+          return
+        }
+
+        hasTransientFailure = true
+      })
+
+      persistedGroupedItemMapRef.current = nextPersistedMap
+
+      if (hasTransientFailure) {
+        persistPendingGroupMap(currentMap)
+
+        if (groupPersistenceRetryTimeoutRef.current) {
+          clearTimeout(groupPersistenceRetryTimeoutRef.current)
+        }
+
+        groupPersistenceRetryTimeoutRef.current = setTimeout(() => {
+          groupPersistenceRetryTimeoutRef.current = null
+          setGroupedMap({ ...groupedItemGroupMapRef.current })
+        }, 1500)
+        return
+      }
+
+      const latestMap = groupedItemGroupMapRef.current
+      const pendingKeys = new Set([...Object.keys(nextPersistedMap), ...Object.keys(latestMap)])
+      hasPendingGroupPersistenceRef.current = [...pendingKeys].some(
+        (itemKey) => nextPersistedMap[itemKey] !== latestMap[itemKey]
+      )
+
+      if (!hasPendingGroupPersistenceRef.current) {
+        persistPendingGroupMap({})
+      }
+    })
+  }, [groupedItemGroupMap, persistItemGroup, setGroupedMap, persistPendingGroupMap])
+
+  useEffect(() => {
+    return () => {
+      if (groupPersistenceRetryTimeoutRef.current) {
+        clearTimeout(groupPersistenceRetryTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const finalizeGroupingSession = useCallback(() => {
     const normalizedMap = pruneSingletonGroups(groupedItemGroupMapRef.current)

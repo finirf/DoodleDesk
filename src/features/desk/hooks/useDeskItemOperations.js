@@ -213,7 +213,7 @@ export function useDeskItemOperations({
         setEditSaveError(error?.message || 'Failed to create note.')
       }
 
-      if (showNewNoteMenuSetter) {
+      if (typeof showNewNoteMenuSetter === 'function') {
         showNewNoteMenuSetter(false)
       }
     },
@@ -289,7 +289,7 @@ export function useDeskItemOperations({
       if (!createdChecklist) {
         console.error('Failed to create checklist:', error)
         setEditSaveError(error?.message || 'Failed to create checklist.')
-        if (showNewNoteMenuSetter) {
+        if (typeof showNewNoteMenuSetter === 'function') {
           showNewNoteMenuSetter(false)
         }
         return
@@ -321,7 +321,7 @@ export function useDeskItemOperations({
         summary: 'created a checklist'
       })
 
-      if (showNewNoteMenuSetter) {
+      if (typeof showNewNoteMenuSetter === 'function') {
         showNewNoteMenuSetter(false)
       }
     },
@@ -380,7 +380,7 @@ export function useDeskItemOperations({
         setEditSaveError(error?.message || 'Failed to create decoration.')
       }
 
-      if (showNewNoteMenuSetter) {
+      if (typeof showNewNoteMenuSetter === 'function') {
         showNewNoteMenuSetter(false)
       }
     },
@@ -494,14 +494,14 @@ export function useDeskItemOperations({
       const nextGroupId = typeof groupId === 'string' && groupId.trim() ? groupId.trim() : null
       const { error } = await supabase
         .from(table)
-        .update({ group_id: nextGroupId, desk_id: selectedDeskId })
+        .update({ group_id: nextGroupId })
         .eq('id', item.id)
         .eq('desk_id', selectedDeskId)
 
       if (error) {
         if (isMissingColumnError(error, 'group_id')) {
           groupIdPersistenceUnsupportedRef.current = true
-          return false
+          return 'unsupported'
         }
         console.error('Failed to persist item group:', error)
         return false
@@ -647,12 +647,25 @@ export function useDeskItemOperations({
 
       const nextItems = checklistEditItems
         .map((entry, index) => ({
+          id: entry?.id ?? undefined,
           text: (entry.text || '').trim(),
           is_checked: Boolean(entry.is_checked),
           sort_order: index,
           due_at: normalizeChecklistReminderValue(entry.due_at)
         }))
         .filter((entry) => entry.text.length > 0)
+
+      const existingItemIds = new Set(
+        (item.items || [])
+          .map((entry) => entry?.id)
+          .filter((value) => Boolean(value))
+      )
+      const nextItemIds = new Set(
+        nextItems
+          .map((entry) => entry?.id)
+          .filter((value) => Boolean(value))
+      )
+      const removedItemIds = [...existingItemIds].filter((id) => !nextItemIds.has(id))
 
       const baseChecklistPayload = {
         title: editValue.trim() || 'Checklist',
@@ -704,17 +717,69 @@ export function useDeskItemOperations({
         return { ok: false, errorMessage: checklistSaveError?.message || 'Failed to save checklist.' }
       }
 
-      const { error: itemsError } = await supabase
-        .from('checklist_items')
-        .upsert(nextItems.map((entry) => ({
-          ...entry,
-          checklist_id: item.id
-        })), { onConflict: 'id' })
+      const existingItems = nextItems.filter((entry) => entry.id !== undefined && entry.id !== null)
+      const newItems = nextItems.filter((entry) => entry.id === undefined || entry.id === null)
 
-      if (itemsError) {
-        console.error('Failed to save checklist items:', itemsError)
-        return { ok: false, errorMessage: itemsError?.message || 'Failed to save checklist items.' }
+      let persistedExistingItems = []
+      if (existingItems.length > 0) {
+        const { data: existingData, error: existingItemsError } = await supabase
+          .from('checklist_items')
+          .upsert(existingItems.map((entry) => ({
+            id: entry.id,
+            checklist_id: item.id,
+            text: entry.text,
+            is_checked: entry.is_checked,
+            sort_order: entry.sort_order,
+            due_at: entry.due_at
+          })), { onConflict: 'id' })
+          .select('id, checklist_id, text, is_checked, sort_order, due_at')
+
+        if (existingItemsError) {
+          console.error('Failed to save existing checklist items:', existingItemsError)
+          return { ok: false, errorMessage: existingItemsError?.message || 'Failed to save checklist items.' }
+        }
+
+        persistedExistingItems = existingData || []
       }
+
+      let persistedNewItems = []
+      if (newItems.length > 0) {
+        const { data: newData, error: newItemsError } = await supabase
+          .from('checklist_items')
+          .insert(newItems.map((entry) => ({
+            checklist_id: item.id,
+            text: entry.text,
+            is_checked: entry.is_checked,
+            sort_order: entry.sort_order,
+            due_at: entry.due_at
+          })))
+          .select('id, checklist_id, text, is_checked, sort_order, due_at')
+
+        if (newItemsError) {
+          console.error('Failed to save new checklist items:', newItemsError)
+          return { ok: false, errorMessage: newItemsError?.message || 'Failed to save checklist items.' }
+        }
+
+        persistedNewItems = newData || []
+      }
+
+      if (removedItemIds.length > 0) {
+        const { error: deleteItemsError } = await supabase
+          .from('checklist_items')
+          .delete()
+          .eq('checklist_id', item.id)
+          .in('id', removedItemIds)
+
+        if (deleteItemsError) {
+          console.error('Failed to delete removed checklist items:', deleteItemsError)
+          return { ok: false, errorMessage: deleteItemsError?.message || 'Failed to remove deleted checklist items.' }
+        }
+      }
+
+      const persistedItemsFromDb = [...persistedExistingItems, ...persistedNewItems]
+      const persistedItems = persistedItemsFromDb.length > 0
+        ? [...persistedItemsFromDb].sort((left, right) => (left.sort_order || 0) - (right.sort_order || 0))
+        : nextItems
 
       setNotes((prev) =>
         prev.map((row) =>
@@ -726,7 +791,7 @@ export function useDeskItemOperations({
             text_color: persistedTextColor,
             font_size: persistedFontSize,
             font_family: nextFontFamily,
-            items: nextItems
+            items: persistedItems
           } : row
         )
       )

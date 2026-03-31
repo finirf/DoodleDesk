@@ -1,5 +1,152 @@
 # New Changes
 
+## 2026-03-31 - New Group Refresh Persistence Fix (Pending Group Queue)
+
+### ✅ Newly created groups now survive refresh even when group writes are temporarily offline
+- **Issue**: A new group could appear locally, but after refresh the grouping disappeared because `group_id` PATCH requests failed (`Failed to fetch`) before persisting.
+- **Root Cause**: Transient group persistence failures retried only in-memory; refreshing the page discarded pending group writes.
+- **Solution**:
+  - Added desk-scoped pending-group queue in `localStorage`.
+  - On transient persistence failures, save current group map to pending storage and retry.
+  - On desk load, hydrate pending group map back into local grouping state and re-attempt persistence.
+  - Clear pending storage when persistence catches up.
+  - Scoped queue per desk id to avoid cross-desk contamination.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+  - `src/App.jsx` (pass `selectedDeskId` into item interactions)
+- **Verification**:
+  - Created fresh ungrouped notes, grouped them, refreshed page.
+  - Verified `group_id` remained identical for both notes after reload.
+
+## 2026-03-31 - Desk Creation Modal Wiring Fix + New Note Runtime Guard
+
+### ✅ `+ New Desk` now opens and uses the correct create/rename modal state
+- **Issue**: In some sessions, clicking `+ New Desk` did nothing (no modal appeared), blocking desk creation and downstream note/group workflows.
+- **Root Cause**: `openCreateDeskDialog` (from action orchestration) was mutating a different `deskNameDialog` state source than the one rendered by `DeskModals`.
+- **Solution**: Wired `DeskModals` desk-name props to the desk-name dialog state returned by `useDeskActionOrchestration` so trigger and modal share the same state source.
+- **Code Change**:
+  - `src/App.jsx`
+
+### ✅ Creating notes no longer throws `showNewNoteMenuSetter is not a function`
+- **Issue**: Creating multiple notes could throw a runtime error if a non-function value was passed as `showNewNoteMenuSetter`.
+- **Solution**: Added strict function guards before invoking menu setter callbacks in item-creation actions.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+
+## 2026-03-31 - Grouping Persistence Race Fix (Retry + Hydration Guard)
+
+### ✅ Grouping no longer silently rolls back when group save temporarily fails
+- **Issue**: Grouping could still revert after a delay even after fetch-error safeguards, because local grouping was marked as persisted before DB writes succeeded.
+- **Root Cause**:
+  - Group persistence effect optimistically updated the "persisted" map before `persistItemGroup()` finished.
+  - If a transient write failed, later remote hydration could overwrite local grouping with stale `group_id` values.
+- **Solution**:
+  - Persisted-map updates are now success-aware: only successful writes update the persisted baseline.
+  - Added retry scheduling for transient group persistence failures.
+  - Added a hydration guard so remote group hydration does not overwrite local grouping while group persistence is pending.
+  - Added a stale-remote downgrade guard window (15s) so recent local grouping does not get rolled back by delayed/stale remote snapshots.
+  - Added cleanup for pending retry timers on unmount.
+  - Added explicit `unsupported` result for missing `group_id` column path so non-retriable schema cases do not spin retries.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+- **Impact**: Local group changes remain stable and are retried until persisted, preventing delayed ungrouping caused by transient persistence drift.
+
+## 2026-03-30 - Grouping Recovery: Don't Wipe State on Fetch Errors
+
+### ✅ Network/auth errors no longer destroy grouping state by clearing notes
+- **Issue**: When `fetchDeskItems` encountered network timeouts or auth failures (DNS errors on Supabase token endpoint), it unconditionally called `setNotesFromRemote([])`, wiping all local notes including grouping state. Users saw notes ungroup after a few seconds.
+- **Root Cause**: Error paths in `fetchDeskItems` had no recovery strategy; both `if (!deskId)` at entry and catch-block on timeout/errors called `setNotesFromRemote([])`, clearing all state.
+- **Solution**:
+  - Remove `setNotesFromRemote([])` from early-exit when deskId is missing.
+  - Add error check after Supabase queries; if any fetch failed, skip `setNotesFromRemote()` entirely to preserve local state.
+  - Remove `setNotesFromRemote([])` from catch-block on timeout/network errors.
+  - Log warnings so users know fetch failed but state is preserved.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskDataQueries.js`: Lines 56–177 refactored to guard against state wipe on errors.
+- **Impact**: Grouping now persists across transient network/auth failures; local changes and grouping remain intact while sync retries.
+
+## 2026-03-30 - Checklist Mixed Save Null-ID Hardening
+
+### ✅ Checklist save now safely handles existing + new rows together
+- **Issue**: Even after null-id filtering, saving checklists containing a mix of existing rows and brand-new rows could still trigger `null value in column "id"` errors.
+- **Root Cause**: Mixed payload behavior could still route new rows through an `id`-conflict upsert path.
+- **Solution**: Split checklist item persistence into two operations:
+  - Upsert only existing rows (rows that already have `id`).
+  - Insert only new rows (no `id` field at all).
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+
+## 2026-03-30 - Checklist New-Line Save Null ID Fix
+
+### ✅ Adding a new checklist line no longer throws null-id constraint error
+- **Issue**: Saving after adding a new checklist line raised: `null value in column "id" of relation "checklist_items" violates not-null constraint`.
+- **Root Cause**: Checklist upsert payload always included an `id` key; for new rows, this propagated as null.
+- **Solution**: Build checklist upsert payloads so `id` is included only for existing rows. New rows omit `id` and let DB defaults generate it.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+
+## 2026-03-30 - Checklist Deleted Lines Reappearing Fix
+
+### ✅ Deleted checklist lines now stay deleted after save/sync
+- **Issue**: Deleting checklist lines and saving looked correct momentarily, then deleted lines reappeared.
+- **Root Cause**: Save path upserted current checklist items but did not delete removed `checklist_items` rows in the database.
+- **Solution**:
+  - Compute removed item ids (`existing ids` minus `saved ids`) during checklist save.
+  - Delete removed rows from `checklist_items` for the checklist.
+  - Use returned upserted rows (with ids) to keep local checklist state aligned with persisted DB rows.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+
+## 2026-03-30 - Grouping Hydration Hardening + Mobile Checklist Edit Consistency
+
+### ✅ Grouping no longer gets wiped when `group_id` is missing from fetched rows
+- **Issue**: If backend rows were returned without a `group_id` field (schema/migration mismatch path), grouping hydration could clear in-memory group state, making grouping feel unreliable.
+- **Solution**: Group hydration now only rehydrates from remote rows when non-decoration items actually include a `group_id` field.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+
+### ✅ Mobile context-menu checklist edit now preserves item ids
+- **Issue**: The mobile context-menu edit flow still dropped checklist item ids when opening editor state.
+- **Solution**: Preserve `id` in checklist edit mapping in the mobile context-menu edit path.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-03-30 - Checklist Edit No-Op Save Duplication Fix
+
+### ✅ Saving checklist without changes no longer creates extra lines
+- **Issue**: Opening a checklist, making no edits, and pressing Save could add duplicate checklist item rows.
+- **Root Cause**: Checklist edit state dropped existing checklist item `id` values. Save then upserted rows without ids, which were treated as new inserts.
+- **Solution**:
+  - Preserve checklist item ids when loading checklist items into edit state (desktop and mobile edit open flows).
+  - Include item `id` in checklist save payload when present, so upsert updates existing rows instead of inserting duplicates.
+- **Code Changes**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+
+## 2026-03-30 - Group Save Stability For Existing Group Join
+
+### ✅ Fixed delayed ungroup after adding one note to an existing group
+- **Issue**: Joining a single note into a preexisting group could appear to work, then the note would ungroup a few seconds later.
+- **Root Cause**: Group persistence was updating both `group_id` and `desk_id`. In some policy/database paths, that write could fail and later remote re-hydration would restore the old `group_id` state.
+- **Solution**: Updated group persistence to write only `group_id` while still filtering by `id` and `desk_id`.
+- **Result**: Adding one note to an existing group now remains stable after background sync/reload.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+
+## 2026-03-30 - Mobile Ungroup Fix For Multiple Groups
+
+### ✅ Mobile ungroup now correctly releases an entire selected group
+- **Issue**: In the mobile context menu, tapping **Ungroup** was routed through a Ctrl-style grouping path, so items were not reliably released from their group.
+- **Solution**:
+  - Added explicit mobile ungroup logic that resolves the tapped item's `group_id` and ungroups every item in that same group.
+  - Switched the mobile Group/Ungroup label check to read from `groupedItemGroupMap` directly.
+- **Result**:
+  - Multiple groups can coexist, and ungrouping one group no longer misroutes into grouping behavior.
+  - Mobile group actions now align with expected desktop ungroup behavior.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
 ## 2026-03-27 - Group Color Consistency Across Multiple Groups
 
 ### ✅ Added stable per-group note colors

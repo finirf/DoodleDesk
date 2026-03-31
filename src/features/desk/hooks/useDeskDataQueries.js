@@ -56,7 +56,6 @@ export default function useDeskDataQueries({
 
   const fetchDeskItems = useCallback(async (deskId) => {
     if (!deskId) {
-      setNotesFromRemote([])
       return
     }
 
@@ -82,6 +81,12 @@ export default function useDeskDataQueries({
       }
       if (decorationsError) {
         console.error('Failed to fetch decorations:', decorationsError)
+      }
+
+      // If any data fetch failed, skip state update to preserve local changes (e.g., grouping)
+      if (notesError || checklistsError || decorationsError) {
+        console.warn('Desk item fetch encountered errors; preserving local state to prevent wiping grouping or unsaved changes.')
+        return
       }
 
       const checklistRows = checklistsData || []
@@ -174,7 +179,7 @@ export default function useDeskDataQueries({
       if (error?.message?.includes('timeout')) {
         setEditSaveError('Desk items took too long to load. Please try again.')
       }
-      setNotesFromRemote([])
+      // Don't clear notes on error; preserve local state (grouping, unsaved changes)
     }
   }, [
     getItemHeight,
