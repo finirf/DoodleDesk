@@ -1,5 +1,22 @@
 # New Changes
 
+## 2026-03-31 - Mobile Scrolling Fixed
+
+### ✅ Single-finger vertical scrolling now works on mobile devices
+- **Issue**: Mobile users couldn't scroll vertically on the desk canvas; attempting to scroll would fail because all touch scrolling was disabled.
+- **Root Cause**: `DeskCanvasContainer` had `touchAction: 'none'` which disabled default touch scrolling to handle two-finger panning. This inadvertently blocked single-finger scrolling.
+- **Solution**:
+  - Changed `touchAction: 'none'` → `touchAction: 'manipulation'` (allows single-finger scrolling while preserving custom touch handlers)
+  - Changed canvas container layout from `minHeight: canvasHeight` → `height: 100vh` with `overflow-y: auto` (makes canvas vertically scrollable within viewport)
+  - Wrapped children in inner div with `minWidth/minHeight` to maintain canvas dimensions while allowing scroll
+  - Two-finger panning continues to work via existing transform-based pan logic
+- **Code Changes**:
+  - `src/features/desk/components/DeskCanvasContainer.jsx`
+- **Verification**:
+  - Build passes (exit 0)
+  - Lint passes (no new errors introduced)
+  - Browser test ready (dev server running)
+
 ## 2026-03-31 - New Group Refresh Persistence Fix (Pending Group Queue)
 
 ### ✅ Newly created groups now survive refresh even when group writes are temporarily offline

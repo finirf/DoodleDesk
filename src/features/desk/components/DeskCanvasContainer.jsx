@@ -131,9 +131,10 @@ export default forwardRef(function DeskCanvasContainer({
       style={{
         position: 'relative',
         width: '100%',
-        minWidth: canvasWidth,
+        height: '100vh',
         boxSizing: 'border-box',
-        minHeight: canvasHeight,
+        overflowX: 'hidden',
+        overflowY: 'auto',
         paddingTop: isMobileLayout ? 104 : 20,
         paddingRight: isMobileLayout ? 12 : 20,
         paddingBottom: isMobileLayout ? 92 : 20,
@@ -146,11 +147,13 @@ export default forwardRef(function DeskCanvasContainer({
         // Apply pan transform for smooth two-finger scrolling
         transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
         transition: isPanning ? 'none' : 'transform 0.1s ease-out',
-        // Disable default touch scrolling - all gestures handled by our code
-        touchAction: 'none'
+        // Allow default touch scrolling (single finger); two-finger pan handled by our code
+        touchAction: 'manipulation'
       }}
     >
-      {children}
+      <div style={{ minWidth: canvasWidth, minHeight: canvasHeight }}>
+        {children}
+      </div>
     </div>
   )
 })
