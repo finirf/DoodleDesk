@@ -3,6 +3,7 @@ import { supabase } from '../../supabase'
 
 // Handles initial auth bootstrap, redirect-based recovery sessions, and live session updates.
 export default function useAuthSession() {
+  const isDev = import.meta.env.DEV
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [isRecoveryFlow, setIsRecoveryFlow] = useState(false)
@@ -21,7 +22,9 @@ export default function useAuthSession() {
         if (error) console.error('Get session error:', error)
         if (!isMounted) return
         setSession(persistedSession)
-        console.log('Initial session:', persistedSession)
+        if (isDev) {
+          console.log('Initial session:', persistedSession)
+        }
       } catch (err) {
         console.error('Error loading session:', err)
       } finally {
@@ -39,14 +42,16 @@ export default function useAuthSession() {
       if (event === 'PASSWORD_RECOVERY') {
         setIsRecoveryFlow(true)
       }
-      console.log('Auth state changed:', nextSession)
+      if (isDev) {
+        console.log('Auth state changed:', nextSession)
+      }
     })
 
     return () => {
       isMounted = false
       listener?.subscription?.unsubscribe()
     }
-  }, [])
+  }, [isDev])
 
   function exitRecoveryFlow() {
     setIsRecoveryFlow(false)

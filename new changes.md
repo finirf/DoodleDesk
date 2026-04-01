@@ -1,5 +1,61 @@
 # New Changes
 
+## 2026-04-01 - CSP Worker Compatibility Fix
+
+### ✅ Login/runtime worker initialization no longer blocked by CSP
+- **Issue**: Browser console reported CSP violations blocking `blob:` workers (`script-src 'self'` fallback), which can break auth/runtime internals that use web workers.
+- **Root Cause**: CSP defined `script-src` but not `worker-src`, so worker creation inherited stricter script policy and blocked blob workers.
+- **Solution**:
+  - Added explicit `worker-src 'self' blob:` directive to the CSP meta policy.
+  - Kept existing restrictive directives intact (`default-src`, `object-src`, `connect-src`, `frame-src`, etc.).
+- **Code Change**:
+  - `index.html`
+- **Verification**:
+  - Build passes (exit 0)
+  - Lint passes (no new errors introduced; existing warning baseline unchanged)
+
+## 2026-04-01 - Shelf Rename Modal + Reliability Cleanup + Regression Tests
+
+### ✅ Shelf rename now uses in-app modal UX (no blocking browser prompt)
+- **Issue**: Shelf rename used `window.prompt`, which produced inconsistent desktop/mobile UX and weaker accessibility compared with existing modal flows.
+- **Solution**:
+  - Reworked shelf rename action to take an explicit value input (no browser prompt side-effects).
+  - Added dedicated shelf rename modal in `DeskModals` and wired open/submit/close flow through `App` orchestration.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskShelfHierarchyActions.js`
+  - `src/features/desk/components/DeskModals.jsx`
+  - `src/App.jsx`
+
+### ✅ Canvas hook dependency warning resolved
+- **Issue**: `DeskCanvasItems` reported an unnecessary `useCallback` dependency warning for `getItemKey`.
+- **Solution**: Removed the unnecessary dependency from `ungroupMobileItemGroup` callback dependency list.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+### ✅ Auth debug logs now gated to development
+- **Issue**: Session-level auth debug logs were emitted in all environments.
+- **Solution**: Wrapped non-essential auth logs with `import.meta.env.DEV` checks.
+- **Code Change**:
+  - `src/features/auth/useAuthSession.js`
+
+### ✅ Added baseline regression tests for grouping/checklist persistence helpers
+- **Coverage**:
+  - Checklist persistence plan: existing/new item split, removed id detection, blank-line filtering.
+  - Group persistence helpers: singleton pruning, pending-map merge normalization, map diff detection.
+- **Code Changes**:
+  - `src/features/desk/utils/checklistPersistenceUtils.js`
+  - `src/features/desk/utils/groupingPersistenceUtils.js`
+  - `src/features/desk/utils/checklistPersistenceUtils.test.js`
+  - `src/features/desk/utils/groupingPersistenceUtils.test.js`
+  - `src/features/desk/hooks/useDeskItemOperations.js` (now consumes checklist persistence helper)
+  - `src/features/desk/hooks/useDeskItemInteractions.js` (now consumes grouping persistence helpers)
+  - `package.json` (`npm run test` script)
+
+### ✅ Verification
+- Lint passes (`npm run lint`)
+- Tests pass (`npm run test`, 5 passing)
+- Build passes (`npm run build`)
+
 ## 2026-03-31 - Mobile Scrolling Fixed
 
 ### ✅ Single-finger vertical scrolling now works on mobile devices

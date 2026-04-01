@@ -17,6 +17,7 @@ import {
   toStoredRotation
 } from '../utils/itemUtils'
 import { normalizeChecklistReminderValue } from '../utils/reminderUtils'
+import { buildChecklistPersistencePlan } from '../utils/checklistPersistenceUtils'
 
 // Local helper: check if two rectangles overlap with optional gap
 function areRectanglesOverlapping(rectA, rectB, gap = 8) {
@@ -645,27 +646,16 @@ export function useDeskItemOperations({
         return { ok: true }
       }
 
-      const nextItems = checklistEditItems
-        .map((entry, index) => ({
-          id: entry?.id ?? undefined,
-          text: (entry.text || '').trim(),
-          is_checked: Boolean(entry.is_checked),
-          sort_order: index,
-          due_at: normalizeChecklistReminderValue(entry.due_at)
-        }))
-        .filter((entry) => entry.text.length > 0)
-
-      const existingItemIds = new Set(
-        (item.items || [])
-          .map((entry) => entry?.id)
-          .filter((value) => Boolean(value))
-      )
-      const nextItemIds = new Set(
-        nextItems
-          .map((entry) => entry?.id)
-          .filter((value) => Boolean(value))
-      )
-      const removedItemIds = [...existingItemIds].filter((id) => !nextItemIds.has(id))
+      const {
+        nextItems,
+        existingChecklistItems,
+        newChecklistItems,
+        removedItemIds
+      } = buildChecklistPersistencePlan({
+        checklistEditItems,
+        existingItems: item.items,
+        normalizeReminder: normalizeChecklistReminderValue
+      })
 
       const baseChecklistPayload = {
         title: editValue.trim() || 'Checklist',
@@ -717,14 +707,11 @@ export function useDeskItemOperations({
         return { ok: false, errorMessage: checklistSaveError?.message || 'Failed to save checklist.' }
       }
 
-      const existingItems = nextItems.filter((entry) => entry.id !== undefined && entry.id !== null)
-      const newItems = nextItems.filter((entry) => entry.id === undefined || entry.id === null)
-
       let persistedExistingItems = []
-      if (existingItems.length > 0) {
+      if (existingChecklistItems.length > 0) {
         const { data: existingData, error: existingItemsError } = await supabase
           .from('checklist_items')
-          .upsert(existingItems.map((entry) => ({
+          .upsert(existingChecklistItems.map((entry) => ({
             id: entry.id,
             checklist_id: item.id,
             text: entry.text,
@@ -743,10 +730,10 @@ export function useDeskItemOperations({
       }
 
       let persistedNewItems = []
-      if (newItems.length > 0) {
+      if (newChecklistItems.length > 0) {
         const { data: newData, error: newItemsError } = await supabase
           .from('checklist_items')
-          .insert(newItems.map((entry) => ({
+          .insert(newChecklistItems.map((entry) => ({
             checklist_id: item.id,
             text: entry.text,
             is_checked: entry.is_checked,

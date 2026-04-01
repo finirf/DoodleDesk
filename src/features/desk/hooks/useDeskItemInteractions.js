@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  hasGroupMapDiff,
+  mergePendingGroupMap,
+  pruneSingletonGroups
+} from '../utils/groupingPersistenceUtils'
 
 const REMOTE_GROUP_DOWNGRADE_GUARD_MS = 15000
 
@@ -167,24 +172,6 @@ export default function useDeskItemInteractions({
     })
   }, [getItemKey, isDecorationItem, setNotes])
 
-  function pruneSingletonGroups(inputMap, preserveGroupId = null) {
-    const groupCounts = {}
-    Object.values(inputMap).forEach((groupId) => {
-      if (!groupId) return
-      groupCounts[groupId] = (groupCounts[groupId] || 0) + 1
-    })
-
-    const nextMap = {}
-    Object.entries(inputMap).forEach(([itemKey, groupId]) => {
-      if (!groupId) return
-      if (groupCounts[groupId] > 1 || groupId === preserveGroupId) {
-        nextMap[itemKey] = groupId
-      }
-    })
-
-    return nextMap
-  }
-
   function sanitizeGroupedMap() {
     const validKeys = new Set(notesRef.current.map((entry) => getItemKey(entry)))
     const currentMap = groupedItemGroupMapRef.current
@@ -199,10 +186,7 @@ export default function useDeskItemInteractions({
     const preserveGroupId = isCtrlPressedRef.current ? ctrlGroupSessionIdRef.current : null
     const normalizedMap = pruneSingletonGroups(nextMap, preserveGroupId)
 
-    if (
-      Object.keys(normalizedMap).length !== Object.keys(currentMap).length
-      || Object.keys(normalizedMap).some((key) => normalizedMap[key] !== currentMap[key])
-    ) {
+    if (hasGroupMapDiff(normalizedMap, currentMap)) {
       setGroupedMap(normalizedMap)
     }
 
@@ -219,11 +203,8 @@ export default function useDeskItemInteractions({
       const parsed = JSON.parse(rawValue)
       const storedMap = parsed?.map && typeof parsed.map === 'object' ? parsed.map : {}
       const currentMap = groupedItemGroupMapRef.current
-      const mergedMap = { ...currentMap, ...storedMap }
-      const normalizedMergedMap = pruneSingletonGroups(mergedMap)
-      const hasDiff =
-        Object.keys(normalizedMergedMap).length !== Object.keys(currentMap).length
-        || Object.keys(normalizedMergedMap).some((key) => normalizedMergedMap[key] !== currentMap[key])
+      const normalizedMergedMap = mergePendingGroupMap(currentMap, storedMap)
+      const hasDiff = hasGroupMapDiff(normalizedMergedMap, currentMap)
 
       if (!hasDiff) {
         return

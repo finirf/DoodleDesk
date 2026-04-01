@@ -123,17 +123,18 @@ export default function useDeskShelfHierarchyActions({
     setShelfActionError('')
   }, [selectedDeskId, setDeskShelfAssignments, setShelfActionError])
 
-  const renameDeskShelf = useCallback((shelfId) => {
+  const renameDeskShelf = useCallback((shelfId, nextNameInput) => {
     const currentShelf = deskShelves.find((shelf) => shelf.id === shelfId)
-    if (!currentShelf) return
-
-    const nextNameInput = window.prompt('Rename shelf', currentShelf.name)
-    if (nextNameInput === null) return
+    if (!currentShelf) return false
+    if (typeof nextNameInput !== 'string') {
+      setShelfActionError('Shelf name is required.')
+      return false
+    }
 
     const nextName = nextNameInput.trim()
     if (!nextName) {
       setShelfActionError('Shelf name is required.')
-      return
+      return false
     }
 
     const siblingNameExists = deskShelves.some((shelf) =>
@@ -143,13 +144,14 @@ export default function useDeskShelfHierarchyActions({
     )
     if (siblingNameExists) {
       setShelfActionError('A sibling shelf already uses that name.')
-      return
+      return false
     }
 
     setDeskShelves((prev) => prev.map((shelf) => (
       shelf.id === shelfId ? { ...shelf, name: nextName } : shelf
     )))
     setShelfActionError('')
+    return true
   }, [deskShelves, setDeskShelves, setShelfActionError])
 
   const deleteDeskShelf = useCallback((shelfId) => {

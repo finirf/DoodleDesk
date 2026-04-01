@@ -53,7 +53,13 @@ export default function DeskModals({
   modalActionsStyle,
   modalSecondaryButtonStyle,
   modalPrimaryButtonStyle,
-  modalDangerButtonStyle
+  modalDangerButtonStyle,
+  shelfRenameDialog,
+  setShelfRenameDialog,
+  submitShelfRenameDialog,
+  closeShelfRenameDialog,
+  shelfActionError,
+  setShelfActionError
 }) {
   const sortedDeskMembers = [...deskMembers].sort((left, right) => {
     const getPriority = (member) => {
@@ -410,6 +416,66 @@ export default function DeskModals({
                 }}
               >
                 {deskNameSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {shelfRenameDialog.isOpen && (
+        <div
+          style={{
+            ...modalOverlayStyle,
+            zIndex: 1210
+          }}
+          role="dialog"
+          aria-labelledby="shelf-rename-dialog-title"
+        >
+          <form
+            onSubmit={submitShelfRenameDialog}
+            style={{
+              ...modalCardStyle,
+              width: 320,
+            }}
+          >
+            <div id="shelf-rename-dialog-title" style={modalTitleStyle}>
+              Rename Shelf
+            </div>
+
+            <input
+              value={shelfRenameDialog.value}
+              onChange={(e) => {
+                if (shelfActionError) setShelfActionError('')
+                setShelfRenameDialog((prev) => ({ ...prev, value: e.target.value }))
+              }}
+              autoFocus
+              placeholder="Shelf name"
+              style={modalInputStyle}
+              aria-label="Shelf name"
+            />
+
+            {shelfActionError && (
+              <div style={{ ...errorMessageStyle, marginBottom: 10 }}>
+                {shelfActionError}
+              </div>
+            )}
+
+            <div style={modalActionsStyle}>
+              <button
+                type="button"
+                onClick={closeShelfRenameDialog}
+                style={{
+                  ...modalSecondaryButtonStyle,
+                  marginRight: 8
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                style={modalPrimaryButtonStyle}
+              >
+                Save
               </button>
             </div>
           </form>

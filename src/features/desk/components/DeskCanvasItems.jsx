@@ -207,7 +207,7 @@ export default function DeskCanvasItems({
       if (!groupedItem) return
       handleGroupSelectionClick?.({ altKey: true, ctrlKey: false }, groupedItem)
     })
-  }, [getItemKey, groupedItemGroupMap, handleGroupSelectionClick, notes])
+  }, [groupedItemGroupMap, handleGroupSelectionClick, notes])
 
   const handleMobilePointerMove = useCallback((e) => {
     const pending = mobileDragPointerRef.current
