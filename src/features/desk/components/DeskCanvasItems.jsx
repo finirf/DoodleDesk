@@ -373,7 +373,7 @@ export default function DeskCanvasItems({
   ])
 
   function startMobileDragHold(e, item) {
-    if (!isMobileLayout || isDecorationItem(item) || editingId) return
+    if (!isMobileLayout || editingId) return
     if (!canCurrentUserEditDeskItems) return
     if (typeof e.button === 'number' && e.button !== 0) return
     if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return
@@ -411,11 +411,21 @@ export default function DeskCanvasItems({
 
   useEffect(() => {
     const handleModifierKeyChange = (event) => {
-      if (event.type === 'keyup' && event.key === 'Control' && !event.shiftKey) {
+      if (event.type === 'keyup' && event.key === 'Control') {
         applyDesktopGroupSelection()
       }
       setIsShiftHeld(Boolean(event.shiftKey))
       setIsCtrlHeld(Boolean(event.ctrlKey))
+    }
+
+    const handlePointerModifierSync = (event) => {
+      // Some desktop flows can miss the Control keyup after click interactions.
+      // If Ctrl is no longer pressed on pointerup, finalize and close grouping mode.
+      if (!event.ctrlKey) {
+        applyDesktopGroupSelection()
+        setIsCtrlHeld(false)
+      }
+      setIsShiftHeld(Boolean(event.shiftKey))
     }
 
     const resetModifiers = () => {
@@ -423,14 +433,18 @@ export default function DeskCanvasItems({
       setIsCtrlHeld(false)
     }
 
-    window.addEventListener('keydown', handleModifierKeyChange)
-    window.addEventListener('keyup', handleModifierKeyChange)
+    window.addEventListener('keydown', handleModifierKeyChange, true)
+    window.addEventListener('keyup', handleModifierKeyChange, true)
     window.addEventListener('blur', resetModifiers)
+    window.addEventListener('pointerup', handlePointerModifierSync)
+    window.addEventListener('pointercancel', handlePointerModifierSync)
 
     return () => {
-      window.removeEventListener('keydown', handleModifierKeyChange)
-      window.removeEventListener('keyup', handleModifierKeyChange)
+      window.removeEventListener('keydown', handleModifierKeyChange, true)
+      window.removeEventListener('keyup', handleModifierKeyChange, true)
       window.removeEventListener('blur', resetModifiers)
+      window.removeEventListener('pointerup', handlePointerModifierSync)
+      window.removeEventListener('pointercancel', handlePointerModifierSync)
     }
   }, [applyDesktopGroupSelection])
 
@@ -776,89 +790,22 @@ export default function DeskCanvasItems({
 
       {/* Desktop Group Selection Mode Overlay - Lower z-index so notes appear on top */}
       {!isMobileLayout && isCtrlHeld && !isShiftHeld && (
-        <>
-          {/* Grayed-out background overlay */}
-          <div
-            style={{
-              position: 'fixed',
-              left: 0,
-              top: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              zIndex: 100,
-              pointerEvents: 'auto'
-            }}
-            onClick={() => {
-              // Pressing Escape or clicking overlay exits group selection without grouping
-              setDesktopGroupSelectionItems(new Set())
-            }}
-          />
-
-          {/* Group selection toolbar */}
-          <div
-            style={{
-              position: 'fixed',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              background: '#fff',
-              borderTop: '1px solid #ddd',
-              padding: '12px',
-              zIndex: 5000,
-              pointerEvents: 'auto',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            <button
-              onClick={() => {
-                setDesktopGroupSelectionItems(new Set())
-              }}
-              style={{
-                flex: 1,
-                padding: '10px 12px',
-                border: '1px solid #ddd',
-                background: '#fff',
-                color: '#222',
-                fontSize: 13,
-                borderRadius: 4,
-                cursor: 'pointer'
-              }}
-            >
-              Cancel
-            </button>
-            <div
-              style={{
-                fontSize: 13,
-                color: '#666',
-                minWidth: 60,
-                textAlign: 'center'
-              }}
-            >
-              {desktopGroupSelectionItems.size} items
-            </div>
-            <button
-              onClick={() => {
-                applyDesktopGroupSelection()
-              }}
-              style={{
-                flex: 1,
-                padding: '10px 12px',
-                border: 'none',
-                background: '#4285f4',
-                color: '#fff',
-                fontSize: 13,
-                borderRadius: 4,
-                cursor: 'pointer'
-              }}
-            >
-              Release
-            </button>
-          </div>
-        </>
+        <div
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 100,
+            pointerEvents: 'auto'
+          }}
+          onClick={() => {
+            // Pressing Escape or clicking overlay exits group selection without grouping
+            setDesktopGroupSelectionItems(new Set())
+          }}
+        />
       )}
 
       {/* Desktop Ungroup Mode Overlay - Show only grouped items, grey out ungrouped */}
@@ -906,29 +853,25 @@ export default function DeskCanvasItems({
         key={itemKey}
         data-note-id={item.id}
         data-item-key={itemKey}
-        onClickCapture={
-          isDecoration
-            ? undefined
-            : (e) => {
-              // Desktop ungroup mode: only allow interaction with grouped items
-              if (!isMobileLayout && isShiftHeld && isCtrlHeld && !isDecoration && !isGrouped) {
-                e.preventDefault()
-                e.stopPropagation()
-                return
-              }
+        onClickCapture={(e) => {
+          // Desktop ungroup mode: only allow interaction with grouped items
+          if (!isMobileLayout && isShiftHeld && isCtrlHeld && !isGrouped) {
+            e.preventDefault()
+            e.stopPropagation()
+            return
+          }
 
-              if (handleGroupSelectionClick?.(e, item)) {
-                e.preventDefault()
-                e.stopPropagation()
-              }
-            }
-        }
+          if (handleGroupSelectionClick?.(e, item)) {
+            e.preventDefault()
+            e.stopPropagation()
+          }
+        }}
         onPointerDown={
           editingId
             ? undefined
             : (e) => {
               // During mobile group selection mode, toggle selection on tap
-              if (groupSelectionMode && !isDecoration) {
+              if (groupSelectionMode) {
                 if (e.cancelable) {
                   e.preventDefault()
                 }
@@ -938,7 +881,7 @@ export default function DeskCanvasItems({
               }
               
               // Desktop group selection mode (Ctrl held): toggle item selection
-              if (!isMobileLayout && isCtrlHeld && !isShiftHeld && !isDecoration) {
+              if (!isMobileLayout && isCtrlHeld && !isShiftHeld) {
                 setDesktopGroupSelectionItems((prev) => {
                   const newSet = new Set(prev)
                   if (newSet.has(itemKey)) {
@@ -954,14 +897,14 @@ export default function DeskCanvasItems({
               }
               
               // Desktop ungroup mode (Shift+Ctrl): block clicks on ungrouped items
-              if (!isMobileLayout && isShiftHeld && isCtrlHeld && !isDecoration && !isGrouped) {
+              if (!isMobileLayout && isShiftHeld && isCtrlHeld && !isGrouped) {
                 e.preventDefault()
                 e.stopPropagation()
                 return
               }
 
               // Desktop ungroup mode (Shift+Ctrl): release grouped notes immediately.
-              if (!isMobileLayout && isShiftHeld && isCtrlHeld && !isDecoration && isGrouped) {
+              if (!isMobileLayout && isShiftHeld && isCtrlHeld && isGrouped) {
                 if (handleGroupSelectionClick?.({ altKey: true, ctrlKey: false }, item)) {
                   e.preventDefault()
                   e.stopPropagation()
@@ -970,7 +913,7 @@ export default function DeskCanvasItems({
               }
               
               if (e.ctrlKey || e.altKey) return
-              if (isMobileLayout && !isDecoration) {
+              if (isMobileLayout) {
                 startMobileDragHold(e, item)
                 return
               }
@@ -979,7 +922,11 @@ export default function DeskCanvasItems({
         }
         onClick={
           isDecoration
-            ? () => setActiveDecorationHandleId((prev) => (prev === itemKey ? null : itemKey))
+            ? (e) => {
+              if (e.ctrlKey || e.altKey) return
+              if (groupSelectionMode) return
+              setActiveDecorationHandleId((prev) => (prev === itemKey ? null : itemKey))
+            }
             : undefined
         }
         style={{
@@ -989,12 +936,12 @@ export default function DeskCanvasItems({
           transform: `rotate(${item.rotation || 0}deg)`,
           background: isDecoration ? 'transparent' : noteBackgroundColor,
           color: isDecoration ? undefined : noteTextColor,
-          padding: isDecoration ? 8 : 20,
+          padding: isDecoration ? 0 : 20,
           width: renderedItemWidth,
           minHeight: itemHeight,
           borderRadius: 0,
           boxShadow: isDecoration
-            ? 'none'
+            ? (shouldShowGroupOutline ? `0 0 0 2px ${groupColor || '#4285f4'}` : 'none')
             : (groupSelectionMode && selectedGroupItemKeys.has(itemKey)
               ? '0 0 0 3px rgba(76, 175, 80, 0.95), 3px 3px 10px rgba(0,0,0,0.3)'
               : (!isMobileLayout && isCtrlHeld && !isShiftHeld && desktopGroupSelectionItems.has(itemKey)
@@ -1011,8 +958,8 @@ export default function DeskCanvasItems({
           WebkitUserSelect: editingId === itemKey ? 'text' : 'none',
           cursor: draggedId === itemKey
             ? 'grabbing'
-            : (isMobileLayout && !isDecoration ? 'default' : 'grab'),
-          zIndex: draggedId === itemKey
+            : (isMobileLayout ? 'default' : 'grab'),
+          zIndex: ((draggedId === itemKey) || (draggedId && isGrouped && groupedItemGroupMap?.[draggedId] === groupId))
             ? 3000
             : (editingId === itemKey || (isDecoration && activeDecorationHandleId === itemKey) ? 2500 : (baseZIndex + 200))
         }}
@@ -1736,7 +1683,9 @@ export default function DeskCanvasItems({
         ) : (
           <>
             <div
-              onClick={() => {
+              onClick={(e) => {
+                if (groupSelectionMode) return
+                if (!isMobileLayout && (isCtrlHeld || e.ctrlKey || e.altKey)) return
                 handleDesktopNoteClick(itemKey, item, isChecklist)
               }}
               style={{
@@ -1806,9 +1755,6 @@ export default function DeskCanvasItems({
               ) : isDecoration ? (
                 <>
                   <div style={{ fontSize: 40, lineHeight: 1, textAlign: 'center' }}>{decorationOption?.emoji || '📌'}</div>
-                  <div style={{ marginTop: 4, fontSize: 11, color: '#333', fontWeight: 600, textAlign: 'center' }}>
-                    {decorationOption?.label || 'Decoration'}
-                  </div>
                 </>
               ) : (
                 <>

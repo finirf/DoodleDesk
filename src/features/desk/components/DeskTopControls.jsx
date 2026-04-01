@@ -3,6 +3,8 @@ import { DeskTopControlButton } from './DeskUiPrimitives'
 export default function DeskTopControls({
   isMobileLayout,
   topOverlayTop,
+  desktopTop,
+  desktopLeft,
   menuLayerZIndex,
   canUndo,
   canRedo,
@@ -28,9 +30,9 @@ export default function DeskTopControls({
     <div
       style={{
         position: isMobileLayout ? 'absolute' : 'fixed',
-        top: isMobileLayout ? topOverlayTop : 'auto',
-        bottom: isMobileLayout ? 'auto' : 20,
-        left: isMobileLayout ? 12 : 20,
+        top: isMobileLayout ? topOverlayTop : desktopTop,
+        bottom: 'auto',
+        left: isMobileLayout ? 12 : desktopLeft,
         display: 'flex',
         gap: 8,
         zIndex: menuLayerZIndex

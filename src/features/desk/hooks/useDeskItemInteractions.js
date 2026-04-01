@@ -136,7 +136,7 @@ export default function useDeskItemInteractions({
   }
 
   function isGroupableItem(item) {
-    return !isDecorationItem(item)
+    return Boolean(item)
   }
 
   function createGroupId() {
@@ -153,7 +153,6 @@ export default function useDeskItemInteractions({
     setNotes((prev) => {
       let hasAnyChange = false
       const nextItems = prev.map((item) => {
-        if (isDecorationItem(item)) return item
         const itemKey = getItemKey(item)
         const nextGroupId = nextMap[itemKey] || null
         const currentGroupId = typeof item?.group_id === 'string' && item.group_id.trim()
@@ -170,7 +169,7 @@ export default function useDeskItemInteractions({
 
       return hasAnyChange ? nextItems : prev
     })
-  }, [getItemKey, isDecorationItem, setNotes])
+  }, [getItemKey, setNotes])
 
   function sanitizeGroupedMap() {
     const validKeys = new Set(notesRef.current.map((entry) => getItemKey(entry)))
@@ -219,10 +218,7 @@ export default function useDeskItemInteractions({
 
   useEffect(() => {
     let rafId = null
-    const hasGroupIdField = notes.some((item) => {
-      if (isDecorationItem(item)) return false
-      return Object.prototype.hasOwnProperty.call(item, 'group_id')
-    })
+    const hasGroupIdField = notes.some((item) => Object.prototype.hasOwnProperty.call(item, 'group_id'))
 
     if (!hasGroupIdField) {
       return () => {}
@@ -239,7 +235,6 @@ export default function useDeskItemInteractions({
 
     const hydratedMap = {}
     notes.forEach((item) => {
-      if (isDecorationItem(item)) return
       const groupId = typeof item?.group_id === 'string' ? item.group_id.trim() : ''
       if (!groupId) return
       hydratedMap[getItemKey(item)] = groupId
@@ -271,7 +266,7 @@ export default function useDeskItemInteractions({
         window.cancelAnimationFrame(rafId)
       }
     }
-  }, [notes, getItemKey, isDecorationItem, setGroupedMap])
+  }, [notes, getItemKey, setGroupedMap])
 
   useEffect(() => {
     if (typeof persistItemGroup !== 'function') return

@@ -1,5 +1,83 @@
 # New Changes
 
+## 2026-04-01 - Grouping Mode Click Behavior
+
+### ✅ Clicking a note in grouping mode no longer opens the editor
+- **Issue**: In desktop Ctrl grouping mode, clicking note content could still trigger note editing.
+- **Fix**: Updated note content click handler to short-circuit while grouping is active (`groupSelectionMode` or desktop Ctrl/Alt modifier states).
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+- **Verification**:
+  - `npm run lint` ✓
+  - Browser test: Ctrl + click on note keeps grouping overlay active and does not open a new editor.
+
+## 2026-04-01 - Top Bar Layout: History Controls Beside New Note
+
+### ✅ Moved Undo/Redo/Save status to top row beside New Note (desktop)
+- **Request**: Place `Undo`, `Redo`, and `All changes saved` at the top of the screen to the right of the `New Note` dropdown, on the same height line.
+- **Fix**:
+  - Added desktop positioning props to `DeskTopControls`.
+  - Repositioned desktop history controls from bottom-left to top row next to `New Note`.
+- **Code Changes**:
+  - `src/features/desk/components/DeskTopControls.jsx`
+  - `src/App.jsx`
+- **Verification**:
+  - `npm run lint` ✓
+  - Browser check: toolbar y-position aligns with `New Note`, and x-position is to its right.
+
+## 2026-04-01 - Decoration Grouping Visual Fixes
+
+### ✅ Decorations now cropped without blank padding around emoji
+- **Issue**: Decorations had padding (8px border) creating a blank square around the emoji.
+- **Fix**: Changed decoration padding from 8px to 0px, so only the emoji is displayed without extra blank space.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx` (line 991): Changed `padding: isDecoration ? 8 : 20` to `padding: isDecoration ? 0 : 20`
+- **Result**: Decorations display as compact emoji indicators on the canvas.
+- **Verification**:
+  - `npm run lint` ✓
+  - `npm run build` ✓
+
+### ✅ Group colored border visible during both group and ungroup menus
+- **Issue**: Colored borders on grouped items should appear when Ctrl is held in both grouping and ungrouping modes.
+- **Fix**: Updated `shouldShowGroupOutline` condition to show whenever Ctrl is held, regardless of Shift key state.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx` (line 897): Changed from `isCtrlHeld && !isShiftHeld` to just `isCtrlHeld`
+- **Behavior**: Colored borders now appear in both:
+  - Group selection mode (Ctrl held)
+  - Ungroup mode (Ctrl+Shift held)
+- **Verification**:
+  - `npm run lint` ✓
+
+### ✅ Decorations no longer disappear while dragging a group they're in
+- **Issue**: When dragging a group that contained a decoration, the decoration would disappear during the drag and reappear only after the group was placed.
+- **Root Cause**: Only the primary dragged item received `z-index: 3000`; other group members (including decorations) received lower z-indices and were rendered beneath other items.
+- **Solution**:
+  - Updated z-index logic to check if an item belongs to a dragged group:
+    - If item is the dragged item OR item is grouped with the dragged item → `z-index: 3000`
+    - Otherwise → use normal stacking logic
+  - Now all members of a dragged group stay on top during the drag operation.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx` (lines 1013-1015)
+- **Verification**:
+  - `npm run lint` ✓
+
+## 2026-04-01 - Mixed Grouping: Decorations + Notes/Checklists
+
+### ✅ Decorations can now be grouped with notes and checklists
+- **Issue**: Grouping logic and canvas interaction guards treated decorations as non-groupable, so mixed groups (decoration + note/checklist) were blocked.
+- **Solution**:
+  - Updated grouping core logic to treat all desk items as groupable.
+  - Included decorations in group map application and remote hydration.
+  - Removed canvas event guards that blocked decoration participation in desktop/mobile grouping flows.
+  - Kept decoration-specific editing/controls behavior intact while allowing Ctrl/Alt grouping interactions.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+- **Verification**:
+  - `npm run lint`
+  - `npm run build`
+  - Browser validation: grouped checklist + decoration together, then ungrouped via interaction flow
+
 ## 2026-04-01 - New User Tutorial + More Menu Access
 
 ### ✅ Added a reusable onboarding tutorial for first-time users

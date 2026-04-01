@@ -123,6 +123,18 @@ function Desk({ user }) {
   const tutorialStorageKey = user?.id ? `doodledesk-tutorial-seen:${user.id}` : null
 
   React.useEffect(() => {
+    if (!showMoreMenu) return
+
+    function handleOutsideMoreMenuPointerDown(event) {
+      if (moreMenuRef.current?.contains(event.target)) return
+      setShowMoreMenu(false)
+    }
+
+    window.addEventListener('pointerdown', handleOutsideMoreMenuPointerDown)
+    return () => window.removeEventListener('pointerdown', handleOutsideMoreMenuPointerDown)
+  }, [showMoreMenu])
+
+  React.useEffect(() => {
     if (!tutorialStorageKey) return
 
     let hasSeenTutorial = false
@@ -175,6 +187,8 @@ function Desk({ user }) {
       <DeskTopControls
         isMobileLayout={isMobileLayout}
         topOverlayTop={topOverlayTop}
+        desktopTop={newNoteDesktopTop}
+        desktopLeft={165}
         menuLayerZIndex={menuLayerZIndex}
         canUndo={canUndo}
         canRedo={canRedo}
