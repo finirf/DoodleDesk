@@ -11,6 +11,8 @@ export default function useDeskGlobalUiEffects({
   setDeleteAccountDialog,
   pendingDeleteId,
   setPendingDeleteId,
+  tutorialDialogOpen,
+  closeTutorialDialog,
   closeConfirmDialog,
   undoNotesChange,
   redoNotesChange
@@ -86,6 +88,11 @@ export default function useDeskGlobalUiEffects({
 
         if (pendingDeleteId) {
           setPendingDeleteId(null)
+          return
+        }
+
+        if (tutorialDialogOpen) {
+          closeTutorialDialog()
         }
       }
     }
@@ -103,7 +110,9 @@ export default function useDeskGlobalUiEffects({
     deleteAccountDialogIsOpen,
     hasModalOpen,
     pendingDeleteId,
+    tutorialDialogOpen,
     closeConfirmDialog,
+    closeTutorialDialog,
     setDeleteAccountDialog,
     setPendingDeleteId
   ])

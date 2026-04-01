@@ -1,5 +1,24 @@
 # New Changes
 
+## 2026-04-01 - New User Tutorial + More Menu Access
+
+### ✅ Added a reusable onboarding tutorial for first-time users
+- **Feature**: Added a tutorial modal that explains the main DoodleDesk entry points: New Note, Desk, More, and keyboard shortcuts.
+- **Access**: The tutorial is now available from the More dropdown so users can reopen it later.
+- **Onboarding behavior**: The tutorial auto-opens once per user until it has been dismissed, then remains available manually from More.
+- **Code Changes**:
+  - `src/features/desk/components/DeskTutorialModal.jsx`
+  - `src/features/desk/components/DeskMoreMenu.jsx`
+  - `src/features/desk/components/DeskModals.jsx`
+  - `src/features/desk/hooks/useDeskModalState.js`
+  - `src/features/desk/hooks/useDeskGlobalUiEffects.js`
+  - `src/features/desk/hooks/useDeskActionOrchestration.js`
+  - `src/App.jsx`
+- **Verification**:
+  - `npm run lint`
+  - `npm run build`
+  - Browser check: tutorial auto-opens, closes, and reopens from More
+
 ## 2026-04-01 - CSP Worker Compatibility Fix
 
 ### ✅ Login/runtime worker initialization no longer blocked by CSP

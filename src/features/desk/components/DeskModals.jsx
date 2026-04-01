@@ -1,3 +1,5 @@
+import DeskTutorialModal from './DeskTutorialModal'
+
 export default function DeskModals({
   pendingDeleteId,
   confirmDeleteNote,
@@ -59,7 +61,9 @@ export default function DeskModals({
   submitShelfRenameDialog,
   closeShelfRenameDialog,
   shelfActionError,
-  setShelfActionError
+  setShelfActionError,
+  tutorialDialogOpen,
+  closeTutorialDialog
 }) {
   const sortedDeskMembers = [...deskMembers].sort((left, right) => {
     const getPriority = (member) => {
@@ -771,6 +775,11 @@ export default function DeskModals({
           </span>
         </div>
       )}
+
+      <DeskTutorialModal
+        isOpen={tutorialDialogOpen}
+        onClose={closeTutorialDialog}
+      />
     </>
   )
 }

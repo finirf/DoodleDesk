@@ -36,6 +36,9 @@ export default function useDeskModalState() {
   // Desk members management dialog
   const [deskMembersDialogOpen, setDeskMembersDialogOpen] = useState(false)
 
+  // New-user tutorial dialog
+  const [tutorialDialogOpen, setTutorialDialogOpen] = useState(false)
+
   // Unified modal close operations
   const closeAllModals = () => {
     setPendingDeleteId(null)
@@ -43,6 +46,7 @@ export default function useDeskModalState() {
     setDeleteAccountDialog({ isOpen: false, deleting: false, error: null, confirmationInput: '' })
     setDeskNameDialog({ isOpen: false, type: null, desk: null, error: null, saving: false })
     setDeskMembersDialogOpen(false)
+    setTutorialDialogOpen(false)
   }
 
   return {
@@ -71,6 +75,9 @@ export default function useDeskModalState() {
     // Desk members dialog state
     deskMembersDialogOpen,
     setDeskMembersDialogOpen,
+    // Tutorial dialog state
+    tutorialDialogOpen,
+    setTutorialDialogOpen,
     // Unified operations
     closeAllModals
   }

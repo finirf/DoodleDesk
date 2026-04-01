@@ -28,7 +28,8 @@ export default function DeskMoreMenu({
   importDeskInputRef,
   handleImportDeskFileSelection,
   snapToGrid,
-  setSnapToGrid
+  setSnapToGrid,
+  onOpenTutorial
 }) {
   return (
     <div ref={moreMenuRef} style={{ position: 'relative', width: 'auto', flexShrink: 0, zIndex: menuLayerZIndex }}>
@@ -225,6 +226,18 @@ export default function DeskMoreMenu({
               )}
             </>
           )}
+
+          <div style={{ height: 1, backgroundColor: 'var(--ui-border)', margin: '6px 0' }} />
+
+          <div style={{ padding: '7px 10px', fontSize: 11, opacity: 0.6, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
+            Help
+          </div>
+          <DeskMenuItemButton
+            type="button"
+            onClick={onOpenTutorial}
+          >
+            Tutorial
+          </DeskMenuItemButton>
         </DeskMenuPanel>
       )}
     </div>

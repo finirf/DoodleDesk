@@ -175,6 +175,7 @@ export default function useDeskActionOrchestration({
     || deleteAccountDialog.isOpen
     || deskNameDialog.isOpen
     || modalState.deskMembersDialogOpen
+    || modalState.tutorialDialogOpen
   )
 
   const deleteAccountConfirmationMatches = deleteAccountDialog.confirmationText.trim().toUpperCase() === 'DELETE'
