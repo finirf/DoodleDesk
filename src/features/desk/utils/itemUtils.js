@@ -210,12 +210,20 @@ export function getItemTableName(item) {
 }
 
 export function getItemCreatorLabel(item, currentUserId) {
-  const creatorPreferredName = typeof item?.created_by_name === 'string' ? item.created_by_name.trim() : ''
-  if (creatorPreferredName) return creatorPreferredName
-  const creatorEmail = typeof item?.created_by_email === 'string' ? item.created_by_email.trim() : ''
-  if (creatorEmail) return creatorEmail
-  if (item?.user_id && item.user_id === currentUserId) return 'You'
-  return 'A collaborator'
+  const isEdited = Boolean(item?.edited_by_user_id)
+  const prefix = isEdited ? 'Edited by' : 'Added by'
+  const preferredName = isEdited ? item?.edited_by_name : item?.created_by_name
+  const email = isEdited ? item?.edited_by_email : item?.created_by_email
+
+  const trimmedPreferredName = typeof preferredName === 'string' ? preferredName.trim() : ''
+  if (trimmedPreferredName) return `${prefix} ${trimmedPreferredName}`
+
+  const trimmedEmail = typeof email === 'string' ? email.trim() : ''
+  if (trimmedEmail) return `${prefix} ${trimmedEmail}`
+
+  if (isEdited && item?.edited_by_user_id && item.edited_by_user_id === currentUserId) return `${prefix} You`
+  if (!isEdited && item?.user_id && item.user_id === currentUserId) return `${prefix} You`
+  return `${prefix} A collaborator`
 }
 
 export function isMissingShelfStorageTableError(error) {

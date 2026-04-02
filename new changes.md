@@ -153,6 +153,20 @@
 - **Doc Change**:
   - `BACKEND_SQL_README.md`
 
+## 2026-04-02 - Edited By Labels for Shared Notes
+
+### ✅ Shared desk notes now switch from "Added by" to "Edited by" after edits
+- **Feature**: When a note is edited on a collaborative desk, its label now reflects the editor instead of the original creator.
+- **Behavior**:
+  - Notes edited by a shared desk member show `Edited by ...` in the metadata section.
+  - The editor identity is persisted on the note when the database column is available.
+  - Older schemas fall back safely without breaking the save flow.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+  - `src/features/desk/hooks/useDeskDataQueries.js`
+  - `src/features/desk/utils/itemUtils.js`
+  - `SUPABASE_UPDATES_2026_04_02_EDITED_BY_LABELS.sql`
+
 ## 2026-04-01 - Owner Toggle for Added By Labels
 
 ### ✅ Shared desk owners can now toggle "Added by user" labels on/off

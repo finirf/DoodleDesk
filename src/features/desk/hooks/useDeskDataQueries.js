@@ -139,18 +139,26 @@ export default function useDeskDataQueries({
             .filter((value) => Boolean(value))
         )
       )
+      const editorIds = Array.from(
+        new Set(
+          mappedNotes
+            .map((item) => item.edited_by_user_id)
+            .filter((value) => Boolean(value))
+        )
+      )
+      const profileIds = Array.from(new Set([...creatorIds, ...editorIds]))
 
-      let creatorEmailById = new Map()
-      if (creatorIds.length > 0) {
+      let profileById = new Map()
+      if (profileIds.length > 0) {
         const { data: profileRows, error: profileError } = await supabase
           .from('profiles')
           .select('id, email, preferred_name')
-          .in('id', creatorIds)
+          .in('id', profileIds)
 
         if (profileError) {
-          console.error('Failed to fetch item creator profiles:', profileError)
+          console.error('Failed to fetch item profiles:', profileError)
         } else {
-          creatorEmailById = new Map((profileRows || []).map((row) => [
+          profileById = new Map((profileRows || []).map((row) => [
             row.id,
             {
               email: row.email || '',
@@ -162,12 +170,15 @@ export default function useDeskDataQueries({
 
       const combined = [...mappedNotes, ...mappedChecklists, ...mappedDecorations].map((item) => {
         if (isDecorationItem(item)) return item
-        const creatorProfile = creatorEmailById.get(item.user_id)
-        if (!creatorProfile) return item
+        const creatorProfile = profileById.get(item.user_id)
+        const editorProfile = item.edited_by_user_id ? profileById.get(item.edited_by_user_id) : null
+        if (!creatorProfile && !editorProfile) return item
         return {
           ...item,
-          created_by_email: creatorProfile.email,
-          created_by_name: creatorProfile.preferredName
+          created_by_email: creatorProfile?.email || item.created_by_email || '',
+          created_by_name: creatorProfile?.preferredName || item.created_by_name || '',
+          edited_by_email: editorProfile?.email || item.edited_by_email || '',
+          edited_by_name: editorProfile?.preferredName || item.edited_by_name || ''
         }
       }).sort((left, right) => {
         const leftTime = left?.created_at ? new Date(left.created_at).getTime() : 0

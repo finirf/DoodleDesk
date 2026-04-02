@@ -689,14 +689,33 @@ export function useDeskItemOperations({
           font_family: persistedNoteFontFamily,
           desk_id: selectedDeskId
         }
+        const editorMetadata = {
+          edited_by_user_id: userId
+        }
         let persistedTextColor = nextTextColor
         let persistedFontSize = nextFontSize
+        let didPersistEditorMetadata = true
 
         let { error: saveError } = await supabase
           .from('notes')
-          .update({ ...basePayload, text_color: nextTextColor, font_size: nextFontSize })
+          .update({ ...basePayload, ...editorMetadata, text_color: nextTextColor, font_size: nextFontSize })
           .eq('id', item.id)
           .eq('desk_id', selectedDeskId)
+
+        if (saveError && isMissingColumnError(saveError, 'edited_by_user_id')) {
+          didPersistEditorMetadata = false
+          const { error: retryError } = await supabase
+            .from('notes')
+            .update({ ...basePayload, text_color: nextTextColor, font_size: nextFontSize })
+            .eq('id', item.id)
+            .eq('desk_id', selectedDeskId)
+
+          if (!retryError) {
+            saveError = null
+          } else {
+            saveError = retryError
+          }
+        }
 
         if (saveError && isMissingColumnError(saveError, 'text_color')) {
           const { error: retryError } = await supabase
@@ -741,7 +760,8 @@ export function useDeskItemOperations({
               color: nextColor,
               text_color: persistedTextColor,
               font_size: persistedFontSize,
-              font_family: persistedNoteFontFamily
+              font_family: persistedNoteFontFamily,
+              ...(didPersistEditorMetadata ? { edited_by_user_id: userId } : {})
             } : row
           )
         )
@@ -895,6 +915,7 @@ export function useDeskItemOperations({
       editTextColor,
       checklistEditItems,
       selectedDeskId,
+      userId,
       supabase,
       setNotes
     ]
