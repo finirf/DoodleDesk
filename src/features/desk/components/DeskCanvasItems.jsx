@@ -194,6 +194,7 @@ export default function DeskCanvasItems({
   const mobileDragClearHandlerRef = useRef(null)
   const suppressEditClickRef = useRef(false)
   const suppressEditClickTimerRef = useRef(null)
+  const prevDraggedIdRef = useRef(draggedId)
   const [isShiftHeld, setIsShiftHeld] = useState(false)
   const [isCtrlHeld, setIsCtrlHeld] = useState(false)
   const [mobileContextMenuItemKey, setMobileContextMenuItemKey] = useState(null)
@@ -239,7 +240,7 @@ export default function DeskCanvasItems({
     return nextMap
   }, [groupedItemGroupMap])
 
-  function temporarilySuppressEditClick() {
+  const temporarilySuppressEditClick = useCallback(() => {
     suppressEditClickRef.current = true
     if (suppressEditClickTimerRef.current) {
       window.clearTimeout(suppressEditClickTimerRef.current)
@@ -248,7 +249,17 @@ export default function DeskCanvasItems({
       suppressEditClickRef.current = false
       suppressEditClickTimerRef.current = null
     }, 280)
-  }
+  }, [])
+
+  // Suppress click-to-edit when drag ends to prevent opening editor after a drag
+  useEffect(() => {
+    if (prevDraggedIdRef.current !== null && draggedId === null) {
+      if (!isMobileLayout) {
+      temporarilySuppressEditClick()
+      }
+    }
+    prevDraggedIdRef.current = draggedId
+  }, [draggedId, temporarilySuppressEditClick])
 
   const clearPendingMobileDrag = useCallback(() => {
     if (mobileDragTimerRef.current) {
@@ -343,15 +354,14 @@ export default function DeskCanvasItems({
       handleDragStart(e, pending.item)
       clearPendingMobileDrag()
     }
-  }, [clearPendingMobileDrag, handleDragStart])
+  }, [clearPendingMobileDrag, handleDragStart, temporarilySuppressEditClick])
 
-  const handleDesktopNoteClick = useCallback((itemKey, item, isChecklist) => {
-    if (!canCurrentUserEditDeskItems) return
-    if (suppressEditClickRef.current) {
-      suppressEditClickRef.current = false
-      return
-    }
-
+    const handleDesktopNoteClick = useCallback((itemKey, item, isChecklist, skipSuppressionCheck = false) => {
+      if (!canCurrentUserEditDeskItems) return
+      if (!skipSuppressionCheck && suppressEditClickRef.current) {
+        suppressEditClickRef.current = false
+        return
+      }
     setIsSavingEdit(false)
     setEditSaveError('')
     setEditingId(itemKey)
@@ -479,7 +489,8 @@ export default function DeskCanvasItems({
     setEditValue,
     setChecklistEditItems,
     setNewChecklistItemText,
-    normalizeChecklistReminderValue
+    normalizeChecklistReminderValue,
+    temporarilySuppressEditClick
   ])
 
   function startMobileDragHold(e, item) {
@@ -920,7 +931,7 @@ export default function DeskCanvasItems({
         />
       )}
 
-      {/* Desktop Ungroup Mode Overlay - Show only grouped items, grey out ungrouped */}
+      {/* Desktop Ungroup Mode Overlay - Show grouped items while dimming ungrouped non-decoration items */}
       {!isMobileLayout && isShiftHeld && isCtrlHeld && (
         <div
           style={{
@@ -1048,7 +1059,11 @@ export default function DeskCanvasItems({
           isDecoration
             ? (e) => {
               if (isGroupingModifierPressed(e) || e.altKey) return
-              if (groupSelectionMode) return
+              // Allow decorations to be selected during group selection mode
+              if (groupSelectionMode) {
+                toggleGroupItemSelection(itemKey)
+                return
+              }
               setActiveDecorationHandleId((prev) => (prev === itemKey ? null : itemKey))
             }
             : undefined
@@ -1084,7 +1099,7 @@ export default function DeskCanvasItems({
           border: 'none',
           filter: 'none',
           mixBlendMode: 'normal',
-          opacity: (!isMobileLayout && isShiftHeld && isCtrlHeld && !isGrouped) ? 0.3 : 1,
+          opacity: (!isMobileLayout && isShiftHeld && isCtrlHeld && !isGrouped && !isDecoration) ? 0.3 : 1,
           fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
           fontWeight: isDecoration ? undefined : noteFontWeight,
           fontStyle: isDecoration ? undefined : noteFontStyle,
@@ -1102,7 +1117,11 @@ export default function DeskCanvasItems({
             : (isMobileLayout ? 'default' : 'grab'),
           zIndex: ((draggedId === itemKey) || (draggedId && isGrouped && groupedItemGroupMap?.[draggedId] === groupId))
             ? 3000
-            : (editingId === itemKey || (isDecoration && activeDecorationHandleId === itemKey) ? 2500 : (baseZIndex + 200))
+            : (editingId === itemKey || (isDecoration && activeDecorationHandleId === itemKey)
+              ? 2500
+              : (isDecoration
+                ? ((isCtrlHeld || groupSelectionMode) ? (baseZIndex + 200) : baseZIndex)
+                : (baseZIndex + 200)))
         }}
       >
         {isDecoration ? (
@@ -1942,14 +1961,23 @@ export default function DeskCanvasItems({
             )}
             <div
               onClick={(e) => {
+                // For text boxes, only allow editing on double-click
+                if (isTextBoxNote) return
                 if (groupSelectionMode) return
                 if (!isMobileLayout && (isCtrlHeld || isGroupingModifierPressed(e) || e.altKey)) return
                 handleDesktopNoteClick(itemKey, item, isChecklist)
               }}
+              onDoubleClick={(e) => {
+                // For text boxes, allow editing on double-click
+                if (!isTextBoxNote) return
+                if (groupSelectionMode) return
+                if (!isMobileLayout && (isCtrlHeld || isGroupingModifierPressed(e) || e.altKey)) return
+                 handleDesktopNoteClick(itemKey, item, isChecklist, true)
+              }}
               style={{
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
-                cursor: canCurrentUserEditDeskItems ? (isDecoration ? 'grab' : 'pointer') : 'default',
+                cursor: canCurrentUserEditDeskItems ? (isDecoration ? 'grab' : (isTextBoxNote ? 'text' : 'pointer')) : 'default',
                 minHeight: isDecoration ? 40 : contentMinHeight,
                 display: 'flex',
                 flexDirection: 'column',

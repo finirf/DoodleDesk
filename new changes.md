@@ -1,5 +1,69 @@
 # New Changes
 
+## 2026-04-02 - Decorations Stay Visible in Ungroup Mode
+
+### ✅ Decorations are no longer greyed out during grouping/ungroup overlay mode
+- **Issue**: Decorations could appear dimmed in desktop ungroup mode, making them look disabled in grouping workflows.
+- **Fix**: Updated ungroup overlay opacity logic so only ungrouped non-decoration items are dimmed.
+- **Follow-up Fix**: Raised decoration z-index while desktop grouping modifiers are active so decorations stay above the overlay even when they were not pre-clicked.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+- **Status**: ✅ Runtime tested
+
+## 2026-04-02 - Text Boxes Require Double-Click to Edit
+
+### ✅ Text boxes now open editor on double-click instead of single-click
+  - Single-click text boxes → selects/moves them (no editor opens)
+  - Double-click text boxes → opens editor for editing
+  - Other note types (regular notes, checklists) still use single-click to edit (unchanged)
+  - `src/features/desk/components/DeskCanvasItems.jsx` (~1957-1969):
+    - Added `onDoubleClick` handler that only responds to text boxes
+    - Modified `onClick` handler to skip text boxes
+    - Updated cursor style from 'pointer' to 'text' for text boxes
+- **Status**: ✅ Build passes (exit 0)
+
+### ✅ Decorations can now be grouped with other items
+- **Problem**: Decorations were greyed out/disabled in the grouping menu and couldn't be selected for grouping with other items.
+- **Root Cause**: When entering group selection mode, the onClick handler for decorations had an early `return` statement that prevented them from being toggled into the selection set.
+- **Fix**: Changed decoration onClick to call `toggleGroupItemSelection()` when in grouping mode (same as non-decoration items), allowing decorations to participate in groups.
+- **Behavior**:
+  - ✓ Decorations can now be selected alongside other items to form groups
+  - ✓ Decorations can be ungrouped using the same Alt+click mechanism as other items
+  - ✓ Works on both desktop and mobile
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx` line ~1061-1065: Changed decoration onClick to allow grouping
+- **Status**: ✅ Build passes (exit 0), Lint clean on DeskCanvasItems.jsx (pre-existing errors in useDeskItemInteractions.js)
+
+## 2026-04-02 - Text Box Drag Behavior Fixed
+
+### ✅ Text boxes now move without opening editor when dragged
+- **Problem**: Dragging a text box would move it, but then the `pointerup` event would trigger the `onClick` handler, immediately opening the text editor.
+- **Root Cause**: After drag ends, the `pointerup` event bubbles to trigger both the drag cleanup AND the click handler on the content div.
+- **Fix**: Detect when a drag just ended (draggedId transitions from non-null to null) and suppress the subsequent click event using the existing `temporarilySuppressEditClick()` mechanism (280ms suppression window).
+- **Behavior**:
+  - **Drag**: Click and drag text box → moves but editor doesn't open ✓
+  - Works on both desktop and mobile (mobile already had proper suppression for tap vs drag)
+- **Code Changes**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`:
+    - Added `prevDraggedIdRef` to track previous draggedId value
+    - Added useEffect that detects drag-end and calls `temporarilySuppressEditClick()`
+    - Converted `temporarilySuppressEditClick` to useCallback for proper dependency tracking
+    - Updated dependency arrays in `handleMobilePointerMove` and `handleMobilePointerUp`
+- **Status**: ✅ Build passes (exit 0), Lint clean on modified file (pre-existing errors in unrelated file)
+
+## 2026-04-02 - Text Box Z-Index Layering Fixed
+
+### ✅ Text boxes no longer jump behind decorations
+- **Problem**: Text boxes would unexpectedly move behind decorations when items were added/reordered on the canvas.
+- **Root Cause**: Z-index calculation used `baseZIndex + 200` for all items regardless of type. Since `baseZIndex = array index + 1`, decorations appearing later in the items array would get higher z-index values, causing them to appear on top of text boxes.
+- **Fix**: Modified z-index logic to explicitly check item type:
+  - Decorations now get z-index = `index + 1` (stays low, always behind)
+  - Non-decoration items get z-index = `index + 1 + 200` (stays on top)
+  - Dragging/editing states remain at 3000/2500 (highest priority)
+- **Code Changes**:
+  - `src/features/desk/components/DeskCanvasItems.jsx` line 1105: Changed `(baseZIndex + 200)` to `(isDecoration ? baseZIndex : (baseZIndex + 200))`
+- **Status**: ✅ Build passes (exit 0), Lint clean on modified file, Runtime tested
+
 ## 2026-04-02 - Bold/Italic Style Menu Available for Notes & Checklists
 
 ### ✅ Bold/Italic formatting options now available for all note/checklist types
