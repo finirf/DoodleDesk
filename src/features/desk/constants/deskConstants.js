@@ -20,12 +20,6 @@ export const NOTE_OPTIONS = [
     label: 'Header Note',
     color: '#9bd9e8',
     image: null
-  },
-  {
-    key: 'green-header-sticky-note',
-    label: 'Green Header Sticky Note',
-    color: '#9bd9e8',
-    image: '/images/Notes/green%20sticky%20note.png'
   }
 ]
 

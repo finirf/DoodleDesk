@@ -2,7 +2,6 @@ import { DECORATION_OPTIONS, NOTE_OPTIONS } from '../constants/deskConstants'
 
 const HEADER_NOTE_BASE_COLOR = '#9bd9e8'
 const HEADER_NOTE_FONT_FAMILY_PREFIX = 'header-note:'
-const GREEN_HEADER_STICKY_NOTE_FONT_FAMILY_PREFIX = 'green-header-sticky-note:'
 
 function normalizeHex(value) {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
@@ -17,9 +16,6 @@ function normalizeHex(value) {
 function stripHeaderNoteFontFamilyPrefix(value) {
   const normalized = typeof value === 'string' ? value.trim() : ''
   if (!normalized) return ''
-  if (normalized.toLowerCase().startsWith(GREEN_HEADER_STICKY_NOTE_FONT_FAMILY_PREFIX)) {
-    return normalized.slice(GREEN_HEADER_STICKY_NOTE_FONT_FAMILY_PREFIX.length).trim()
-  }
   return normalized.toLowerCase().startsWith(HEADER_NOTE_FONT_FAMILY_PREFIX)
     ? normalized.slice(HEADER_NOTE_FONT_FAMILY_PREFIX.length).trim()
     : normalized
@@ -138,7 +134,7 @@ export function isHeaderNoteItem(item) {
   if (!item || isChecklistItem(item) || isDecorationItem(item)) return false
 
   const fontFamily = typeof item?.font_family === 'string' ? item.font_family.trim().toLowerCase() : ''
-  if (fontFamily.startsWith(HEADER_NOTE_FONT_FAMILY_PREFIX) || fontFamily.startsWith(GREEN_HEADER_STICKY_NOTE_FONT_FAMILY_PREFIX)) {
+  if (fontFamily.startsWith(HEADER_NOTE_FONT_FAMILY_PREFIX)) {
     return true
   }
 
@@ -146,17 +142,8 @@ export function isHeaderNoteItem(item) {
   return normalizeHex(item?.color) === HEADER_NOTE_BASE_COLOR
 }
 
-export function isGreenHeaderStickyNoteItem(item) {
-  if (!item || isChecklistItem(item) || isDecorationItem(item)) return false
-  const fontFamily = typeof item?.font_family === 'string' ? item.font_family.trim().toLowerCase() : ''
-  return fontFamily.startsWith(GREEN_HEADER_STICKY_NOTE_FONT_FAMILY_PREFIX)
-}
-
-export function toStoredNoteFontFamily(fontFamilyValue, { isHeaderNote = false, isGreenHeaderStickyNote = false } = {}) {
+export function toStoredNoteFontFamily(fontFamilyValue, { isHeaderNote = false } = {}) {
   const normalized = stripHeaderNoteFontFamilyPrefix(fontFamilyValue) || 'inherit'
-  if (isGreenHeaderStickyNote) {
-    return `${GREEN_HEADER_STICKY_NOTE_FONT_FAMILY_PREFIX}${normalized}`
-  }
   return isHeaderNote ? `${HEADER_NOTE_FONT_FAMILY_PREFIX}${normalized}` : normalized
 }
 

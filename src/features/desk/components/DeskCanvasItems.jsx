@@ -8,7 +8,6 @@ import {
   getItemKey,
   getItemTextColor,
   getItemWidth,
-  isGreenHeaderStickyNoteItem,
   isHeaderNoteItem,
   isChecklistItem,
   isDecorationItem
@@ -19,7 +18,6 @@ const MOBILE_DRAG_HOLD_MS = 170
 const MOBILE_DRAG_CANCEL_DISTANCE_PX = 10
 const GROUP_COLOR_PALETTE = ['#f4b400', '#7e57c2', '#26a69a', '#ff7043', '#7cb342', '#039be5', '#ec407a', '#fdd835']
 const HEADER_NOTE_HEADER_HEIGHT = 26
-const GREEN_HEADER_STICKY_NOTE_IMAGE = '/images/Notes/green%20sticky%20note.png'
 
 function normalizeHex(hex) {
   const value = typeof hex === 'string' ? hex.trim().toLowerCase() : ''
@@ -946,8 +944,7 @@ export default function DeskCanvasItems({
         const noteBackgroundColor = editingId === itemKey ? editColor : getItemColor(item)
         const noteTextColor = editingId === itemKey ? editTextColor : getItemTextColor(item)
         const isHeaderNote = isHeaderNoteItem(item)
-        const isGreenHeaderStickyNote = isGreenHeaderStickyNoteItem(item)
-        const noteTextureImage = isGreenHeaderStickyNote ? GREEN_HEADER_STICKY_NOTE_IMAGE : null
+        const noteTextureImage = null
         const headerBandColor = isHeaderNote ? darkenAndSaturate(noteBackgroundColor) : null
         const isTextBoxNote = !isDecoration && !isChecklist && String(noteBackgroundColor || '').trim().toLowerCase() === 'transparent'
         const groupOutlineShadow = shouldShowGroupOutline
@@ -1046,12 +1043,16 @@ export default function DeskCanvasItems({
           top: item.y,
           transform: `rotate(${item.rotation || 0}deg)`,
           backgroundColor: isDecoration ? 'transparent' : (isTextBoxNote ? 'transparent' : noteBackgroundColor),
-          backgroundImage: isDecoration || isTextBoxNote || !noteTextureImage ? 'none' : `url("${noteTextureImage}")`,
-          backgroundSize: noteTextureImage ? '100% 100%' : 'auto',
-          backgroundPosition: noteTextureImage ? 'center' : 'initial',
+          backgroundImage: 'none',
+          backgroundSize: 'auto',
+          backgroundPosition: 'initial',
           backgroundRepeat: noteTextureImage ? 'no-repeat' : 'repeat',
           color: isDecoration ? undefined : noteTextColor,
-          padding: isDecoration ? 0 : (isTextBoxNote ? 0 : (isHeaderNote ? `${HEADER_NOTE_HEADER_HEIGHT + 16}px 20px 20px` : 20)),
+          padding: isDecoration
+            ? 0
+            : (isTextBoxNote
+                ? 0
+                : (isHeaderNote ? `${HEADER_NOTE_HEADER_HEIGHT + 16}px 20px 20px` : 20)),
           width: renderedItemWidth,
           minHeight: itemHeight,
           borderRadius: 0,
@@ -1064,7 +1065,8 @@ export default function DeskCanvasItems({
                 : (!isMobileLayout && isCtrlHeld && !isShiftHeld && desktopGroupSelectionItems.has(itemKey)
                   ? '0 0 0 3px rgba(76, 175, 80, 0.95), 3px 3px 10px rgba(0,0,0,0.3)'
                   : groupOutlineShadow))),
-                  filter: 'none',
+          border: 'none',
+          filter: 'none',
           mixBlendMode: 'normal',
           opacity: (!isMobileLayout && isShiftHeld && isCtrlHeld && !isGrouped) ? 0.3 : 1,
           fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),

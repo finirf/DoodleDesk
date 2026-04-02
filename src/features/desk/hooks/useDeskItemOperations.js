@@ -12,7 +12,6 @@ import {
   getItemTextColor,
   getItemWidth,
   getNoteOption,
-  isGreenHeaderStickyNoteItem,
   isHeaderNoteItem,
   isChecklistItem,
   isDecorationItem,
@@ -158,10 +157,8 @@ export function useDeskItemOperations({
       const showNewNoteMenuSetter = typeof noteStyleKeyOrSetter === 'function' ? noteStyleKeyOrSetter : maybeShowNewNoteMenuSetter
       const noteOption = getNoteOption(noteStyleKey)
       const isHeaderNotePreset = noteStyleKey === 'header-note'
-      const isGreenHeaderStickyNotePreset = noteStyleKey === 'green-header-sticky-note'
       const noteFontFamily = toStoredNoteFontFamily('inherit', {
-        isHeaderNote: isHeaderNotePreset,
-        isGreenHeaderStickyNote: isGreenHeaderStickyNotePreset
+        isHeaderNote: isHeaderNotePreset
       })
 
       const spawnPosition = findAvailableSpawnPosition({
@@ -680,8 +677,7 @@ export function useDeskItemOperations({
       const nextFontSize = normalizeFontSize(editFontSize, getItemFontSize(item))
       const nextFontFamily = (editFontFamily || 'inherit').trim() || 'inherit'
       const persistedNoteFontFamily = toStoredNoteFontFamily(nextFontFamily, {
-        isHeaderNote: isHeaderNoteItem(item),
-        isGreenHeaderStickyNote: isGreenHeaderStickyNoteItem(item)
+        isHeaderNote: isHeaderNoteItem(item)
       })
       const itemKey = getItemKey(item)
 

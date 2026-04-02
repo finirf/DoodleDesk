@@ -155,7 +155,7 @@ export default function DeskModals({
         <div
           style={{
             ...modalOverlayStyle,
-            zIndex: 1000
+            zIndex: 4000
           }}
           role="alertdialog"
           aria-labelledby="delete-note-title"

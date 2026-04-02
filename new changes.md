@@ -1,5 +1,59 @@
 # New Changes
 
+## 2026-04-02 - Green Header Sticky Note Removed
+
+### ✅ Removed Green Header Sticky note option and related code paths
+- **Change**: Removed the `Green Header Sticky Note` item type from New Item -> Create.
+- **Cleanup**:
+  - Removed green-header metadata markers and persistence branching.
+  - Removed green-header canvas rendering branches and visual constants.
+  - Kept existing `Header Note` behavior intact.
+- **Code Changes**:
+  - `src/features/desk/constants/deskConstants.js`
+  - `src/features/desk/components/NewNoteMenu.jsx`
+  - `src/features/desk/utils/itemUtils.js`
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-04-01 - Delete Dialog Full-Dim Fix
+
+### ✅ Delete note dialog now greys out all desk content, including the target note
+- **Issue**: Some notes (including the one being deleted) could render above the delete overlay because note layers can use higher z-index values.
+- **Fix**: Raised delete confirmation overlay z-index above interactive note layers so the full desk is dimmed consistently while delete confirmation is open.
+- **Code Change**:
+  - `src/features/desk/components/DeskModals.jsx`
+
+## 2026-04-01 - Green Header Sticky Visual Correction
+
+### ✅ Removed unintended blue containment from Green Header Sticky notes
+- **Issue**: Green Header Sticky notes could appear inside a blue-toned container because earlier versions used the header-note blue base color and the green texture image has transparent regions.
+- **Fix**:
+  - Updated default Green Header Sticky base color to green.
+  - Added render fallback so legacy Green Header Sticky notes created with the old blue value now render with a green base.
+- **Code Changes**:
+  - `src/features/desk/constants/deskConstants.js`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+### ✅ Green sticker texture no longer stretches when text area grows
+- **Issue**: As note height increased, the green sticker image could stretch because it was scaled to fill the entire note bounds.
+- **Fix**: Green Header Sticky now anchors the sticker texture at the top with fixed-aspect sizing (`100% auto`), while the editable text area can expand independently below it.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+### ✅ Removed nested header-note look from Green Header Sticky
+- **Issue**: The Green Header Sticky variant still looked visually nested inside a separate header-note treatment.
+- **Fix**: Green Header Sticky now uses its own fixed top sticker-art layer and body background, and no longer renders the generic header-note band.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+### ✅ Refined Green Header Sticky composition to match sticker style
+- **Improvement**:
+  - Centered the green sticker emblem with tuned proportions.
+  - Switched the body to a cohesive green gradient surface (instead of card-like neutral fill).
+  - Added spacing/border tuning so expanded text feels integrated without stretching the sticker image.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
 ## 2026-04-01 - Custom Background URL Apply Fix
 
 ### ✅ Custom image URL backgrounds now apply correctly

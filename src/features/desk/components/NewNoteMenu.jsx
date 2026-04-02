@@ -153,7 +153,6 @@ export default function NewNoteMenu({
             [
               { key: 'classic', label: 'Classic Sticky Note', action: () => onAddStickyNote() },
               { key: 'header', label: 'Header Note', action: () => onAddStickyNote('header-note') },
-              { key: 'green-header', label: 'Green Header Sticky Note', action: () => onAddStickyNote('green-header-sticky-note') },
               { key: 'textbox', label: 'Text Box', action: () => onAddTextBox() },
               { key: 'checklist', label: 'Checklist', action: () => onAddChecklist() }
             ],
