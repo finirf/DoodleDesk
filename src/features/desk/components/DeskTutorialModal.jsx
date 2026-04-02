@@ -1,7 +1,7 @@
 const tutorialSteps = [
   {
     title: 'Add something fast',
-    body: 'Open New Note to create a sticky note, checklist, or decoration on the current desk.'
+    body: 'Open New Item to create a sticky note, checklist, or decoration on the current desk.'
   },
   {
     title: 'Organize the workspace',
@@ -58,7 +58,7 @@ export default function DeskTutorialModal({ isOpen, onClose }) {
               Quick start for new users
             </h2>
             <p style={{ margin: '10px 0 0', color: 'var(--ui-ink-muted)', fontSize: 14, lineHeight: 1.5 }}>
-              This short guide shows the three places you'll use most often: New Note, Desk, and More.
+              This short guide shows the three places you'll use most often: New Item, Desk, and More.
             </p>
           </div>
 

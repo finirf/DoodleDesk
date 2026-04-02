@@ -8,11 +8,41 @@ export const FONT_OPTIONS = [
   { label: 'Trebuchet MS', value: '"Trebuchet MS", sans-serif' }
 ]
 
+export const NOTE_OPTIONS = [
+  {
+    key: 'classic-sticky-note',
+    label: 'Classic Sticky Note',
+    color: '#fff59d',
+    image: null
+  },
+  {
+    key: 'header-note',
+    label: 'Header Note',
+    color: '#9bd9e8',
+    image: null
+  }
+]
+
 export const DECORATION_OPTIONS = [
   { key: 'mug', label: 'Mug', emoji: '☕' },
   { key: 'pen', label: 'Pen', emoji: '🖊️' },
   { key: 'pencil', label: 'Pencil', emoji: '✏️' },
-  { key: 'plant', label: 'Plant', emoji: '🪴' }
+  { key: 'plant', label: 'Plant', emoji: '🪴' },
+  { key: 'blue-sticky-note', label: 'Blue Sticky Note', image: '/images/Notes/blue%20sticky%20note.png' },
+  { key: 'green-sticky-note', label: 'Green Sticky Note', image: '/images/Notes/green%20sticky%20note.png' },
+  { key: 'pink-sticky-note', label: 'Pink Sticky Note', image: '/images/Notes/pink%20sticky%20note.png' },
+  { key: 'yellow-sticky-note', label: 'Yellow Sticky Note', image: '/images/Notes/yellow%20sticky%20note.png' },
+  { key: 'flashcard-sticky-note', label: 'Flashcard Sticky Note', image: '/images/Notes/flashcard%20sticky%20note.png' },
+  { key: 'polka-dot-envelope', label: 'Polka Dot Envelope', image: '/images/Notes/polka%20dot%20envelope.png' },
+  { key: 'swirly-envelope', label: 'Swirly Envelope', image: '/images/Notes/swirly%20envelope.png' },
+  { key: 'binder-clip', label: 'Binder Clip', emoji: '📎', image: '/images/Decorations/binder%20clip.png' },
+  { key: 'blue-tack', label: 'Blue Tack', emoji: '📍', image: '/images/Decorations/blue%20tack.png' },
+  { key: 'green-tab', label: 'Green Tab', emoji: '🏷️', image: '/images/Decorations/green%20tab.png' },
+  { key: 'orange-tab', label: 'Orange Tab', emoji: '🏷️', image: '/images/Decorations/orange%20tab.png' },
+  { key: 'paperclips', label: 'Paperclips', emoji: '📎', image: '/images/Decorations/paperclips.png' },
+  { key: 'pink-tab', label: 'Pink Tab', emoji: '🏷️', image: '/images/Decorations/pink%20tab.png' },
+  { key: 'pink-tack', label: 'Pink Tack', emoji: '📍', image: '/images/Decorations/pink%20tack.png' },
+  { key: 'logo', label: 'Logo', emoji: '🪧', image: '/images/Decorations/DoodleDesk%20Logo.png' }
 ]
 
 export const BUILT_IN_SHELVES = [

@@ -1,6 +1,12 @@
 function getTopControlButtonStyle({ isMobileLayout, disabled }) {
   return {
     padding: isMobileLayout ? '8px 12px' : '7px 12px',
+    height: isMobileLayout ? 36 : 34,
+    boxSizing: 'border-box',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: 1.2,
     fontSize: 12,
     borderRadius: 8,
     border: '1px solid var(--ui-border-strong)',
@@ -18,6 +24,12 @@ function getMenuTriggerStyle({ isMobileLayout, disabled }) {
   return {
     width: isMobileLayout ? '100%' : 'auto',
     padding: isMobileLayout ? '10px 12px' : '8px 16px',
+    height: isMobileLayout ? 36 : 34,
+    boxSizing: 'border-box',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: 1.2,
     fontSize: isMobileLayout ? 13 : 14,
     borderRadius: 8,
     border: '1px solid var(--ui-border-strong)',

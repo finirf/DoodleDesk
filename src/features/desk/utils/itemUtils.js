@@ -1,4 +1,4 @@
-import { DECORATION_OPTIONS } from '../constants/deskConstants'
+import { DECORATION_OPTIONS, NOTE_OPTIONS } from '../constants/deskConstants'
 
 // Normalization and rendering helpers shared across notes, checklists, and decoration items.
 export function getItemKey(item) {
@@ -14,7 +14,11 @@ export function isDecorationItem(item) {
 }
 
 export function getDecorationOption(kind) {
-  return DECORATION_OPTIONS.find((option) => option.key === kind) || { key: 'custom', label: 'Decoration', emoji: '📌' }
+  return DECORATION_OPTIONS.find((option) => option.key === kind) || { key: 'custom', label: 'Decoration', emoji: '📌', image: null }
+}
+
+export function getNoteOption(kind) {
+  return NOTE_OPTIONS.find((option) => option.key === kind) || { key: 'classic-sticky-note', label: 'Classic Sticky Note', color: '#fff59d', image: null }
 }
 
 export function getDefaultItemColor(itemType) {

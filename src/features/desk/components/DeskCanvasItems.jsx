@@ -16,6 +16,99 @@ import FourWayResizeIcon from './FourWayResizeIcon'
 const MOBILE_DRAG_HOLD_MS = 170
 const MOBILE_DRAG_CANCEL_DISTANCE_PX = 10
 const GROUP_COLOR_PALETTE = ['#f4b400', '#7e57c2', '#26a69a', '#ff7043', '#7cb342', '#039be5', '#ec407a', '#fdd835']
+const HEADER_NOTE_BASE_COLOR = '#9bd9e8'
+const HEADER_NOTE_HEADER_HEIGHT = 26
+
+function normalizeHex(hex) {
+  const value = typeof hex === 'string' ? hex.trim().toLowerCase() : ''
+  if (!value) return ''
+  if (/^#[0-9a-f]{6}$/i.test(value)) return value
+  if (/^#[0-9a-f]{3}$/i.test(value)) {
+    return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`
+  }
+  return ''
+}
+
+function hexToHsl(hex) {
+  const normalized = normalizeHex(hex)
+  if (!normalized) return null
+
+  const r = Number.parseInt(normalized.slice(1, 3), 16) / 255
+  const g = Number.parseInt(normalized.slice(3, 5), 16) / 255
+  const b = Number.parseInt(normalized.slice(5, 7), 16) / 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const delta = max - min
+  let h = 0
+  const l = (max + min) / 2
+  let s = 0
+
+  if (delta !== 0) {
+    s = delta / (1 - Math.abs(2 * l - 1))
+
+    if (max === r) {
+      h = 60 * (((g - b) / delta) % 6)
+    } else if (max === g) {
+      h = 60 * (((b - r) / delta) + 2)
+    } else {
+      h = 60 * (((r - g) / delta) + 4)
+    }
+  }
+
+  if (h < 0) h += 360
+  return { h, s: s * 100, l: l * 100 }
+}
+
+function hslToHex(h, s, l) {
+  const normalizedHue = ((h % 360) + 360) % 360
+  const sat = Math.max(0, Math.min(100, s)) / 100
+  const light = Math.max(0, Math.min(100, l)) / 100
+
+  const chroma = (1 - Math.abs(2 * light - 1)) * sat
+  const segment = normalizedHue / 60
+  const x = chroma * (1 - Math.abs((segment % 2) - 1))
+
+  let rPrime = 0
+  let gPrime = 0
+  let bPrime = 0
+
+  if (segment >= 0 && segment < 1) {
+    rPrime = chroma
+    gPrime = x
+  } else if (segment < 2) {
+    rPrime = x
+    gPrime = chroma
+  } else if (segment < 3) {
+    gPrime = chroma
+    bPrime = x
+  } else if (segment < 4) {
+    gPrime = x
+    bPrime = chroma
+  } else if (segment < 5) {
+    rPrime = x
+    bPrime = chroma
+  } else {
+    rPrime = chroma
+    bPrime = x
+  }
+
+  const match = light - chroma / 2
+  const toHex = (value) => {
+    const channel = Math.round((value + match) * 255)
+    return channel.toString(16).padStart(2, '0')
+  }
+
+  return `#${toHex(rPrime)}${toHex(gPrime)}${toHex(bPrime)}`
+}
+
+function darkenAndSaturate(hex) {
+  const hsl = hexToHsl(hex)
+  if (!hsl) return '#169fc3'
+
+  const nextSaturation = Math.min(100, hsl.s + 17)
+  const nextLightness = Math.max(0, hsl.l - 33)
+  return hslToHex(hsl.h, nextSaturation, nextLightness)
+}
 
 function hashString(value) {
   let hash = 0
@@ -34,6 +127,7 @@ function makeFallbackGroupColor(index) {
 export default function DeskCanvasItems({
   notes,
   currentDesk,
+  showCreatorLabels,
   userId,
   isDeskCollaborative,
   getItemCreatorLabel,
@@ -825,31 +919,41 @@ export default function DeskCanvasItems({
       )}
 
       {notes.map((item, index) => {
-    const itemKey = getItemKey(item)
-    const isChecklist = isChecklistItem(item)
-    const isDecoration = isDecorationItem(item)
-    const decorationOption = isDecoration ? getDecorationOption(item.kind) : null
-    const shouldShowCreatorLabel = Boolean(currentDesk && isDeskCollaborative(currentDesk) && !isDecoration)
-    const creatorLabel = shouldShowCreatorLabel ? getItemCreatorLabel(item, userId) : ''
-    const itemWidth = getItemWidth(item)
-    const renderedItemWidth = isMobileLayout && !isDecoration
-      ? Math.min(itemWidth, mobileNoteMaxWidth)
-      : itemWidth
-    const itemHeight = getItemHeight(item)
-    const contentMinHeight = Math.max(40, itemHeight - 40)
-    const baseZIndex = index + 1
-    const groupId = groupedItemGroupMap?.[itemKey] || null
-    const isGrouped = Boolean(groupId)
-    const groupColor = groupId ? groupColorMap[groupId] : null
-    const shouldShowGroupOutline = isGrouped && !isMobileLayout && isCtrlHeld
-    const noteBackgroundColor = editingId === itemKey ? editColor : getItemColor(item)
-    const noteTextColor = editingId === itemKey ? editTextColor : getItemTextColor(item)
-    const groupOutlineShadow = shouldShowGroupOutline
-      ? `0 0 0 2px ${groupColor || '#4285f4'}, 3px 3px 10px rgba(0,0,0,0.3)`
-      : '3px 3px 10px rgba(0,0,0,0.3)'
+        const itemKey = getItemKey(item)
+        const isChecklist = isChecklistItem(item)
+        const isDecoration = isDecorationItem(item)
+        const decorationOption = isDecoration ? getDecorationOption(item.kind) : null
+        const decorationImage = decorationOption?.image || null
+        const shouldShowCreatorLabel = Boolean(currentDesk && isDeskCollaborative(currentDesk) && showCreatorLabels && !isDecoration)
+        const creatorLabel = shouldShowCreatorLabel ? getItemCreatorLabel(item, userId) : ''
+        const itemWidth = getItemWidth(item)
+        const renderedItemWidth = isMobileLayout && !isDecoration
+          ? Math.min(itemWidth, mobileNoteMaxWidth)
+          : itemWidth
+        const itemHeight = getItemHeight(item)
+        const contentMinHeight = Math.max(40, itemHeight - 40)
+        const baseZIndex = index + 1
+        const groupId = groupedItemGroupMap?.[itemKey] || null
+        const isGrouped = Boolean(groupId)
+        const groupColor = groupId ? groupColorMap[groupId] : null
+        const shouldShowGroupOutline = isGrouped && !isMobileLayout && isCtrlHeld
+        const noteBackgroundColor = editingId === itemKey ? editColor : getItemColor(item)
+        const noteTextColor = editingId === itemKey ? editTextColor : getItemTextColor(item)
+        const normalizedNoteBackground = normalizeHex(noteBackgroundColor)
+        const isHeaderNote = !isDecoration && !isChecklist && normalizedNoteBackground === HEADER_NOTE_BASE_COLOR
+        const headerBandColor = isHeaderNote ? darkenAndSaturate(noteBackgroundColor) : null
+        const isTextBoxNote = !isDecoration && !isChecklist && String(noteBackgroundColor || '').trim().toLowerCase() === 'transparent'
+        const groupOutlineShadow = shouldShowGroupOutline
+          ? `0 0 0 2px ${groupColor || '#4285f4'}, 3px 3px 10px rgba(0,0,0,0.3)`
+          : '3px 3px 10px rgba(0,0,0,0.3)'
+        const isSelectionActive = (groupSelectionMode && selectedGroupItemKeys.has(itemKey))
+          || (!isMobileLayout && isCtrlHeld && !isShiftHeld && desktopGroupSelectionItems.has(itemKey))
+        const textBoxOutlineShadow = isSelectionActive
+          ? '0 0 0 3px rgba(76, 175, 80, 0.95)'
+          : (shouldShowGroupOutline ? `0 0 0 2px ${groupColor || '#4285f4'}` : 'none')
 
-    return (
-      <div
+        return (
+          <div
         key={itemKey}
         data-note-id={item.id}
         data-item-key={itemKey}
@@ -934,19 +1038,25 @@ export default function DeskCanvasItems({
           left: item.x,
           top: item.y,
           transform: `rotate(${item.rotation || 0}deg)`,
-          background: isDecoration ? 'transparent' : noteBackgroundColor,
+          background: isDecoration ? 'transparent' : (isTextBoxNote ? 'transparent' : noteBackgroundColor),
+          backgroundSize: 'auto',
+          backgroundPosition: 'initial',
+          backgroundRepeat: 'repeat',
           color: isDecoration ? undefined : noteTextColor,
-          padding: isDecoration ? 0 : 20,
+          padding: isDecoration ? 0 : (isTextBoxNote ? 0 : (isHeaderNote ? `${HEADER_NOTE_HEADER_HEIGHT + 16}px 20px 20px` : 20)),
           width: renderedItemWidth,
           minHeight: itemHeight,
           borderRadius: 0,
           boxShadow: isDecoration
             ? (shouldShowGroupOutline ? `0 0 0 2px ${groupColor || '#4285f4'}` : 'none')
-            : (groupSelectionMode && selectedGroupItemKeys.has(itemKey)
-              ? '0 0 0 3px rgba(76, 175, 80, 0.95), 3px 3px 10px rgba(0,0,0,0.3)'
-              : (!isMobileLayout && isCtrlHeld && !isShiftHeld && desktopGroupSelectionItems.has(itemKey)
+            : (isTextBoxNote
+                ? textBoxOutlineShadow
+              : (groupSelectionMode && selectedGroupItemKeys.has(itemKey)
                 ? '0 0 0 3px rgba(76, 175, 80, 0.95), 3px 3px 10px rgba(0,0,0,0.3)'
-                : groupOutlineShadow)),
+                : (!isMobileLayout && isCtrlHeld && !isShiftHeld && desktopGroupSelectionItems.has(itemKey)
+                  ? '0 0 0 3px rgba(76, 175, 80, 0.95), 3px 3px 10px rgba(0,0,0,0.3)'
+                  : groupOutlineShadow))),
+                  filter: 'none',
           mixBlendMode: 'normal',
           opacity: (!isMobileLayout && isShiftHeld && isCtrlHeld && !isGrouped) ? 0.3 : 1,
           fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
@@ -978,16 +1088,32 @@ export default function DeskCanvasItems({
               position: 'relative'
             }}
           >
-            <div
-              style={{
-                fontSize: Math.max(24, Math.round(Math.min(getItemWidth(item), getItemHeight(item)) * 0.58)),
-                lineHeight: 1,
-                filter: 'saturate(1.2) contrast(1.08)',
-                textShadow: '0 1px 2px rgba(0,0,0,0.35)'
-              }}
-            >
-              {decorationOption?.emoji || '📌'}
-            </div>
+            {decorationImage ? (
+              <img
+                src={decorationImage}
+                alt={decorationOption?.label || 'Decoration'}
+                draggable="false"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  userSelect: 'none',
+                  pointerEvents: 'none',
+                  filter: 'saturate(1.05) contrast(1.03)'
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  fontSize: Math.max(24, Math.round(Math.min(getItemWidth(item), getItemHeight(item)) * 0.58)),
+                  lineHeight: 1,
+                  filter: 'saturate(1.2) contrast(1.08)',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.35)'
+                }}
+              >
+                {decorationOption?.emoji || '📌'}
+              </div>
+            )}
             {activeDecorationHandleId === itemKey && (
               <>
                 <button
@@ -1192,8 +1318,41 @@ export default function DeskCanvasItems({
               e.preventDefault()
               await commitItemEdits(item)
             }}
+            style={{
+              position: 'relative',
+              zIndex: 1,
+              margin: 0,
+              padding: 0,
+              borderRadius: 0,
+              background: 'transparent'
+            }}
           >
-            <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
+            {isHeaderNote && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  left: -20,
+                  right: -20,
+                  top: -(HEADER_NOTE_HEADER_HEIGHT + 16),
+                  height: HEADER_NOTE_HEADER_HEIGHT,
+                  background: headerBandColor,
+                  pointerEvents: 'none'
+                }}
+              />
+            )}
+            <div
+              style={{
+                marginBottom: 8,
+                display: 'flex',
+                justifyContent: 'center',
+                position: 'static',
+                top: 'auto',
+                left: 'auto',
+                right: 'auto',
+                zIndex: 2
+              }}
+            >
               <button
                 type="button"
                 onPointerDown={(e) => handleRotateMouseDown(e, item)}
@@ -1496,7 +1655,9 @@ export default function DeskCanvasItems({
                   resize: 'vertical',
                   color: '#222',
                   fontFamily: editFontFamily,
-                  boxSizing: 'border-box'
+                  lineHeight: 1.15,
+                  boxSizing: 'border-box',
+                  display: 'block'
                 }}
               />
             )}
@@ -1682,6 +1843,21 @@ export default function DeskCanvasItems({
           </form>
         ) : (
           <>
+            {isHeaderNote && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  height: HEADER_NOTE_HEADER_HEIGHT,
+                  background: headerBandColor,
+                  pointerEvents: 'none',
+                  zIndex: 0
+                }}
+              />
+            )}
             <div
               onClick={(e) => {
                 if (groupSelectionMode) return
@@ -1698,6 +1874,12 @@ export default function DeskCanvasItems({
                 color: getItemTextColor(item),
                 fontSize: getItemFontSize(item),
                 fontFamily: getItemFontFamily(item),
+                position: 'relative',
+                zIndex: 1,
+                margin: 0,
+                padding: 0,
+                borderRadius: 0,
+                background: 'transparent',
                 userSelect: isMobileLayout ? 'none' : 'auto',
                 WebkitUserSelect: isMobileLayout ? 'none' : 'auto'
               }}
@@ -1769,8 +1951,8 @@ export default function DeskCanvasItems({
             </div>
           </>
         )}
-      </div>
-    )
+          </div>
+        )
       })}
     </>
   )

@@ -9,12 +9,12 @@ export function getDeskBackgroundStyles({
   const safeCustomBackgroundUrl = customBackgroundUrl.replace(/"/g, '\\"')
 
   const backgroundLayers = Array.from({ length: sectionCount }, () => {
-    if (backgroundMode === 'desk1') return "url('/brownDesk.png')"
-    if (backgroundMode === 'desk2') return "url('/grayDesk.png')"
-    if (backgroundMode === 'desk3') return "url('/leavesDesk.jpg')"
-    if (backgroundMode === 'desk4') return "url('/flowersDesk.png')"
+    if (backgroundMode === 'desk1') return "url('/images/Desks/brownDesk.png')"
+    if (backgroundMode === 'desk2') return "url('/images/Desks/grayDesk.png')"
+    if (backgroundMode === 'desk3') return "url('/images/Desks/leavesDesk.jpg')"
+    if (backgroundMode === 'desk4') return "url('/images/Desks/flowersDesk.png')"
     if (backgroundMode === 'custom' && safeCustomBackgroundUrl && !customBackgroundIsHex) return `url("${safeCustomBackgroundUrl}")`
-    return "url('/brownDesk.png')"
+    return "url('/images/Desks/brownDesk.png')"
   })
 
   return {

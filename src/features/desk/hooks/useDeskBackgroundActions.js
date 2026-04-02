@@ -5,6 +5,7 @@ export default function useDeskBackgroundActions({
   userId,
   selectedDeskId,
   desks,
+  isMissingColumnError,
   normalizeCustomBackgroundValue,
   setBackgroundMode,
   setCustomBackgroundUrl,
@@ -124,8 +125,45 @@ export default function useDeskBackgroundActions({
     userId
   ])
 
+  const setDeskCreatorLabelsVisible = useCallback(async (nextVisible) => {
+    if (!selectedDeskId) return
+
+    const currentDesk = desks.find((desk) => desk.id === selectedDeskId)
+    if (!currentDesk || currentDesk.user_id !== userId) return
+
+    const nextValue = Boolean(nextVisible)
+
+    const { error } = await supabase
+      .from('desks')
+      .update({ show_item_creator_labels: nextValue })
+      .eq('id', selectedDeskId)
+      .eq('user_id', userId)
+
+    if (error && !isMissingColumnError(error, 'show_item_creator_labels')) {
+      console.error('Failed to update creator label visibility:', error)
+      setBackgroundMenuError(error?.message || 'Could not update item label visibility.')
+      return
+    }
+
+    setBackgroundMenuError('')
+    setDesks((prev) =>
+      prev.map((desk) => (
+        desk.id === selectedDeskId ? { ...desk, show_item_creator_labels: nextValue } : desk
+      ))
+    )
+  }, [
+    desks,
+    isMissingColumnError,
+    selectedDeskId,
+    setBackgroundMenuError,
+    setDesks,
+    supabase,
+    userId
+  ])
+
   return {
     setCurrentDeskBackground,
-    setCurrentDeskCustomBackground
+    setCurrentDeskCustomBackground,
+    setDeskCreatorLabelsVisible
   }
 }

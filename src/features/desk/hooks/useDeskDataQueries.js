@@ -113,7 +113,18 @@ export default function useDeskDataQueries({
         }
       }
 
-      const mappedNotes = (notesData || []).map((note) => ({ ...note, item_type: 'note' }))
+      const isLegacyImageBackedNote = (note) => {
+        const colorValue = typeof note?.color === 'string' ? note.color.trim().toLowerCase() : ''
+        return colorValue.startsWith('url(')
+      }
+
+      const rawNotes = notesData || []
+      const legacyImageBackedNotes = rawNotes.filter(isLegacyImageBackedNote)
+      const mappedNotes = rawNotes.map((note) => ({
+        ...note,
+        item_type: 'note',
+        color: isLegacyImageBackedNote(note) ? '#fff59d' : note.color
+      }))
       const mappedChecklists = checklistRows.map((checklist) => ({
         ...checklist,
         item_type: 'checklist',
@@ -158,8 +169,33 @@ export default function useDeskDataQueries({
           created_by_email: creatorProfile.email,
           created_by_name: creatorProfile.preferredName
         }
+      }).sort((left, right) => {
+        const leftTime = left?.created_at ? new Date(left.created_at).getTime() : 0
+        const rightTime = right?.created_at ? new Date(right.created_at).getTime() : 0
+        if (leftTime !== rightTime) {
+          return leftTime - rightTime
+        }
+        const leftId = String(left?.id || '')
+        const rightId = String(right?.id || '')
+        return leftId.localeCompare(rightId)
       })
       setNotesFromRemote(combined)
+
+      if (legacyImageBackedNotes.length > 0) {
+        await Promise.all(
+          legacyImageBackedNotes.map(async (note) => {
+            const { error } = await supabase
+              .from('notes')
+              .update({ color: '#fff59d' })
+              .eq('id', note.id)
+              .eq('desk_id', deskId)
+
+            if (error) {
+              console.error('Failed to migrate legacy image-backed note color:', error)
+            }
+          })
+        )
+      }
 
       const maxNoteBottom = combined.reduce((maxY, item) => {
         const itemBottom = (Number(item.y) || 0) + getItemHeight(item)

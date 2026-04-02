@@ -17,6 +17,8 @@ export default function DeskMoreMenu({
   currentDesk,
   isCurrentDeskOwner,
   canCurrentUserEditDeskItems,
+  showCreatorLabels,
+  setDeskCreatorLabelsVisible,
   setCurrentDeskBackground,
   backgroundMode,
   customBackgroundInput,
@@ -71,6 +73,18 @@ export default function DeskMoreMenu({
               >
                 Snap To Grid: {snapToGrid ? 'On' : 'Off'}
               </DeskMenuItemButton>
+              {Boolean(currentDesk?.is_collaborative && isCurrentDeskOwner) && (
+                <DeskMenuItemButton
+                  type="button"
+                  onClick={() => setDeskCreatorLabelsVisible(!showCreatorLabels)}
+                  active={showCreatorLabels}
+                  style={{
+                    fontWeight: showCreatorLabels ? 700 : 500
+                  }}
+                >
+                  Added By Labels: {showCreatorLabels ? 'On' : 'Off'}
+                </DeskMenuItemButton>
+              )}
               <div style={{ height: 1, backgroundColor: 'var(--ui-border)', margin: '6px 0' }} />
             </>
           )}
@@ -92,7 +106,7 @@ export default function DeskMoreMenu({
                     fontSize: 12,
                     borderRadius: 4,
                     border: backgroundMode === 'desk1' ? '2px solid #4285F4' : '1px solid #ddd',
-                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/brownDesk.png')",
+                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/images/Desks/brownDesk.png')",
                     backgroundSize: 'cover, cover',
                     backgroundPosition: 'center, center',
                     backgroundRepeat: 'no-repeat, no-repeat',
@@ -114,7 +128,7 @@ export default function DeskMoreMenu({
                     fontSize: 12,
                     borderRadius: 4,
                     border: backgroundMode === 'desk2' ? '2px solid #4285F4' : '1px solid #ddd',
-                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/grayDesk.png')",
+                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/images/Desks/grayDesk.png')",
                     backgroundSize: 'cover, cover',
                     backgroundPosition: 'center, center',
                     backgroundRepeat: 'no-repeat, no-repeat',
@@ -136,7 +150,7 @@ export default function DeskMoreMenu({
                     fontSize: 12,
                     borderRadius: 4,
                     border: backgroundMode === 'desk3' ? '2px solid #4285F4' : '1px solid #ddd',
-                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/leavesDesk.jpg')",
+                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/images/Desks/leavesDesk.jpg')",
                     backgroundSize: 'cover, cover',
                     backgroundPosition: 'center, center',
                     backgroundRepeat: 'no-repeat, no-repeat',
@@ -158,7 +172,7 @@ export default function DeskMoreMenu({
                     fontSize: 12,
                     borderRadius: 4,
                     border: backgroundMode === 'desk4' ? '2px solid #4285F4' : '1px solid #ddd',
-                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/flowersDesk.png')",
+                    backgroundImage: "linear-gradient(rgba(255,255,255,0.3), rgba(255,255,255,0.3)), url('/images/Desks/flowersDesk.png')",
                     backgroundSize: 'cover, cover',
                     backgroundPosition: 'center, center',
                     backgroundRepeat: 'no-repeat, no-repeat',

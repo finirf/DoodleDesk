@@ -1,5 +1,324 @@
 # New Changes
 
+## 2026-04-01 - Owner Toggle for Added By Labels
+
+### ✅ Shared desk owners can now toggle "Added by user" labels on/off
+- **Feature**: Added an owner-only toggle in `More -> Options` for collaborative desks.
+- **Behavior**:
+  - Owners can switch `Added By Labels` between `On` and `Off`.
+  - Label visibility updates immediately on the canvas.
+  - Preference is stored on the desk record when the column is available.
+- **Code Changes**:
+  - `src/features/desk/components/DeskMoreMenu.jsx`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+  - `src/features/desk/hooks/useDeskBackgroundActions.js`
+  - `src/features/desk/hooks/useDeskActionOrchestration.js`
+  - `src/App.jsx`
+
+## 2026-04-01 - Persist New Item Section State (Session)
+
+### ✅ New Item dropdown sections now remember open/closed state
+- **Change**: Section dropdowns now keep whatever state the user last set (open or closed) when reopening the New Item menu in the same session.
+- **Code Change**:
+  - `src/features/desk/components/NewNoteMenu.jsx`
+
+## 2026-04-01 - Collapsible New Item Sections
+
+### ✅ New Item sections now open as dropdown groups
+- **Change**: Converted New Item categories into collapsible dropdown sections to reduce scrolling.
+- **Structure**:
+  - `Create` (open by default)
+  - `Quick Picks`
+  - `Paper Set`
+  - `Desk Accents`
+- **Code Change**:
+  - `src/features/desk/components/NewNoteMenu.jsx`
+
+## 2026-04-01 - Header Note Preset
+
+### ✅ Added new Header Note option in New Item menu
+- **Feature**: Added a second sticky-note preset called `Header Note`.
+- **Behavior**: Header Note keeps classic sticky-note behavior (edit, style, duplicate, group, layer, resize, rotate), but renders with a fixed header rectangle at the top.
+- **Code Changes**:
+  - `src/features/desk/constants/deskConstants.js`
+  - `src/features/desk/components/NewNoteMenu.jsx`
+
+### ✅ Header rectangle uses a darken+saturate transform of the base note color
+- **Implementation**:
+  - Added color transform helpers (`hex -> hsl`, `hsl -> hex`) and a `darkenAndSaturate` adjustment.
+  - Header band uses fixed top height and transformed color to visually separate the title area.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-04-01 - New Item Menu Rename + Grouped Sections
+
+### ✅ Renamed New Note to New Item
+- **Change**: Updated the top-left creation dropdown label to `New Item` (desktop) and `+ Item` (mobile).
+- **Consistency**: Updated tutorial copy to reference `New Item`.
+- **Code Changes**:
+  - `src/features/desk/components/NewNoteMenu.jsx`
+  - `src/features/desk/components/DeskTutorialModal.jsx`
+
+### ✅ Reorganized long creation list into clearer sections
+- **Change**: The menu is now grouped as:
+  - `Create` (Classic Sticky Note, Text Box, Checklist)
+  - `Decorations` with subgroups (`Quick Picks`, `Paper Set`, `Desk Accents`)
+- **Usability**: Added consistent scrollable panel height so long decoration lists stay easy to browse.
+- **Code Change**:
+  - `src/features/desk/components/NewNoteMenu.jsx`
+
+## 2026-04-01 - Legacy Image Notes Converted + Cleanup
+
+### ✅ Existing custom-image notes now convert to normal sticky notes
+- **Request**: Switch previously created custom-image note records back to normal sticky notes.
+- **Fix**:
+  - During desk item fetch, legacy notes using `color: url(...)` are normalized to sticky yellow (`#fff59d`) in local state.
+  - The conversion is also persisted back to the `notes` table so the migration sticks.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskDataQueries.js`
+
+### ✅ Removed now-unused image-note rendering code
+- **Cleanup**:
+  - Removed image-note mask/inset/template rendering branches from the canvas note renderer.
+  - Removed obsolete image-note utility helper (`isImageBackgroundValue`).
+- **Code Changes**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+  - `src/features/desk/utils/itemUtils.js`
+
+## 2026-04-01 - Text Box Layering + Group Visibility Fix
+
+### ✅ Text boxes no longer snap behind decorations after refresh
+- **Issue**: Remote hydration merged items by table type, which could reorder visual stacking and push text boxes behind other items.
+- **Fix**: Unified fetched item ordering now sorts by `created_at` (with id tie-breaker) across notes/checklists/decorations.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskDataQueries.js`
+
+### ✅ Text boxes show grouping/selection outline feedback
+- **Issue**: Text boxes intentionally removed default shadow, but that also hid group-selection outline cues.
+- **Fix**: Text boxes keep no default shadow, but now render explicit outline shadows during group selection / grouped-outline states.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-04-01 - New Text Box Item
+
+### ✅ Added a Text Box creation option
+- **Feature**: Added a dedicated `Text Box` action in the New Note menu.
+- **Behavior**:
+  - Creates a note item with transparent background and no sticky-note shadow.
+  - Uses a larger default text region (`260x100`) so it behaves like free-form text on the desk.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+  - `src/features/desk/hooks/useDeskActionOrchestration.js`
+  - `src/App.jsx`
+  - `src/features/desk/components/NewNoteMenu.jsx`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+### ✅ Manual runtime verification
+- Confirmed `Text Box` appears in the New Note menu and creates successfully.
+- Confirmed created text box renders with transparent background and `box-shadow: none`.
+
+## 2026-04-01 - Custom Note PNGs Moved to Decorations
+
+### ✅ Image-backed note presets now live under decorations
+- **Change**: The custom PNG note templates were removed from the note preset picker and added to the decoration picker instead.
+- **Result**:
+  - `Classic Sticky Note` remains the only note preset.
+  - The blue/green/pink/yellow/flashcard/envelope PNG templates are now available as image decorations.
+- **Code Changes**:
+  - `src/features/desk/constants/deskConstants.js`
+  - `src/features/desk/components/NewNoteMenu.jsx`
+  - `src/App.jsx`
+
+### ✅ Legacy image-backed notes still render
+- **Note**: Existing image-backed notes already saved on desks continue to render through the canvas image-note path.
+
+## 2026-04-01 - Heart-Safe Rectangular Text Box
+
+### ✅ Image-note editing now uses a fixed rectangle and smaller text
+- **Request**: Instead of stretching the heart/odd note shape, keep the editor as a rectangle and shrink the text to fit.
+- **Fix**:
+  - Image-backed note editors now render in a centered rectangular box.
+  - Font size is capped lower for heart-like and envelope-like shapes so text scales down instead of trying to fill the silhouette.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+
+## 2026-04-01 - Dynamic Safe Areas for Odd-Shaped Image Notes
+
+### ✅ Text is now constrained to visible PNG regions (including odd shapes like hearts)
+- **Issue**: Fixed inset values could still allow text into transparent zones on unusual note silhouettes.
+- **Fix**:
+  - Added alpha-based image analysis to compute safe-area insets from each note PNG.
+  - Combined dynamic insets with template defaults, then applied the resolved padding to both view and edit content layers.
+  - Added explicit heart-template fallback insets for future heart-shaped note assets and tightened the fallback so the text stays lower and more centered inside the visible silhouette.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+### ✅ Runtime verification
+- Confirmed image-backed notes now render with transparent content surfaces and non-zero computed paddings that vary by template shape.
+
+## 2026-04-01 - Image Note Text Safe Area + Always-Visible Controls
+
+### ✅ Revised: text now sits directly on the note artwork (no overlay panel)
+- **User preference**: Removed semi-transparent content overlays.
+- **Update**:
+  - Kept shaped PNG background layer.
+  - Applied template-aware in-image text insets/padding so text/edit fields render inside the note artwork itself.
+  - Form/content containers now use transparent backgrounds.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+### ✅ Text stays in viewable area on custom-shaped PNG notes
+- **Issue**: With shaped PNG templates, text/edit fields could fall into visually hard-to-read or clipped areas.
+- **Fix**:
+  - Separated image note rendering into two layers:
+    - a masked PNG background layer
+    - a readable text/edit overlay safe area
+  - Added internal safe-area margin/padding and readable overlay background for image note content and editor fields.
+
+### ✅ Note edit buttons are always visible for image-backed notes
+- **Issue**: Edit controls could appear constrained by the visible note silhouette.
+- **Fix**:
+  - Moved image-note editor toolbar controls into an absolute row above the note overlay area.
+  - Controls now remain visible outside the shaped note boundary.
+
+### ✅ Live verification
+- Confirmed on a real image-backed note that:
+  - style button is hidden
+  - save/cancel/delete/transform controls are visible
+  - rotate/resize toolbar renders above the note top edge
+
+### **Code Change**:
+- `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-04-01 - PNG-Shaped Note Border Fit
+
+### ✅ Note edge now follows PNG shape (transparent padding ignored)
+- **Request**: Make note border/edge fit the PNG note artwork rather than the full transparent rectangular image bounds.
+- **Fix**:
+  - Image-backed notes now use the PNG as a CSS mask (`mask-image` / `-webkit-mask-image`) so visual edges follow opaque pixels.
+  - Switched image-backed note shadowing from rectangular `box-shadow` to shape-aware `drop-shadow`.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+### ✅ Live verification
+- Confirmed in browser computed styles that image-backed notes now have active `mask-image` and shape-aware shadow rendering.
+
+## 2026-04-01 - Custom Note Image Visual Rendering
+
+### ✅ Custom note templates now render cleanly on canvas
+- **Issue**: Image-backed notes could display inconsistently because their backgrounds were not explicitly sized/positioned/repeat-controlled.
+- **Fix**:
+  - Added explicit background rendering rules for image-backed notes:
+    - `background-size: 100% 100%`
+    - `background-position: center`
+    - `background-repeat: no-repeat`
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+### ✅ Verified in live browser session
+- Confirmed note cards using the custom templates (`blue`, `green`, `pink`, `yellow`, `flashcard`, `polka dot envelope`, `swirly envelope`) are all present with image backgrounds applied and non-repeating.
+- Classic sticky notes continue to render with solid color backgrounds.
+
+## 2026-04-01 - New Note Menu Auto-Close QA Fix
+
+### ✅ New Note dropdown now closes after adding any item
+- **Issue found during live QA**: Selecting sticky note presets left the New Note dropdown open, which could block clicking canvas items.
+- **Fix**: Menu actions now run and immediately close the dropdown for sticky notes, checklists, and decorations.
+- **Code Changes**:
+  - `src/features/desk/components/NewNoteMenu.jsx`
+
+### ✅ Manual QA completed with test account
+- **Test account used**: `testuser@gmail.com`
+- **Checks completed**:
+  - Every sticky-note preset creates successfully.
+  - Image-backed sticky notes are editable and save correctly.
+  - Image-backed sticky notes correctly hide the `Style` button.
+  - Checklist and decoration creation still work and now close the menu reliably.
+
+## 2026-04-01 - Note and Decoration Presets
+
+### ✅ Added the new sticky note image presets as menu options
+- **Change**: The New Note menu now includes the uploaded sticky note and envelope templates as selectable presets.
+- **Code Changes**:
+  - `src/features/desk/constants/deskConstants.js`
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+  - `src/features/desk/components/NewNoteMenu.jsx`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+  - `src/App.jsx`
+
+### ✅ Added the new decoration images as menu options
+- **Change**: The decoration picker now surfaces the newly added PNG decoration assets with image previews.
+- **Code Changes**:
+  - `src/features/desk/constants/deskConstants.js`
+  - `src/features/desk/components/NewNoteMenu.jsx`
+
+### ✅ Image-backed notes now keep the editor usable
+- **Change**: Notes created from image presets store their template in the existing `color` field, and the style picker is hidden for those notes so editing content stays safe.
+- **Code Changes**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-04-01 - Image Folder Organization
+
+### ✅ Desk backgrounds now live under `public/images/Desks`
+- **Moved files**:
+  - `public/images/Desks/brownDesk.png`
+  - `public/images/Desks/grayDesk.png`
+  - `public/images/Desks/leavesDesk.jpg`
+  - `public/images/Desks/flowersDesk.png`
+- **Code Updated**:
+  - `src/features/desk/utils/backgroundUtils.js`
+  - `src/features/desk/components/DeskMoreMenu.jsx`
+
+### ✅ Logo asset now lives under `public/images/Decorations`
+- **Moved file**:
+  - `public/images/Decorations/DoodleDesk Logo.png`
+- **Code Updated**:
+  - `src/features/auth/components/LoginScreen.jsx`
+  - `src/features/auth/components/ResetPasswordScreen.jsx`
+  - `src/features/desk/constants/deskConstants.js`
+
+### ✅ Image folders kept ready for future assets
+- `public/images/Notes` is available for note-specific images.
+- `public/images/favicon.ico` remains at the shared image root for the site icon.
+
+## 2026-04-01 - Image Folder + PNG Decorations
+
+### ✅ All existing image assets moved into `public/images`
+- **Change**: Relocated the current image files into the new shared image folder.
+- **Code Changes**:
+  - `public/images/brownDesk.png`
+  - `public/images/grayDesk.png`
+  - `public/images/leavesDesk.jpg`
+  - `public/images/flowersDesk.png`
+  - `public/images/DoodleDesk Logo.png`
+  - `public/images/favicon.ico`
+  - `public/images/vite.svg`
+
+### ✅ PNG-backed decoration support is wired in
+- **Change**: Decorations now support an optional image asset, so PNG-based decorations can be rendered directly on the desk.
+- **Code Changes**:
+  - `src/features/desk/constants/deskConstants.js`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+- **Result**: Existing emoji decorations still work, and PNG decorations can now be displayed when a decoration option provides an `image` path.
+
+### ✅ Desk background references now use the shared image folder
+- **Code Changes**:
+  - `index.html`
+  - `src/features/desk/utils/backgroundUtils.js`
+  - `src/features/desk/components/DeskMoreMenu.jsx`
+
+## 2026-04-01 - Top Row Vertical Alignment Consistency
+
+### ✅ Top desk controls now align to the same vertical center line
+- **Issue**: Top-row controls could look vertically off even when they shared the same `top` value, because different button styles had different outer heights.
+- **Fix**:
+  - Standardized top control and menu trigger button outer heights using shared primitives.
+  - Added explicit inline-flex centering and border-box sizing so text/content stays visually centered inside each control.
+- **Code Change**:
+  - `src/features/desk/components/DeskUiPrimitives.jsx`
+- **Result**: Top controls (history/save, desk/profile/more, and New Note trigger in desktop layout) now sit on a consistent visual height level even with slight style differences.
+
 ## 2026-04-01 - Grouping Mode Click Behavior
 
 ### ✅ Clicking a note in grouping mode no longer opens the editor

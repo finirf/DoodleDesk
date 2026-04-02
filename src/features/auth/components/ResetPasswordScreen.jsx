@@ -44,7 +44,7 @@ export default function ResetPasswordScreen({ hasRecoverySession, onBackToLogin 
       <div className="auth-shell">
         <div className="auth-brand">
           <img
-            src="/DoodleDesk%20Logo.png"
+            src="/images/Decorations/DoodleDesk%20Logo.png"
             alt="DoodleDesk logo"
             className="auth-logo"
           />

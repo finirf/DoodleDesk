@@ -96,6 +96,7 @@ export default function useDeskActionOrchestration({
 
   const {
     addStickyNote,
+    addTextBox,
     addChecklistNote,
     addDecoration,
     persistRotation,
@@ -213,7 +214,8 @@ export default function useDeskActionOrchestration({
 
   const {
     setCurrentDeskBackground,
-    setCurrentDeskCustomBackground
+    setCurrentDeskCustomBackground,
+    setDeskCreatorLabelsVisible
   } = useDeskBackgroundActions(backgroundActions)
 
   const {
@@ -279,6 +281,7 @@ export default function useDeskActionOrchestration({
     fetchDesks,
     handleSelectDesk,
     addStickyNote,
+    addTextBox,
     addChecklistNote,
     addDecoration,
     moveItemLayer,
@@ -338,6 +341,7 @@ export default function useDeskActionOrchestration({
     requestDeskMemberAdd,
     setCurrentDeskBackground,
     setCurrentDeskCustomBackground,
+    setDeskCreatorLabelsVisible,
     exportCurrentDesk,
     handleImportDeskFileSelection,
     handleSendFriendRequest,

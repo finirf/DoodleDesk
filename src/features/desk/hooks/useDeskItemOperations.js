@@ -10,6 +10,7 @@ import {
   getItemTableName,
   getItemTextColor,
   getItemWidth,
+  getNoteOption,
   isChecklistItem,
   isDecorationItem,
   isMissingColumnError,
@@ -145,9 +146,13 @@ export function useDeskItemOperations({
   )
 
   const addStickyNote = useCallback(
-    async (showNewNoteMenuSetter) => {
+    async (noteStyleKeyOrSetter, maybeShowNewNoteMenuSetter) => {
       if (!canCurrentUserEditDeskItems) return
       if (!selectedDeskId) return
+
+      const noteStyleKey = typeof noteStyleKeyOrSetter === 'string' ? noteStyleKeyOrSetter : 'classic-sticky-note'
+      const showNewNoteMenuSetter = typeof noteStyleKeyOrSetter === 'function' ? noteStyleKeyOrSetter : maybeShowNewNoteMenuSetter
+      const noteOption = getNoteOption(noteStyleKey)
 
       const spawnPosition = findAvailableSpawnPosition({
         baseX: 100,
@@ -165,7 +170,7 @@ export function useDeskItemOperations({
           desk_id: selectedDeskId,
           user_id: userId,
           content: 'New note',
-          color: '#fff59d',
+          color: noteOption.color || '#fff59d',
           font_family: 'inherit',
           x: spawnPosition.x,
           y: spawnPosition.y,
@@ -184,7 +189,7 @@ export function useDeskItemOperations({
           .insert([{
             desk_id: selectedDeskId,
             content: 'New note',
-            color: '#fff59d',
+            color: noteOption.color || '#fff59d',
             font_family: 'inherit',
             x: spawnPosition.x,
             y: spawnPosition.y,
@@ -212,6 +217,94 @@ export function useDeskItemOperations({
       } else {
         console.error('Failed to create note:', error)
         setEditSaveError(error?.message || 'Failed to create note.')
+      }
+
+      if (typeof showNewNoteMenuSetter === 'function') {
+        showNewNoteMenuSetter(false)
+      }
+    },
+    [
+      canCurrentUserEditDeskItems,
+      selectedDeskId,
+      setNotes,
+      setEditSaveError,
+      supabase,
+      userId,
+      fetchDeskItems,
+      logDeskActivity,
+      findAvailableSpawnPosition,
+      getNoteOption
+    ]
+  )
+
+  const addTextBox = useCallback(
+    async (showNewNoteMenuSetter) => {
+      if (!canCurrentUserEditDeskItems) return
+      if (!selectedDeskId) return
+
+      const spawnPosition = findAvailableSpawnPosition({
+        baseX: 100,
+        baseY: 100,
+        width: 260,
+        height: 100
+      })
+
+      let data = null
+      let error = null
+
+      const withUserResult = await supabase
+        .from('notes')
+        .insert([{
+          desk_id: selectedDeskId,
+          user_id: userId,
+          content: 'Text box',
+          color: 'transparent',
+          font_family: 'inherit',
+          x: spawnPosition.x,
+          y: spawnPosition.y,
+          rotation: 0,
+          width: 260,
+          height: 100
+        }])
+        .select()
+
+      data = withUserResult.data
+      error = withUserResult.error
+
+      if (error) {
+        const fallbackResult = await supabase
+          .from('notes')
+          .insert([{
+            desk_id: selectedDeskId,
+            content: 'Text box',
+            color: 'transparent',
+            font_family: 'inherit',
+            x: spawnPosition.x,
+            y: spawnPosition.y,
+            rotation: 0,
+            width: 260,
+            height: 100
+          }])
+          .select()
+
+        data = fallbackResult.data
+        error = fallbackResult.error
+      }
+
+      const createdTextBox = data?.[0]
+
+      if (createdTextBox) {
+        setNotes((prev) => [...prev, { ...createdTextBox, item_type: 'note' }])
+        await fetchDeskItems(selectedDeskId)
+        await logDeskActivity({
+          actionType: 'created',
+          itemType: 'note',
+          itemId: createdTextBox.id,
+          summary: 'added a text box'
+        })
+      } else {
+        console.error('Failed to create text box:', error)
+        setEditSaveError(error?.message || 'Failed to create text box.')
       }
 
       if (typeof showNewNoteMenuSetter === 'function') {
@@ -1201,6 +1294,7 @@ export function useDeskItemOperations({
   return {
     // Item creation
     addStickyNote,
+    addTextBox,
     addChecklistNote,
     addDecoration,
     // Item positioning & sizing
