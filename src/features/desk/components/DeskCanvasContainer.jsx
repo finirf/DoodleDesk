@@ -138,7 +138,7 @@ export default forwardRef(function DeskCanvasContainer({
         width: '100%',
         height: '100vh',
         boxSizing: 'border-box',
-        overflowX: 'hidden',
+        overflowX: 'auto',
         overflowY: 'auto',
         paddingTop: isMobileLayout ? 104 : 20,
         paddingRight: isMobileLayout ? 12 : 20,
