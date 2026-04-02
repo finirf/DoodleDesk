@@ -20,6 +20,12 @@ export const NOTE_OPTIONS = [
     label: 'Header Note',
     color: '#9bd9e8',
     image: null
+  },
+  {
+    key: 'green-header-sticky-note',
+    label: 'Green Header Sticky Note',
+    color: '#9bd9e8',
+    image: '/images/Notes/green%20sticky%20note.png'
   }
 ]
 
@@ -28,11 +34,11 @@ export const DECORATION_OPTIONS = [
   { key: 'pen', label: 'Pen', emoji: '🖊️' },
   { key: 'pencil', label: 'Pencil', emoji: '✏️' },
   { key: 'plant', label: 'Plant', emoji: '🪴' },
-  { key: 'blue-sticky-note', label: 'Blue Sticky Note', image: '/images/Notes/blue%20sticky%20note.png' },
-  { key: 'green-sticky-note', label: 'Green Sticky Note', image: '/images/Notes/green%20sticky%20note.png' },
-  { key: 'pink-sticky-note', label: 'Pink Sticky Note', image: '/images/Notes/pink%20sticky%20note.png' },
-  { key: 'yellow-sticky-note', label: 'Yellow Sticky Note', image: '/images/Notes/yellow%20sticky%20note.png' },
-  { key: 'flashcard-sticky-note', label: 'Flashcard Sticky Note', image: '/images/Notes/flashcard%20sticky%20note.png' },
+  { key: 'blue-sticky-note', label: 'Blue Sticker', image: '/images/Notes/blue%20sticky%20note.png' },
+  { key: 'green-sticky-note', label: 'Green Sticker', image: '/images/Notes/green%20sticky%20note.png' },
+  { key: 'pink-sticky-note', label: 'Pink Sticker', image: '/images/Notes/pink%20sticky%20note.png' },
+  { key: 'yellow-sticky-note', label: 'Yellow Sticker', image: '/images/Notes/yellow%20sticky%20note.png' },
+  { key: 'flashcard-sticky-note', label: 'Flashcard Sticker', image: '/images/Notes/flashcard%20sticky%20note.png' },
   { key: 'polka-dot-envelope', label: 'Polka Dot Envelope', image: '/images/Notes/polka%20dot%20envelope.png' },
   { key: 'swirly-envelope', label: 'Swirly Envelope', image: '/images/Notes/swirly%20envelope.png' },
   { key: 'binder-clip', label: 'Binder Clip', emoji: '📎', image: '/images/Decorations/binder%20clip.png' },

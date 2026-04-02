@@ -51,8 +51,8 @@ export default function NewNoteMenu({
   }
 
   const quickDecorationOptions = decorationOptions.filter((option) => !option.image)
-  const paperDecorationOptions = decorationOptions.filter((option) => option.image && /(sticky note|envelope)/i.test(option.label))
-  const deskDecorationOptions = decorationOptions.filter((option) => option.image && !/(sticky note|envelope)/i.test(option.label))
+  const paperDecorationOptions = decorationOptions.filter((option) => option.image && /(sticker|envelope)/i.test(option.label))
+  const deskDecorationOptions = decorationOptions.filter((option) => option.image && !/(sticker|envelope)/i.test(option.label))
 
   function renderDropdownSection(sectionKey, label, options, renderer, { bordered = false } = {}) {
     if (!options.length) return null
@@ -153,6 +153,7 @@ export default function NewNoteMenu({
             [
               { key: 'classic', label: 'Classic Sticky Note', action: () => onAddStickyNote() },
               { key: 'header', label: 'Header Note', action: () => onAddStickyNote('header-note') },
+              { key: 'green-header', label: 'Green Header Sticky Note', action: () => onAddStickyNote('green-header-sticky-note') },
               { key: 'textbox', label: 'Text Box', action: () => onAddTextBox() },
               { key: 'checklist', label: 'Checklist', action: () => onAddChecklist() }
             ],

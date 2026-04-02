@@ -7,10 +7,12 @@ import {
   getItemFontSize,
   getItemHeight,
   getItemKey,
+  getStoredItemFontFamily,
   getItemTableName,
   getItemTextColor,
   getItemWidth,
   getNoteOption,
+  isGreenHeaderStickyNoteItem,
   isHeaderNoteItem,
   isChecklistItem,
   isDecorationItem,
@@ -156,7 +158,11 @@ export function useDeskItemOperations({
       const showNewNoteMenuSetter = typeof noteStyleKeyOrSetter === 'function' ? noteStyleKeyOrSetter : maybeShowNewNoteMenuSetter
       const noteOption = getNoteOption(noteStyleKey)
       const isHeaderNotePreset = noteStyleKey === 'header-note'
-      const noteFontFamily = toStoredNoteFontFamily('inherit', { isHeaderNote: isHeaderNotePreset })
+      const isGreenHeaderStickyNotePreset = noteStyleKey === 'green-header-sticky-note'
+      const noteFontFamily = toStoredNoteFontFamily('inherit', {
+        isHeaderNote: isHeaderNotePreset,
+        isGreenHeaderStickyNote: isGreenHeaderStickyNotePreset
+      })
 
       const spawnPosition = findAvailableSpawnPosition({
         baseX: 100,
@@ -236,8 +242,7 @@ export function useDeskItemOperations({
       userId,
       fetchDeskItems,
       logDeskActivity,
-      findAvailableSpawnPosition,
-      getNoteOption
+      findAvailableSpawnPosition
     ]
   )
 
@@ -674,7 +679,10 @@ export function useDeskItemOperations({
       const nextTextColor = (editTextColor || getItemTextColor(item)).trim() || '#222222'
       const nextFontSize = normalizeFontSize(editFontSize, getItemFontSize(item))
       const nextFontFamily = (editFontFamily || 'inherit').trim() || 'inherit'
-      const persistedNoteFontFamily = toStoredNoteFontFamily(nextFontFamily, { isHeaderNote: isHeaderNoteItem(item) })
+      const persistedNoteFontFamily = toStoredNoteFontFamily(nextFontFamily, {
+        isHeaderNote: isHeaderNoteItem(item),
+        isGreenHeaderStickyNote: isGreenHeaderStickyNoteItem(item)
+      })
       const itemKey = getItemKey(item)
 
       if (!isChecklistItem(item)) {
@@ -1177,7 +1185,7 @@ export function useDeskItemOperations({
             color: getItemColor(sourceItem),
             text_color: getItemTextColor(sourceItem),
             font_size: getItemFontSize(sourceItem),
-            font_family: getItemFontFamily(sourceItem),
+            font_family: getStoredItemFontFamily(sourceItem),
             x: nextX,
             y: nextY,
             rotation: toStoredRotation(Number(sourceItem.rotation) || 0),

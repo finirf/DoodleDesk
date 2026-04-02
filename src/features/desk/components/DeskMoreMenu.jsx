@@ -197,7 +197,7 @@ export default function DeskMoreMenu({
                   />
                   <DeskMenuItemButton
                     type="button"
-                    onClick={setCurrentDeskCustomBackground}
+                    onClick={() => setCurrentDeskCustomBackground(customBackgroundInput)}
                     fullWidth={false}
                     style={{ ...menuPrimaryActionStyle, whiteSpace: 'nowrap' }}
                   >

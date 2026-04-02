@@ -1,5 +1,44 @@
 # New Changes
 
+## 2026-04-01 - Custom Background URL Apply Fix
+
+### ✅ Custom image URL backgrounds now apply correctly
+- **Issue**: Clicking `Apply` in More -> Background passed the click event object instead of the URL input value, causing URL validation to fail and preventing custom backgrounds from being set.
+- **Fix**: Updated Apply button handler to pass `customBackgroundInput` into `setCurrentDeskCustomBackground`.
+- **Code Change**:
+  - `src/features/desk/components/DeskMoreMenu.jsx`
+
+## 2026-04-01 - Paper Set Naming Update
+
+### ✅ Paper Set sticky note labels renamed to sticker
+- **Change**: Renamed Paper Set decoration labels from `Sticky Note` to `Sticker`.
+- **Examples**:
+  - `Blue Sticky Note` -> `Blue Sticker`
+  - `Green Sticky Note` -> `Green Sticker`
+  - `Pink Sticky Note` -> `Pink Sticker`
+  - `Yellow Sticky Note` -> `Yellow Sticker`
+  - `Flashcard Sticky Note` -> `Flashcard Sticker`
+- **Compatibility**: Updated Paper Set menu filtering to include `sticker` labels so items remain in the same dropdown section.
+- **Code Changes**:
+  - `src/features/desk/constants/deskConstants.js`
+  - `src/features/desk/components/NewNoteMenu.jsx`
+
+## 2026-04-01 - Green Header Sticky Note Variant
+
+### ✅ Added a hybrid sticky note preset with header-note styling and green sticky shape
+- **Feature**: Added `Green Header Sticky Note` in the New Item -> Create section.
+- **Behavior**:
+  - Renders the green sticky note visual shape.
+  - Keeps the colored header band behavior from Header Note.
+  - Preserves classic sticky-note body behavior (normal content editing, style controls, rotate, resize, duplicate, group, layer).
+  - Variant metadata persists across edits and duplication.
+- **Code Changes**:
+  - `src/features/desk/constants/deskConstants.js`
+  - `src/features/desk/components/NewNoteMenu.jsx`
+  - `src/features/desk/utils/itemUtils.js`
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
 ## 2026-04-01 - Mac-Friendly Grouping Shortcuts
 
 ### ✅ Grouping now supports Command key on Mac (while keeping Control support)
