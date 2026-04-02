@@ -121,6 +121,11 @@ export default forwardRef(function DeskCanvasContainer({
     setIsPanning(false)
   }
 
+  const shouldApplyPanTransform = Boolean(
+    isTouchInteractionMode
+    && (isPanning || panOffset.x !== 0 || panOffset.y !== 0)
+  )
+
   return (
     <div
       ref={ref}
@@ -145,8 +150,8 @@ export default forwardRef(function DeskCanvasContainer({
         backgroundPosition,
         backgroundRepeat,
         // Apply pan transform for smooth two-finger scrolling
-        transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
-        transition: isPanning ? 'none' : 'transform 0.1s ease-out',
+        transform: shouldApplyPanTransform ? `translate(${panOffset.x}px, ${panOffset.y}px)` : 'none',
+        transition: shouldApplyPanTransform && !isPanning ? 'transform 0.1s ease-out' : 'none',
         // Allow default touch scrolling (single finger); two-finger pan handled by our code
         touchAction: 'manipulation'
       }}

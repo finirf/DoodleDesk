@@ -5,6 +5,7 @@ import {
   getItemHeight,
   getItemTextColor,
   getItemWidth,
+  getStoredItemFontFamily,
   isChecklistItem,
   isDecorationItem,
   toStoredRotation
@@ -66,7 +67,7 @@ function getComparableDeskItem(item) {
     color: getItemColor(item),
     text_color: getItemTextColor(item),
     font_size: getItemFontSize(item),
-    font_family: getItemFontFamily(item),
+    font_family: getStoredItemFontFamily(item),
     x: Number(item.x) || 0,
     y: Number(item.y) || 0,
     rotation: toStoredRotation(Number(item.rotation) || 0),

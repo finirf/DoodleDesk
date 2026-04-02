@@ -8,6 +8,7 @@ import {
   getItemKey,
   getItemTextColor,
   getItemWidth,
+  isHeaderNoteItem,
   isChecklistItem,
   isDecorationItem
 } from '../utils/itemUtils'
@@ -16,7 +17,6 @@ import FourWayResizeIcon from './FourWayResizeIcon'
 const MOBILE_DRAG_HOLD_MS = 170
 const MOBILE_DRAG_CANCEL_DISTANCE_PX = 10
 const GROUP_COLOR_PALETTE = ['#f4b400', '#7e57c2', '#26a69a', '#ff7043', '#7cb342', '#039be5', '#ec407a', '#fdd835']
-const HEADER_NOTE_BASE_COLOR = '#9bd9e8'
 const HEADER_NOTE_HEADER_HEIGHT = 26
 
 function normalizeHex(hex) {
@@ -197,6 +197,8 @@ export default function DeskCanvasItems({
   const [desktopGroupSelectionItems, setDesktopGroupSelectionItems] = useState(new Set())
   const wasDesktopGroupModeRef = useRef(false)
   const wasDesktopUngroupModeRef = useRef(false)
+
+  const isGroupingModifierPressed = useCallback((event) => Boolean(event?.ctrlKey || event?.metaKey), [])
 
   const groupColorMap = useMemo(() => {
     const uniqueGroupIds = [...new Set(Object.values(groupedItemGroupMap || {}).filter(Boolean))]
@@ -505,19 +507,21 @@ export default function DeskCanvasItems({
 
   useEffect(() => {
     const handleModifierKeyChange = (event) => {
-      if (event.type === 'keyup' && event.key === 'Control') {
+      if (event.type === 'keyup' && (event.key === 'Control' || event.key === 'Meta')) {
         applyDesktopGroupSelection()
       }
       setIsShiftHeld(Boolean(event.shiftKey))
-      setIsCtrlHeld(Boolean(event.ctrlKey))
+      setIsCtrlHeld(isGroupingModifierPressed(event))
     }
 
     const handlePointerModifierSync = (event) => {
-      // Some desktop flows can miss the Control keyup after click interactions.
-      // If Ctrl is no longer pressed on pointerup, finalize and close grouping mode.
-      if (!event.ctrlKey) {
+      // Some desktop flows can miss keyup after click interactions.
+      // If neither Control nor Command is pressed on pointerup, finalize and close grouping mode.
+      if (!isGroupingModifierPressed(event)) {
         applyDesktopGroupSelection()
         setIsCtrlHeld(false)
+      } else {
+        setIsCtrlHeld(true)
       }
       setIsShiftHeld(Boolean(event.shiftKey))
     }
@@ -540,7 +544,7 @@ export default function DeskCanvasItems({
       window.removeEventListener('pointerup', handlePointerModifierSync)
       window.removeEventListener('pointercancel', handlePointerModifierSync)
     }
-  }, [applyDesktopGroupSelection])
+  }, [applyDesktopGroupSelection, isGroupingModifierPressed])
 
   useEffect(() => {
     const isDesktopGroupMode = !isMobileLayout && isCtrlHeld && !isShiftHeld
@@ -939,8 +943,7 @@ export default function DeskCanvasItems({
         const shouldShowGroupOutline = isGrouped && !isMobileLayout && isCtrlHeld
         const noteBackgroundColor = editingId === itemKey ? editColor : getItemColor(item)
         const noteTextColor = editingId === itemKey ? editTextColor : getItemTextColor(item)
-        const normalizedNoteBackground = normalizeHex(noteBackgroundColor)
-        const isHeaderNote = !isDecoration && !isChecklist && normalizedNoteBackground === HEADER_NOTE_BASE_COLOR
+        const isHeaderNote = isHeaderNoteItem(item)
         const headerBandColor = isHeaderNote ? darkenAndSaturate(noteBackgroundColor) : null
         const isTextBoxNote = !isDecoration && !isChecklist && String(noteBackgroundColor || '').trim().toLowerCase() === 'transparent'
         const groupOutlineShadow = shouldShowGroupOutline
@@ -1016,7 +1019,7 @@ export default function DeskCanvasItems({
                 return
               }
               
-              if (e.ctrlKey || e.altKey) return
+              if (isGroupingModifierPressed(e) || e.altKey) return
               if (isMobileLayout) {
                 startMobileDragHold(e, item)
                 return
@@ -1027,7 +1030,7 @@ export default function DeskCanvasItems({
         onClick={
           isDecoration
             ? (e) => {
-              if (e.ctrlKey || e.altKey) return
+              if (isGroupingModifierPressed(e) || e.altKey) return
               if (groupSelectionMode) return
               setActiveDecorationHandleId((prev) => (prev === itemKey ? null : itemKey))
             }
@@ -1861,7 +1864,7 @@ export default function DeskCanvasItems({
             <div
               onClick={(e) => {
                 if (groupSelectionMode) return
-                if (!isMobileLayout && (isCtrlHeld || e.ctrlKey || e.altKey)) return
+                if (!isMobileLayout && (isCtrlHeld || isGroupingModifierPressed(e) || e.altKey)) return
                 handleDesktopNoteClick(itemKey, item, isChecklist)
               }}
               style={{

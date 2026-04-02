@@ -67,13 +67,16 @@ export default function useDeskMemberRequests({
       const membershipByUserId = new Map(memberRows.map((row) => [row.user_id, row]))
       const normalizedMembers = memberIds.map((memberId) => {
         const membershipRow = membershipByUserId.get(memberId)
+        const normalizedRole = membershipRow?.role === 'viewer'
+          ? 'viewer'
+          : (membershipRow?.role === 'manager' ? 'manager' : 'editor')
         return {
           membership_id: membershipRow?.id || null,
           user_id: memberId,
           email: profileById.get(memberId)?.email || 'Unknown user',
           preferred_name: profileById.get(memberId)?.preferred_name || '',
           is_owner: memberId === desk.user_id,
-          role: memberId === desk.user_id ? 'owner' : (membershipRow?.role === 'viewer' ? 'viewer' : 'editor')
+          role: memberId === desk.user_id ? 'owner' : normalizedRole
         }
       })
 

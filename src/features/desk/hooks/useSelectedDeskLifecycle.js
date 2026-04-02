@@ -68,7 +68,13 @@ export default function useSelectedDeskLifecycle({
         }
 
         if (!isCancelled) {
-          setSelectedDeskMemberRole(data?.role === 'viewer' ? 'viewer' : 'editor')
+          if (data?.role === 'viewer') {
+            setSelectedDeskMemberRole('viewer')
+          } else if (data?.role === 'manager') {
+            setSelectedDeskMemberRole('manager')
+          } else {
+            setSelectedDeskMemberRole('editor')
+          }
         }
       } catch (error) {
         console.error('Failed to fetch selected desk member role:', error)

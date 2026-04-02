@@ -356,14 +356,17 @@ export default function useDeskItemInteractions({
 
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === 'Control') {
+      if (event.key === 'Control' || event.key === 'Meta') {
         isCtrlPressedRef.current = true
       }
     }
 
     const handleKeyUp = (event) => {
-      if (event.key === 'Control') {
-        isCtrlPressedRef.current = false
+      if (event.key === 'Control' || event.key === 'Meta') {
+        isCtrlPressedRef.current = Boolean(event.ctrlKey || event.metaKey)
+        if (isCtrlPressedRef.current) {
+          return
+        }
         const normalizedMap = pruneSingletonGroups(groupedItemGroupMapRef.current)
         if (
           Object.keys(normalizedMap).length !== Object.keys(groupedItemGroupMapRef.current).length
@@ -406,7 +409,7 @@ export default function useDeskItemInteractions({
 
     const currentMap = sanitizeGroupedMap()
 
-    if (event.ctrlKey) {
+    if (event.ctrlKey || event.metaKey) {
       const existingGroupId = currentMap[itemKey]
       const sessionGroupId = ctrlGroupSessionIdRef.current
 

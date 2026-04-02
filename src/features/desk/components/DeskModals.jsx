@@ -46,6 +46,7 @@ export default function DeskModals({
   respondDeskMemberRequest,
   updateDeskMemberRole,
   isCurrentDeskOwner,
+  canCurrentUserManageMembers,
   closeDeskMembersDialog,
   resizeOverlay,
   ResizeIconComponent: _ResizeIconComponent,
@@ -548,7 +549,9 @@ export default function DeskModals({
                         )}
                         {!isOwnerRow && (
                           <div style={{ fontSize: 11, color: 'var(--ui-ink-soft)' }}>
-                            {member.role === 'viewer' ? 'Viewer (read-only)' : 'Editor'}
+                            {member.role === 'viewer'
+                              ? 'Viewer (read-only)'
+                              : (member.role === 'manager' ? 'Manager' : 'Editor')}
                           </div>
                         )}
                         {memberDisplay.secondary && (
@@ -558,7 +561,7 @@ export default function DeskModals({
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         {isCurrentDeskOwner && !isOwnerRow && (
                           <select
-                            value={member.role === 'viewer' ? 'viewer' : 'editor'}
+                            value={member.role === 'viewer' ? 'viewer' : (member.role === 'manager' ? 'manager' : 'editor')}
                             onChange={(e) => updateDeskMemberRole(member.user_id, e.target.value)}
                             disabled={isRoleUpdating}
                             style={{
@@ -567,6 +570,7 @@ export default function DeskModals({
                               opacity: isRoleUpdating ? 0.7 : 1
                             }}
                           >
+                            <option value="manager">Manager</option>
                             <option value="editor">Editor</option>
                             <option value="viewer">Viewer</option>
                           </select>
@@ -595,7 +599,7 @@ export default function DeskModals({
                           </button>
                         )}
 
-                        {isCurrentDeskOwner && !isOwnerRow && (
+                        {canCurrentUserManageMembers && !isOwnerRow && (
                           <button
                             type="button"
                             onClick={() => removeDeskMember(member.user_id)}
@@ -616,7 +620,7 @@ export default function DeskModals({
               )}
             </div>
 
-            {isCurrentDeskOwner && (
+            {canCurrentUserManageMembers && (
               <div style={{ marginBottom: 12 }}>
                 <div style={subtleLabelTextStyle}>Pending member requests</div>
                 {deskMemberRequestsLoading ? (
@@ -678,7 +682,7 @@ export default function DeskModals({
 
             <div style={{ marginBottom: 12 }}>
               <div style={subtleLabelTextStyle}>
-                {isCurrentDeskOwner ? 'Add friends' : 'Request to add your friends'}
+                {canCurrentUserManageMembers ? 'Add friends' : 'Request to add your friends'}
               </div>
               {sortedInvitableFriends.length === 0 ? (
                 <div style={neutralInfoTextStyle}>No friends available</div>
@@ -707,7 +711,7 @@ export default function DeskModals({
                       </span>
                       <button
                         type="button"
-                        onClick={() => (isCurrentDeskOwner ? addDeskMember(friend.id) : requestDeskMemberAdd(friend.id))}
+                        onClick={() => (canCurrentUserManageMembers ? addDeskMember(friend.id) : requestDeskMemberAdd(friend.id))}
                         disabled={alreadyMember || hasPendingRequest || isAdding}
                         style={{
                           ...(alreadyMember || hasPendingRequest ? modalNeutralActionStyle : modalPrimaryActionStyle),
@@ -720,8 +724,8 @@ export default function DeskModals({
                           : hasPendingRequest
                             ? 'Requested'
                             : isAdding
-                              ? (isCurrentDeskOwner ? 'Adding...' : 'Requesting...')
-                              : (isCurrentDeskOwner ? 'Add' : 'Request')}
+                              ? (canCurrentUserManageMembers ? 'Adding...' : 'Requesting...')
+                              : (canCurrentUserManageMembers ? 'Add' : 'Request')}
                       </button>
                     </div>
                   )

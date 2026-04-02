@@ -20,7 +20,7 @@ export default function useDeskAccessControl({
       currentDesk
       && (
         currentDesk.user_id === userId
-        || (!selectedDeskMemberRoleLoading && selectedDeskMemberRole === 'editor')
+        || (!selectedDeskMemberRoleLoading && (selectedDeskMemberRole === 'editor' || selectedDeskMemberRole === 'manager'))
       )
     )
 

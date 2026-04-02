@@ -8,6 +8,7 @@ export default function useDeskMembershipActions({
   deskMembers,
   deskMemberRequests,
   isCurrentDeskOwner,
+  canCurrentUserManageMembers,
   lastDeskStorageKey,
   getDeskNameValue,
   getDeskBackgroundValue,
@@ -206,6 +207,7 @@ export default function useDeskMembershipActions({
 
   const addDeskMember = useCallback(async (friendId) => {
     if (!selectedDeskId || !friendId) return
+    if (!canCurrentUserManageMembers) return
 
     setDeskMemberActionLoadingId(`add:${friendId}`)
     setDeskMembersError('')
@@ -227,6 +229,7 @@ export default function useDeskMembershipActions({
     await syncOwnedDeskCollaborativeState(selectedDeskId, updatedMembers)
     setDeskMemberActionLoadingId(null)
   }, [
+    canCurrentUserManageMembers,
     fetchDeskMembers,
     selectedDeskId,
     setDeskMemberActionLoadingId,
@@ -238,6 +241,7 @@ export default function useDeskMembershipActions({
 
   const removeDeskMember = useCallback(async (memberUserId) => {
     if (!selectedDeskId || !memberUserId) return
+    if (!canCurrentUserManageMembers) return
 
     setDeskMemberActionLoadingId(`remove:${memberUserId}`)
     setDeskMembersError('')
@@ -261,6 +265,7 @@ export default function useDeskMembershipActions({
     await syncOwnedDeskCollaborativeState(selectedDeskId, updatedMembers)
     setDeskMemberActionLoadingId(null)
   }, [
+    canCurrentUserManageMembers,
     fetchDeskMembers,
     selectedDeskId,
     setDeskMemberActionLoadingId,
@@ -272,7 +277,7 @@ export default function useDeskMembershipActions({
 
   const updateDeskMemberRole = useCallback(async (memberUserId, nextRole) => {
     if (!selectedDeskId || !memberUserId) return
-    if (nextRole !== 'editor' && nextRole !== 'viewer') return
+    if (nextRole !== 'editor' && nextRole !== 'viewer' && nextRole !== 'manager') return
     if (!isCurrentDeskOwner) return
 
     const targetMember = deskMembers.find((member) => member.user_id === memberUserId)
@@ -299,7 +304,8 @@ export default function useDeskMembershipActions({
       return
     }
 
-    setDeskMembersMessage(nextRole === 'viewer' ? 'Member changed to Viewer.' : 'Member changed to Editor.')
+    const roleLabel = nextRole === 'viewer' ? 'Viewer' : (nextRole === 'manager' ? 'Manager' : 'Editor')
+    setDeskMembersMessage(`Member changed to ${roleLabel}.`)
     await fetchDeskMembers(selectedDeskId)
     setDeskMemberActionLoadingId(null)
   }, [
@@ -320,7 +326,7 @@ export default function useDeskMembershipActions({
     const desk = desks.find((entry) => entry.id === selectedDeskId)
     if (!desk) return
 
-    if (desk.user_id === userId) {
+    if (canCurrentUserManageMembers) {
       await addDeskMember(friendId)
       return
     }
@@ -364,6 +370,7 @@ export default function useDeskMembershipActions({
     setDeskMemberActionLoadingId(null)
   }, [
     addDeskMember,
+    canCurrentUserManageMembers,
     deskMemberRequests,
     deskMembers,
     desks,

@@ -1,5 +1,26 @@
 import { DECORATION_OPTIONS, NOTE_OPTIONS } from '../constants/deskConstants'
 
+const HEADER_NOTE_BASE_COLOR = '#9bd9e8'
+const HEADER_NOTE_FONT_FAMILY_PREFIX = 'header-note:'
+
+function normalizeHex(value) {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  if (!normalized) return ''
+  if (/^#[0-9a-f]{6}$/i.test(normalized)) return normalized
+  if (/^#[0-9a-f]{3}$/i.test(normalized)) {
+    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
+  }
+  return ''
+}
+
+function stripHeaderNoteFontFamilyPrefix(value) {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  if (!normalized) return ''
+  return normalized.toLowerCase().startsWith(HEADER_NOTE_FONT_FAMILY_PREFIX)
+    ? normalized.slice(HEADER_NOTE_FONT_FAMILY_PREFIX.length).trim()
+    : normalized
+}
+
 // Normalization and rendering helpers shared across notes, checklists, and decoration items.
 export function getItemKey(item) {
   return `${item.item_type}:${item.id}`
@@ -100,7 +121,30 @@ export function getItemFontSize(item) {
 
 export function getItemFontFamily(item) {
   const value = typeof item?.font_family === 'string' ? item.font_family.trim() : ''
+  const withoutMarker = stripHeaderNoteFontFamilyPrefix(value)
+  return withoutMarker || 'inherit'
+}
+
+export function getStoredItemFontFamily(item) {
+  const value = typeof item?.font_family === 'string' ? item.font_family.trim() : ''
   return value || 'inherit'
+}
+
+export function isHeaderNoteItem(item) {
+  if (!item || isChecklistItem(item) || isDecorationItem(item)) return false
+
+  const fontFamily = typeof item?.font_family === 'string' ? item.font_family.trim().toLowerCase() : ''
+  if (fontFamily.startsWith(HEADER_NOTE_FONT_FAMILY_PREFIX)) {
+    return true
+  }
+
+  // Backward compatibility for existing header notes created before marker persistence.
+  return normalizeHex(item?.color) === HEADER_NOTE_BASE_COLOR
+}
+
+export function toStoredNoteFontFamily(fontFamilyValue, { isHeaderNote = false } = {}) {
+  const normalized = stripHeaderNoteFontFamilyPrefix(fontFamilyValue) || 'inherit'
+  return isHeaderNote ? `${HEADER_NOTE_FONT_FAMILY_PREFIX}${normalized}` : normalized
 }
 
 export function getItemWidth(item) {

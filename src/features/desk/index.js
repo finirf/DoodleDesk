@@ -100,15 +100,18 @@ export {
   getItemFontSize,
   getItemHeight,
   getItemKey,
+  getStoredItemFontFamily,
   getItemTableName,
   getItemTextColor,
   getItemWidth,
+  isHeaderNoteItem,
   isChecklistItem,
   isDecorationItem,
   isMissingColumnError,
   isMissingShelfStorageTableError,
   normalizeFontSize,
   normalizeRotation,
+  toStoredNoteFontFamily,
   toStoredRotation,
   insertChecklistItemsWithReminderFallback
 } from './utils/itemUtils'

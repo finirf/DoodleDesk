@@ -1,5 +1,65 @@
 # New Changes
 
+## 2026-04-01 - Mac-Friendly Grouping Shortcuts
+
+### ✅ Grouping now supports Command key on Mac (while keeping Control support)
+- **Change**: Grouping modifier detection now accepts either `Control` or `Command`.
+- **Behavior**:
+  - Group mode: `Ctrl` or `Cmd`
+  - Ungroup mode: `Ctrl+Shift` or `Cmd+Shift`
+  - Existing Windows/Linux shortcuts continue to work unchanged.
+- **Code Changes**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+
+## 2026-04-01 - Full-Dim Overlay Coverage While Scrolled
+
+### ✅ Greyed overlays now behave correctly after scrolling the desk
+- **Issue**: During deletion/grouping modes (`Ctrl`, `Ctrl+Shift`), dim overlays only covered the immediate view window and could fail to dim correctly after scrolling.
+- **Root Cause**: The desk container always had a CSS transform applied (`translate(0,0)`), which changed how fixed overlays were positioned.
+- **Fix**:
+  - Pan transform now applies only when touch interaction panning is active/offset.
+  - Desktop fixed overlays (including delete/group dim layers) now anchor correctly while scrolled.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasContainer.jsx`
+
+## 2026-04-01 - Header Note Style Persistence Fix
+
+### ✅ Header note format now persists after style/color edits
+- **Issue**: Header note rendering previously depended on its original base color, so changing note color could remove the header strip formatting.
+- **Fix**:
+  - Added persistent header-note metadata marker on note `font_family` storage.
+  - Header rendering now checks persistent note type metadata (with compatibility fallback for older header notes).
+  - Color/style updates keep header-note identity so the header strip remains after edits.
+- **Code Changes**:
+  - `src/features/desk/utils/itemUtils.js`
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+  - `src/features/desk/utils/historyPersistenceUtils.js`
+  - `src/features/desk/index.js`
+
+## 2026-04-01 - Share Manager Privileges with Desk Members
+
+### ✅ Owners can now assign a `Manager` role to desk members
+- **Feature**: Added a `Manager` option in Manage Desk Members role selector.
+- **Behavior**:
+  - Only owners can promote/demote members to/from `Manager`.
+  - Managers can manage desk membership (add/remove members, process member requests).
+  - Managers still cannot become owner through role selection.
+- **Code Changes**:
+  - `src/features/desk/components/DeskModals.jsx`
+  - `src/features/desk/hooks/useDeskMembershipActions.js`
+  - `src/features/desk/hooks/useDeskMemberRequests.js`
+  - `src/features/desk/hooks/useDeskAccessControl.js`
+  - `src/features/desk/hooks/useSelectedDeskLifecycle.js`
+  - `src/features/desk/components/DeskStatusBanners.jsx`
+  - `src/App.jsx`
+
+### ✅ Backend SQL guidance updated for manager role + member-management RLS
+- **DB Update**: Added migration instructions so `desk_members.role` supports `manager` and RLS allows manager-level member management.
+- **Doc Change**:
+  - `BACKEND_SQL_README.md`
+
 ## 2026-04-01 - Owner Toggle for Added By Labels
 
 ### ✅ Shared desk owners can now toggle "Added by user" labels on/off

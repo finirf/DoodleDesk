@@ -11,10 +11,12 @@ import {
   getItemTextColor,
   getItemWidth,
   getNoteOption,
+  isHeaderNoteItem,
   isChecklistItem,
   isDecorationItem,
   isMissingColumnError,
   normalizeFontSize,
+  toStoredNoteFontFamily,
   toStoredRotation
 } from '../utils/itemUtils'
 import { normalizeChecklistReminderValue } from '../utils/reminderUtils'
@@ -153,6 +155,8 @@ export function useDeskItemOperations({
       const noteStyleKey = typeof noteStyleKeyOrSetter === 'string' ? noteStyleKeyOrSetter : 'classic-sticky-note'
       const showNewNoteMenuSetter = typeof noteStyleKeyOrSetter === 'function' ? noteStyleKeyOrSetter : maybeShowNewNoteMenuSetter
       const noteOption = getNoteOption(noteStyleKey)
+      const isHeaderNotePreset = noteStyleKey === 'header-note'
+      const noteFontFamily = toStoredNoteFontFamily('inherit', { isHeaderNote: isHeaderNotePreset })
 
       const spawnPosition = findAvailableSpawnPosition({
         baseX: 100,
@@ -171,7 +175,7 @@ export function useDeskItemOperations({
           user_id: userId,
           content: 'New note',
           color: noteOption.color || '#fff59d',
-          font_family: 'inherit',
+          font_family: noteFontFamily,
           x: spawnPosition.x,
           y: spawnPosition.y,
           rotation: 0,
@@ -190,7 +194,7 @@ export function useDeskItemOperations({
             desk_id: selectedDeskId,
             content: 'New note',
             color: noteOption.color || '#fff59d',
-            font_family: 'inherit',
+            font_family: noteFontFamily,
             x: spawnPosition.x,
             y: spawnPosition.y,
             rotation: 0,
@@ -670,6 +674,7 @@ export function useDeskItemOperations({
       const nextTextColor = (editTextColor || getItemTextColor(item)).trim() || '#222222'
       const nextFontSize = normalizeFontSize(editFontSize, getItemFontSize(item))
       const nextFontFamily = (editFontFamily || 'inherit').trim() || 'inherit'
+      const persistedNoteFontFamily = toStoredNoteFontFamily(nextFontFamily, { isHeaderNote: isHeaderNoteItem(item) })
       const itemKey = getItemKey(item)
 
       if (!isChecklistItem(item)) {
@@ -677,7 +682,7 @@ export function useDeskItemOperations({
           content: editValue,
           rotation: nextRotation,
           color: nextColor,
-          font_family: nextFontFamily,
+          font_family: persistedNoteFontFamily,
           desk_id: selectedDeskId
         }
         let persistedTextColor = nextTextColor
@@ -732,7 +737,7 @@ export function useDeskItemOperations({
               color: nextColor,
               text_color: persistedTextColor,
               font_size: persistedFontSize,
-              font_family: nextFontFamily
+              font_family: persistedNoteFontFamily
             } : row
           )
         )

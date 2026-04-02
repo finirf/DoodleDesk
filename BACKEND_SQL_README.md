@@ -21,6 +21,7 @@ How to use this file:
 - 2026-03-22: Added responsive/mobile UX revision (no additional backend SQL required).
 - 2026-03-22: Added activity feed migration (`desk_activity` table, realtime publication, and RLS policies).
 - 2026-03-23: Added security hardening migration guidance (force RLS + defensive length constraints).
+- 2026-04-01: Added manager privilege sharing migration (owner can assign manager role; manager can manage members).
 
 ---
 
@@ -30,7 +31,7 @@ How to use this file:
 create extension if not exists pgcrypto;
 ```
 
----
+
 
 ## 2) Core Tables And Columns
 
@@ -274,6 +275,111 @@ begin
   exception when duplicate_object then null;
   end;
 end $$;
+```
+
+---
+
+## 13) Manager Privilege Sharing Migration (Owner/Manager/Editor/Viewer)
+
+Run this section to let desk owners promote members to `manager` and allow managers to manage desk membership.
+
+```sql
+-- Expand desk member roles to include manager.
+alter table public.desk_members
+  alter column role set default 'editor';
+
+update public.desk_members
+set role = 'editor'
+where role is null;
+
+alter table public.desk_members
+  alter column role set not null;
+
+alter table public.desk_members
+  drop constraint if exists desk_members_role_check;
+
+alter table public.desk_members
+  add constraint desk_members_role_check
+  check (role in ('manager', 'editor', 'viewer'));
+
+-- Managers can edit desk content the same way editors can.
+create or replace function public.user_can_edit_desk(target_desk_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_catalog
+as $$
+  select exists (
+    select 1
+    from public.desks d
+    where d.id = target_desk_id
+      and (
+        d.user_id = auth.uid()
+        or exists (
+          select 1
+          from public.desk_members dm
+          where dm.desk_id = d.id
+            and dm.user_id = auth.uid()
+            and coalesce(dm.role, 'editor') in ('manager', 'editor')
+        )
+      )
+  );
+$$;
+
+-- Helper for member-management privileges (owner + manager).
+create or replace function public.user_can_manage_desk_members(target_desk_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_catalog
+as $$
+  select exists (
+    select 1
+    from public.desks d
+    where d.id = target_desk_id
+      and (
+        d.user_id = auth.uid()
+        or exists (
+          select 1
+          from public.desk_members dm
+          where dm.desk_id = d.id
+            and dm.user_id = auth.uid()
+            and coalesce(dm.role, 'editor') = 'manager'
+        )
+      )
+  );
+$$;
+
+-- Membership CRUD can be performed by owner or manager.
+drop policy if exists desk_members_insert_owner_only on public.desk_members;
+create policy desk_members_insert_owner_or_manager on public.desk_members
+for insert with check (public.user_can_manage_desk_members(desk_members.desk_id));
+
+drop policy if exists desk_members_delete_owner_or_self on public.desk_members;
+create policy desk_members_delete_owner_manager_or_self on public.desk_members
+for delete using (
+  user_id = auth.uid()
+  or public.user_can_manage_desk_members(desk_members.desk_id)
+);
+
+drop policy if exists desk_members_update_owner_only on public.desk_members;
+drop policy if exists desk_members_update_owner_or_manager on public.desk_members;
+create policy desk_members_update_owner_or_manager on public.desk_members
+for update using (public.user_can_manage_desk_members(desk_members.desk_id))
+with check (public.user_can_manage_desk_members(desk_members.desk_id));
+
+-- Member request approvals can be handled by owner or manager.
+drop policy if exists desk_member_requests_update_owner_or_target on public.desk_member_requests;
+create policy desk_member_requests_update_owner_manager_or_target on public.desk_member_requests
+for update using (
+  target_friend_id = auth.uid()
+  or public.user_can_manage_desk_members(desk_member_requests.desk_id)
+) with check (
+  target_friend_id = auth.uid()
+  or public.user_can_manage_desk_members(desk_member_requests.desk_id)
+);
 ```
 
 ### 12.1) Supabase Security Advisor Function Fixes (Search Path Mutable)

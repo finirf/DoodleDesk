@@ -47,7 +47,7 @@ export default function DeskStatusBanners({
             animation: 'deskPanelIn var(--motion-base) cubic-bezier(0.18, 0.85, 0.27, 1)'
           }}
         >
-          Viewer mode: you can view this desk, but only Editors and Owner can make changes.
+          Viewer mode: you can view this desk, but only Managers, Editors, and Owner can make changes.
         </div>
       )}
     </>
