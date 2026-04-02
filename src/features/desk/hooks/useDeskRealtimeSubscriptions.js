@@ -39,6 +39,7 @@ export default function useDeskRealtimeSubscriptions({
 
     let itemRefreshTimeoutId = null
     let deskRefreshTimeoutId = null
+    let syncFallbackIntervalId = null
 
     const scheduleDeskItemRefresh = () => {
       if (itemRefreshTimeoutId) {
@@ -154,12 +155,20 @@ export default function useDeskRealtimeSubscriptions({
       )
       .subscribe()
 
+    syncFallbackIntervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      scheduleDeskItemRefresh()
+    }, 12000)
+
     return () => {
       if (itemRefreshTimeoutId) {
         clearTimeout(itemRefreshTimeoutId)
       }
       if (deskRefreshTimeoutId) {
         clearTimeout(deskRefreshTimeoutId)
+      }
+      if (syncFallbackIntervalId) {
+        clearInterval(syncFallbackIntervalId)
       }
       supabase.removeChannel(channel)
     }

@@ -4,6 +4,8 @@ import {
   getItemColor,
   getItemFontFamily,
   getItemFontSize,
+  getItemFontStyle,
+  getItemFontWeight,
   getItemHeight,
   getItemKey,
   getItemTextColor,
@@ -137,6 +139,8 @@ export default function DeskCanvasItems({
   editColor,
   editTextColor,
   editFontFamily,
+  editFontWeight,
+  editFontStyle,
   draggedId,
   groupedItemGroupMap,
   groupedItemKeys,
@@ -162,6 +166,8 @@ export default function DeskCanvasItems({
   setEditColor,
   setEditTextColor,
   setEditFontSize,
+  setEditFontWeight,
+  setEditFontStyle,
   setEditFontFamily,
   setEditValue,
   setChecklistEditItems,
@@ -354,6 +360,8 @@ export default function DeskCanvasItems({
     setEditTextColor(getItemTextColor(item))
     setEditFontSize(getItemFontSize(item))
     setEditFontFamily(getItemFontFamily(item))
+    setEditFontWeight(getItemFontWeight(item))
+    setEditFontStyle(getItemFontStyle(item))
     if (isChecklist) {
       const existingTitle = item.title || 'Checklist'
       setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
@@ -379,6 +387,8 @@ export default function DeskCanvasItems({
     setEditColor,
     setEditTextColor,
     setEditFontSize,
+    setEditFontWeight,
+    setEditFontStyle,
     setEditFontFamily,
     setEditValue,
     setChecklistEditItems,
@@ -431,6 +441,8 @@ export default function DeskCanvasItems({
         setEditTextColor(getItemTextColor(item))
         setEditFontSize(getItemFontSize(item))
         setEditFontFamily(getItemFontFamily(item))
+        setEditFontWeight(isChecklistItem(item) ? 'normal' : getItemFontWeight(item))
+        setEditFontStyle(isChecklistItem(item) ? 'normal' : getItemFontStyle(item))
         if (isChecklistItem(item)) {
           const existingTitle = item.title || 'Checklist'
           setEditValue(existingTitle.trim() === 'Checklist' ? '' : existingTitle)
@@ -462,6 +474,8 @@ export default function DeskCanvasItems({
     setEditTextColor,
     setEditFontSize,
     setEditFontFamily,
+    setEditFontWeight,
+    setEditFontStyle,
     setEditValue,
     setChecklistEditItems,
     setNewChecklistItemText,
@@ -943,6 +957,8 @@ export default function DeskCanvasItems({
         const shouldShowGroupOutline = isGrouped && !isMobileLayout && isCtrlHeld
         const noteBackgroundColor = editingId === itemKey ? editColor : getItemColor(item)
         const noteTextColor = editingId === itemKey ? editTextColor : getItemTextColor(item)
+        const noteFontWeight = editingId === itemKey ? editFontWeight : getItemFontWeight(item)
+        const noteFontStyle = editingId === itemKey ? editFontStyle : getItemFontStyle(item)
         const isHeaderNote = isHeaderNoteItem(item)
         const noteTextureImage = null
         const headerBandColor = isHeaderNote ? darkenAndSaturate(noteBackgroundColor) : null
@@ -1070,6 +1086,11 @@ export default function DeskCanvasItems({
           mixBlendMode: 'normal',
           opacity: (!isMobileLayout && isShiftHeld && isCtrlHeld && !isGrouped) ? 0.3 : 1,
           fontFamily: editingId === itemKey ? editFontFamily : getItemFontFamily(item),
+          fontWeight: isDecoration ? undefined : noteFontWeight,
+          fontStyle: isDecoration ? undefined : noteFontStyle,
+          fontSynthesis: isDecoration
+            ? undefined
+            : (noteFontStyle === 'italic' ? 'style' : 'none'),
           touchAction: editingId === itemKey
             ? 'auto'
             : 'none',
@@ -1665,6 +1686,9 @@ export default function DeskCanvasItems({
                   resize: 'vertical',
                   color: '#222',
                   fontFamily: editFontFamily,
+                  fontWeight: editFontWeight,
+                  fontStyle: editFontStyle,
+                  fontSynthesis: editFontStyle === 'italic' ? 'style' : 'none',
                   lineHeight: 1.15,
                   boxSizing: 'border-box',
                   display: 'block'
@@ -1757,6 +1781,54 @@ export default function DeskCanvasItems({
                       style={{ width: 58, height: 24, border: '1px solid #bbb', borderRadius: 4, padding: '0 6px', fontSize: 12 }}
                     />
                   </label>
+
+                  {!isDecoration && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editSaveError) setEditSaveError('')
+                          setEditFontWeight((prev) => (prev === 'bold' ? 'normal' : 'bold'))
+                        }}
+                        style={{
+                          padding: '2px 6px',
+                          fontSize: 12,
+                          borderRadius: 4,
+                          border: '1px solid #bbb',
+                          background: editFontWeight === 'bold' ? '#222' : '#fff',
+                          color: editFontWeight === 'bold' ? '#fff' : '#222',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                          minWidth: 28,
+                          height: 24
+                        }}
+                      >
+                        B
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editSaveError) setEditSaveError('')
+                          setEditFontStyle((prev) => (prev === 'italic' ? 'normal' : 'italic'))
+                        }}
+                        style={{
+                          padding: '2px 6px',
+                          fontSize: 12,
+                          borderRadius: 4,
+                          border: '1px solid #bbb',
+                          background: editFontStyle === 'italic' ? '#222' : '#fff',
+                          color: editFontStyle === 'italic' ? '#fff' : '#222',
+                          cursor: 'pointer',
+                          fontStyle: 'italic',
+                          fontWeight: 700,
+                          minWidth: 28,
+                          height: 24
+                        }}
+                      >
+                        I
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}

@@ -129,6 +129,7 @@ export default forwardRef(function DeskCanvasContainer({
   return (
     <div
       ref={ref}
+      data-desk-canvas="true"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}

@@ -7,8 +7,7 @@ export default function useDeskViewport({ getViewportMetrics }) {
   const [sectionHeight, setSectionHeight] = useState(() => initialViewportMetrics.height)
   const [canvasWidth, setCanvasWidth] = useState(() => initialViewportMetrics.width)
   const [canvasHeight, setCanvasHeight] = useState(() => {
-    const initialHeight = initialViewportMetrics.height
-    return initialHeight * 2
+    return initialViewportMetrics.height
   })
 
   useEffect(() => {
@@ -18,8 +17,6 @@ export default function useDeskViewport({ getViewportMetrics }) {
       const nextViewportWidth = nextViewportMetrics.width
       setViewportWidth(nextViewportWidth)
       setSectionHeight(nextSectionHeight)
-      setCanvasWidth((prev) => Math.max(prev, nextViewportWidth))
-      setCanvasHeight((prev) => Math.max(prev, nextSectionHeight * 2))
     }
 
     window.addEventListener('resize', handleResize)

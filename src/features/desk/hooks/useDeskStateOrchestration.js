@@ -14,7 +14,7 @@ import { useDesksState } from './useDesksState'
  * 
  * **Output domains:**
  * - Desk management (desks, selectedDeskId)
- * - Note editing (editingId, editValue, editColor, editTextColor, editFontSize, editFontFamily, showStyleEditor)
+ * - Note editing (editingId, editValue, editColor, editTextColor, editFontSize, editFontFamily, editFontWeight, editFontStyle, showStyleEditor)
  * - Checklist editing (checklistEditItems, newChecklistItemText)
  * - Menu visibility (showNewNoteMenu, showDeskMenu, showProfileMenu, profileTab)
  * - Shelf hierarchy (newShelfNameInput, newShelfParentId, deskShelves, deskShelfAssignments, expandedDeskShelves)
@@ -59,6 +59,10 @@ export default function useDeskStateOrchestration({ getViewportMetrics }) {
     setEditFontSize: deskState.setEditFontSize,
     editFontFamily: deskState.editFontFamily,
     setEditFontFamily: deskState.setEditFontFamily,
+    editFontWeight: deskState.editFontWeight,
+    setEditFontWeight: deskState.setEditFontWeight,
+    editFontStyle: deskState.editFontStyle,
+    setEditFontStyle: deskState.setEditFontStyle,
     showStyleEditor: deskState.showStyleEditor,
     setShowStyleEditor: deskState.setShowStyleEditor,
 

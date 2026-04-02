@@ -21,9 +21,94 @@ How to use this file:
 - 2026-03-22: Added responsive/mobile UX revision (no additional backend SQL required).
 - 2026-03-22: Added activity feed migration (`desk_activity` table, realtime publication, and RLS policies).
 - 2026-03-23: Added security hardening migration guidance (force RLS + defensive length constraints).
+- 2026-03-27: Added group persistence migration (`group_id` on notes/checklists).
 - 2026-04-01: Added manager privilege sharing migration (owner can assign manager role; manager can manage members).
+- 2026-04-02: Added edited-by labels migration (`edited_by_user_id` on notes).
+- 2026-04-02: Added text formatting migration (`font_weight`, `font_style`, `text_color`, `font_size` on notes/checklists).
 
 ---
+
+## 14) Consolidated Finished Migrations
+
+These finished migrations were consolidated here so future setup work has one canonical SQL source.
+
+### 14.1) Group Persistence Migration
+
+```sql
+-- Persist note/checklist grouping across reloads.
+-- Safe to run multiple times.
+
+alter table if exists public.notes
+  add column if not exists group_id text;
+
+alter table if exists public.checklists
+  add column if not exists group_id text;
+
+create index if not exists notes_desk_group_id_idx
+  on public.notes (desk_id, group_id);
+
+create index if not exists checklists_desk_group_id_idx
+  on public.checklists (desk_id, group_id);
+```
+
+### 14.2) Edited-By Labels Migration
+
+```sql
+-- DoodleDesk SQL Updates - 2026-04-02
+-- Note Edit Metadata for Shared Desk Labels
+-- Stores the last editor for notes so collaborative desks can show
+-- "Edited by ..." after a note is changed.
+
+alter table public.notes
+  add column if not exists edited_by_user_id uuid references public.profiles(id) on delete set null;
+
+create index if not exists idx_notes_edited_by_user_id
+  on public.notes(edited_by_user_id);
+
+-- Done! Your database is now up to date.
+```
+
+### 14.3) Text Formatting Migration
+
+```sql
+-- DoodleDesk SQL Updates - 2026-04-02
+-- Text Formatting Columns for Notes and Checklists
+-- Paste these commands into your Supabase SQL Editor in order
+
+-- ============================================================
+-- Add text formatting columns to notes table
+-- ============================================================
+alter table public.notes
+  add column if not exists font_weight text default 'normal' check (font_weight in ('normal', 'bold'));
+
+alter table public.notes
+  add column if not exists font_style text default 'normal' check (font_style in ('normal', 'italic'));
+
+alter table public.notes
+  add column if not exists text_color text default '#222222';
+
+alter table public.notes
+  add column if not exists font_size integer default 16 check (font_size >= 10 and font_size <= 48);
+
+-- ============================================================
+-- Add text formatting columns to checklists table
+-- ============================================================
+alter table public.checklists
+  add column if not exists font_weight text default 'normal' check (font_weight in ('normal', 'bold'));
+
+alter table public.checklists
+  add column if not exists font_style text default 'normal' check (font_style in ('normal', 'italic'));
+
+alter table public.checklists
+  add column if not exists text_color text default '#222222';
+
+alter table public.checklists
+  add column if not exists font_size integer default 16 check (font_size >= 10 and font_size <= 48);
+
+-- ============================================================
+-- Done! Your database is now up to date.
+-- ============================================================
+```
 
 ## 1) Core Extensions
 

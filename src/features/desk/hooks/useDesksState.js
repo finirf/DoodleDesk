@@ -20,6 +20,8 @@ export function useDesksState({ getViewportMetrics }) {
   const [editTextColor, setEditTextColor] = useState('#222222')
   const [editFontSize, setEditFontSize] = useState(16)
   const [editFontFamily, setEditFontFamily] = useState('inherit')
+  const [editFontWeight, setEditFontWeight] = useState('normal')
+  const [editFontStyle, setEditFontStyle] = useState('normal')
   const [showStyleEditor, setShowStyleEditor] = useState(false)
   const [checklistEditItems, setChecklistEditItems] = useState([])
   const [newChecklistItemText, setNewChecklistItemText] = useState('')
@@ -186,6 +188,10 @@ export function useDesksState({ getViewportMetrics }) {
     setEditFontSize,
     editFontFamily,
     setEditFontFamily,
+    editFontWeight,
+    setEditFontWeight,
+    editFontStyle,
+    setEditFontStyle,
     showStyleEditor,
     setShowStyleEditor,
     checklistEditItems,

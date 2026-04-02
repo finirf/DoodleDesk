@@ -1,5 +1,112 @@
 # New Changes
 
+## 2026-04-02 - Bold/Italic Style Menu Available for Notes & Checklists
+
+### ✅ Bold/Italic formatting options now available for all note/checklist types
+- **Change**: Moved bold (B) and italic (I) buttons from text-box-only to all non-decoration items (notes, checklists, text boxes).
+- **UI Impact**: Style menu now displays B and I buttons for regular notes and checklists, matching text box functionality.
+- **Implementation**:
+  - Removed `isTextBoxNote` condition on style buttons, replaced with `!isDecoration` to include all note and checklist types
+  - Updated checklist initialization to load actual `font_weight`/`font_style` values instead of resetting to 'normal'
+- **Code Changes**:
+  - `src/features/desk/components/DeskCanvasItems.jsx` (2 changes: button visibility logic + state initialization)
+- **Status**: ✅ Build passes, Lint clean, Runtime tested with manual UI verification
+
+## 2026-04-02 - Bold/Italic Cross-Session Persistence Hardening
+
+### ✅ Bold/italic now fail fast if DB schema cannot persist formatting
+- **Problem**: Save paths could previously fall back when `font_weight`/`font_style` columns were missing, causing formatting to appear saved locally but not persist across reloads/devices.
+- **Fix**: Notes/text-box save now treats missing `font_weight` or `font_style` as a hard error with a clear migration message instead of silently dropping persistence.
+- **Result**: Bold/italic changes are now guaranteed to be persisted when save succeeds.
+
+### ✅ Added desk sync fallback for multi-device edits
+- **Change**: Added a lightweight periodic desk item refresh while a desk is open.
+- **Result**: If realtime events are delayed/missed, formatting edits from another signed-in session still appear automatically.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+  - `src/features/desk/hooks/useDeskRealtimeSubscriptions.js`
+
+## 2026-04-02 - Italic Button Rendering Reliability Fix
+
+### ✅ Italic now visibly applies like bold across all text-box fonts
+- **Root Cause**: Global CSS uses `font-synthesis: none`, so fonts without a native italic face could ignore `font-style: italic` and look unchanged.
+- **Fix**: Enabled style synthesis at the text-box component level when italic is active.
+- **Result**: Clicking Italic now visibly italicizes text in the editor and on-canvas rendering, matching Bold behavior.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-04-02 - CRITICAL: Bold and Italic Formatting Persistence Fix
+
+### ⚠️ DATABASE MIGRATION REQUIRED - Bold formatting was disappearing after save
+- **Root Cause**: The `font_weight`, `font_style`, `text_color`, and `font_size` columns did not exist in the database tables (notes and checklists). The fallback retry logic was removing these fields from the update payload when it encountered missing column errors, so formatting changes were never persisted.
+- **Solution**: Added new columns to both `notes` and `checklists` tables with proper defaults and constraints.
+- **Action Required**: Run the SQL migration in your Supabase SQL Editor:
+  - File: `SUPABASE_UPDATES_2026_04_02_TEXT_FORMATTING.sql`
+  - Or copy the ALTER TABLE statements and run them to add the four formatting columns to both notes and checklists tables
+- **After Migration**: Bold, italic, text color, and font size will persist across save/reload cycles
+- **Code Changes** (all now working correctly once migration is applied):
+  - `src/features/desk/hooks/useDeskItemOperations.js` (fixed: now properly persists formatting values)
+
+## 2026-04-02 - UI Efficiency: Bold and Italic Button Layout
+
+### ✅ Bold and Italic buttons now share the same line as Text and Size controls
+- **Change**: Moved B and I buttons to the same flex row as Text color and Size controls for better space efficiency
+- **Labels**: Shortened from "Bold" and "Italic" to "B" and "I" for compact styling
+- **Result**: Style editor now has a cleaner, more compact layout with all text formatting controls on one line
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx` (reorganized styling controls layout)
+
+## 2026-04-02 - Bold and Italic Text Formatting Verification
+
+### ✅ Bold and Italic formatting now saves and renders correctly
+- **Verified**: Text with bold/italic applied saves to the database and renders with the correct CSS styling
+- **Result**: Text boxes now display text in bold when `font_weight: 'bold'` is set, and italic when `font_style: 'italic'` is set
+- **Known limitation**: The Bold/Italic buttons don't visually highlight when reopening an item for editing (cosmetic UI issue), but the formatting is correctly applied and saved
+- **Tested**: Created a text box, applied bold formatting, saved, and confirmed the text displays as bold
+
+## 2026-04-02 - Note Save Operation Schema Fallback Optimization
+
+### ✅ Fixed excessive 400 errors during note save with optional formatting fields
+- **Issue**: When saving notes with font_weight and font_style fields, the fallback retry logic was causing 60+ repeated 400 errors.
+- **Fix**: Implemented cumulative column-removal strategy in `saveItemEdits` to match the working pattern from `addTextBox`.
+- **Behavior**: On schema mismatch, the save operation now progressively removes one unsupported column per retry, converging to a compatible schema in 1-2 retries instead of 60+.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskItemOperations.js` (saveItemEdits function)
+  - `src/features/desk/hooks/useDeskStateOrchestration.js` (added editFontWeight/editFontStyle to return)
+  - `src/App.jsx` (added editFontWeight, setEditFontWeight, editFontStyle, setEditFontStyle to itemOperations)
+- **Result**: Note saves now complete quickly without console spam.
+
+## 2026-04-02 - Built-In Desk Textures Cover View
+
+### ✅ Built-in desk textures now fill the available area instead of tiling
+- **Change**: Applied the same cover/no-repeat behavior to the built-in desk textures.
+- **Behavior**:
+  - Brown, gray, leaves, and flowers desks now scale to fill the canvas.
+  - The textures no longer repeat vertically across the desk.
+  - Custom solid-color backgrounds are unchanged.
+- **Code Change**:
+  - `src/features/desk/utils/backgroundUtils.js`
+
+## 2026-04-02 - Text Box Bold and Italic Controls
+
+### ✅ Text boxes now support bold and italic styling from the style menu
+- **Change**: Added bold and italic buttons to the style editor for text boxes.
+- **Behavior**:
+  - Text boxes now open with their stored font weight and font style.
+  - Newly spawned text boxes now start larger by default.
+  - Bold/italic choices persist with note edits when the database columns are available.
+  - Non-text items do not show the formatting controls.
+- **Code Changes**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+  - `src/features/desk/hooks/useDesksState.js`
+  - `src/features/desk/utils/itemUtils.js`
+
+### ✅ Sticky notes were restored to the normal note spawn path
+- **Fix**: Corrected the sticky-note creation flow so it no longer uses the text-box payload.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskItemOperations.js`
+
 ## 2026-04-02 - Green Header Sticky Note Removed
 
 ### ✅ Removed Green Header Sticky note option and related code paths
@@ -152,6 +259,54 @@
 - **DB Update**: Added migration instructions so `desk_members.role` supports `manager` and RLS allows manager-level member management.
 - **Doc Change**:
   - `BACKEND_SQL_README.md`
+
+## 2026-04-02 - Custom Background Cover
+
+### ✅ Custom image backgrounds now scale to fill the view instead of tiling
+- **Change**: Custom image backgrounds use `cover` sizing with no repeat.
+- **Behavior**:
+  - The image expands to fill the available space for any window aspect ratio.
+  - The image no longer duplicates vertically or horizontally.
+  - Solid-color custom backgrounds are unchanged.
+- **Code Changes**:
+  - `src/features/desk/utils/backgroundUtils.js`
+
+## 2026-04-02 - Drag Auto-Scroll All Edges
+
+### ✅ Dragging notes can now auto-scroll in any direction, with a hard stop at the top-left corner
+- **Change**: While dragging, the desk scrolls left, right, up, or down when the pointer reaches the corresponding edge.
+- **Behavior**:
+  - Dragging near the right or bottom edge scrolls forward as before.
+  - Dragging near the left or top edge scrolls back if there is already scrollable content in that direction.
+  - The scroll position never goes past the top-left origin.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+
+## 2026-04-02 - Drag Auto-Scroll at Canvas Edges
+
+### ✅ Notes now auto-scroll the desk while being dragged past the visible right or bottom edge
+- **Change**: While dragging a note, the canvas scrolls horizontally or vertically when the pointer reaches the view edge.
+- **Behavior**:
+  - Dragging right keeps pushing the canvas further right.
+  - Dragging down keeps pushing the canvas further down.
+  - The scroll stops when the drag ends.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+  - `src/features/desk/components/DeskCanvasContainer.jsx`
+
+## 2026-04-02 - Canvas Shrinks to Note Bounds
+
+### ✅ Desk scroll space now follows the current notes instead of staying oversized
+- **Change**: The desk canvas now keeps horizontal and vertical scroll space only while notes occupy that area.
+- **Behavior**:
+  - You can scroll right/down past the notes when they reach that edge.
+  - If the notes move back or are deleted, the extra page length shrinks away.
+  - The canvas still keeps a small buffer past the furthest note edge.
+- **Code Changes**:
+  - `src/App.jsx`
+  - `src/features/desk/hooks/useDeskViewport.js`
+  - `src/features/desk/utils/itemUtils.js`
+  - `src/features/desk/index.js`
 
 ## 2026-04-02 - Edited By Labels for Shared Notes
 

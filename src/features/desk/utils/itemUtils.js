@@ -58,6 +58,16 @@ export function getItemTextColor(item) {
   return value || '#222222'
 }
 
+export function getItemFontWeight(item) {
+  const value = typeof item?.font_weight === 'string' ? item.font_weight.trim().toLowerCase() : ''
+  return value === 'bold' ? 'bold' : 'normal'
+}
+
+export function getItemFontStyle(item) {
+  const value = typeof item?.font_style === 'string' ? item.font_style.trim().toLowerCase() : ''
+  return value === 'italic' ? 'italic' : 'normal'
+}
+
 export function isMissingColumnError(error, columnName) {
   const message = `${error?.message || ''} ${error?.details || ''}`.toLowerCase()
   return message.includes(columnName) && (
@@ -207,6 +217,27 @@ export function getItemTableName(item) {
   if (isChecklistItem(item)) return 'checklists'
   if (isDecorationItem(item)) return 'decorations'
   return 'notes'
+}
+
+export function getDeskCanvasDimensions(items, viewportWidth, viewportHeight, growThreshold = 0) {
+  const safeViewportWidth = Math.max(0, Number(viewportWidth) || 0)
+  const safeViewportHeight = Math.max(0, Number(viewportHeight) || 0)
+
+  const bounds = Array.isArray(items)
+    ? items.reduce((accumulator, item) => {
+        const itemRight = (Number(item?.x) || 0) + getItemWidth(item)
+        const itemBottom = (Number(item?.y) || 0) + getItemHeight(item)
+        return {
+          width: Math.max(accumulator.width, itemRight),
+          height: Math.max(accumulator.height, itemBottom)
+        }
+      }, { width: 0, height: 0 })
+    : { width: 0, height: 0 }
+
+  return {
+    width: Math.max(safeViewportWidth, bounds.width + growThreshold),
+    height: Math.max(safeViewportHeight, bounds.height + growThreshold)
+  }
 }
 
 export function getItemCreatorLabel(item, currentUserId) {

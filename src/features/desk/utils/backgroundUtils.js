@@ -1,29 +1,41 @@
 // Produces layered background styles for desk sections, including custom image or solid color mode.
 export function getDeskBackgroundStyles({
   backgroundMode,
-  customBackgroundUrl,
-  sectionCount,
-  sectionHeight
+  customBackgroundUrl
 }) {
   const customBackgroundIsHex = /^#(?:[\da-fA-F]{3}|[\da-fA-F]{6}|[\da-fA-F]{8})$/.test(customBackgroundUrl)
   const safeCustomBackgroundUrl = customBackgroundUrl.replace(/"/g, '\\"')
+  const isCustomImageBackground = backgroundMode === 'custom' && safeCustomBackgroundUrl && !customBackgroundIsHex
+  const isDeskTextureBackground = backgroundMode === 'desk1'
+    || backgroundMode === 'desk2'
+    || backgroundMode === 'desk3'
+    || backgroundMode === 'desk4'
 
-  const backgroundLayers = Array.from({ length: sectionCount }, () => {
-    if (backgroundMode === 'desk1') return "url('/images/Desks/brownDesk.png')"
-    if (backgroundMode === 'desk2') return "url('/images/Desks/grayDesk.png')"
-    if (backgroundMode === 'desk3') return "url('/images/Desks/leavesDesk.jpg')"
-    if (backgroundMode === 'desk4') return "url('/images/Desks/flowersDesk.png')"
-    if (backgroundMode === 'custom' && safeCustomBackgroundUrl && !customBackgroundIsHex) return `url("${safeCustomBackgroundUrl}")`
-    return "url('/images/Desks/brownDesk.png')"
-  })
+  if (isCustomImageBackground || isDeskTextureBackground) {
+    const textureUrl = isCustomImageBackground
+      ? safeCustomBackgroundUrl
+      : backgroundMode === 'desk2'
+        ? '/images/Desks/grayDesk.png'
+        : backgroundMode === 'desk3'
+          ? '/images/Desks/leavesDesk.jpg'
+          : backgroundMode === 'desk4'
+            ? '/images/Desks/flowersDesk.png'
+            : '/images/Desks/brownDesk.png'
+
+    return {
+      backgroundImage: `url("${textureUrl}")`,
+      backgroundColor: isCustomImageBackground && customBackgroundIsHex ? customBackgroundUrl : undefined,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center center',
+      backgroundRepeat: 'no-repeat'
+    }
+  }
 
   return {
-    backgroundImage: backgroundMode === 'custom' && customBackgroundIsHex ? 'none' : backgroundLayers.join(', '),
+    backgroundImage: backgroundMode === 'custom' && customBackgroundIsHex ? 'none' : "url('/images/Desks/brownDesk.png')",
     backgroundColor: backgroundMode === 'custom' && customBackgroundIsHex ? customBackgroundUrl : undefined,
-    backgroundSize: Array.from({ length: sectionCount }, () => `auto ${sectionHeight}px`).join(', '),
-    backgroundPosition: Array.from({ length: sectionCount }, (_, index) =>
-      index === 0 ? 'left top' : `left ${index * sectionHeight}px`
-    ).join(', '),
-    backgroundRepeat: Array.from({ length: sectionCount }, () => 'repeat-x').join(', ')
+    backgroundSize: 'cover',
+    backgroundPosition: 'center center',
+    backgroundRepeat: 'no-repeat'
   }
 }

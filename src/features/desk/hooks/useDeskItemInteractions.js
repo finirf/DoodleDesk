@@ -55,6 +55,9 @@ export default function useDeskItemInteractions({
   const dragGroupKeysRef = useRef([])
   const dragGroupStartPositionsRef = useRef({})
   const dragLastGroupPositionsRef = useRef({})
+  const dragLastPointerRef = useRef(null)
+  const dragCanvasElementRef = useRef(null)
+  const dragAutoScrollFrameRef = useRef(null)
   const groupedItemGroupMapRef = useRef({})
   const persistedGroupedItemMapRef = useRef({})
   const hasPendingGroupPersistenceRef = useRef(false)
@@ -83,6 +86,133 @@ export default function useDeskItemInteractions({
   const hasActivePointerInteraction = useCallback(() => {
     return Boolean(isDraggingRef.current || isResizingRef.current || isRotatingRef.current)
   }, [])
+
+  useEffect(() => () => {
+    if (dragAutoScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragAutoScrollFrameRef.current)
+      dragAutoScrollFrameRef.current = null
+    }
+  }, [])
+
+  const getCanvasScrollOffset = useCallback(() => {
+    const container = dragCanvasElementRef.current
+    return {
+      left: Number(container?.scrollLeft) || 0,
+      top: Number(container?.scrollTop) || 0
+    }
+  }, [])
+
+  const getDragCanvasPoint = useCallback((event) => {
+    const { pageX, pageY, clientX, clientY } = getEventPosition(event)
+    const { left, top } = getCanvasScrollOffset()
+    return {
+      pageX: pageX + left,
+      pageY: pageY + top,
+      clientX,
+      clientY
+    }
+  }, [getCanvasScrollOffset])
+
+  const applyDragPositionFromPoint = useCallback((point, activeDraggedId) => {
+    if (!point || !activeDraggedId) return null
+
+    const dragResult = buildGroupDragResult(point.pageX, point.pageY, activeDraggedId)
+    if (!dragResult) {
+      dragLastPositionRef.current = null
+      dragLastGroupPositionsRef.current = {}
+      return null
+    }
+
+    const activePosition = dragResult.positions[activeDraggedId]
+    if (!activePosition) {
+      dragLastPositionRef.current = null
+      dragLastGroupPositionsRef.current = {}
+      return null
+    }
+
+    setCanvasWidth((prev) => {
+      if (dragResult.requiredWidth <= prev) return prev
+      return dragResult.requiredWidth
+    })
+
+    setCanvasHeight((prev) => {
+      if (dragResult.requiredHeight <= prev) return prev
+      const requiredHeight = dragResult.requiredHeight
+      const requiredSections = Math.ceil(requiredHeight / sectionHeight)
+      return Math.max(prev, requiredSections * sectionHeight)
+    })
+
+    dragLastPositionRef.current = { x: activePosition.x, y: activePosition.y }
+    dragLastGroupPositionsRef.current = dragResult.positions
+
+    setNotes((prev) =>
+      prev.map((item) =>
+        dragResult.positions[getItemKey(item)]
+          ? { ...item, x: dragResult.positions[getItemKey(item)].x, y: dragResult.positions[getItemKey(item)].y }
+          : item
+      )
+    )
+
+    return dragResult
+  }, [sectionHeight, setCanvasHeight, setCanvasWidth, setNotes])
+
+  const runDragAutoScroll = useCallback(() => {
+    if (!isDraggingRef.current) {
+      dragAutoScrollFrameRef.current = null
+      return
+    }
+
+    const container = dragCanvasElementRef.current
+    const pointer = dragLastPointerRef.current
+    if (!container || !pointer) {
+      dragAutoScrollFrameRef.current = window.requestAnimationFrame(runDragAutoScroll)
+      return
+    }
+
+    const rect = container.getBoundingClientRect()
+    const threshold = 72
+    const maxSpeed = 28
+    const leftDistance = pointer.clientX - rect.left
+    const rightDistance = rect.right - pointer.clientX
+    const topDistance = pointer.clientY - rect.top
+    const bottomDistance = rect.bottom - pointer.clientY
+
+    let scrollDeltaX = 0
+    let scrollDeltaY = 0
+
+    if (leftDistance <= threshold && container.scrollLeft > 0) {
+      const proximity = Math.min(1, Math.max(0, (threshold - leftDistance) / threshold))
+      scrollDeltaX = -Math.max(6, Math.round(maxSpeed * proximity))
+    } else if (rightDistance <= threshold) {
+      const proximity = Math.min(1, Math.max(0, (threshold - rightDistance) / threshold))
+      scrollDeltaX = Math.max(6, Math.round(maxSpeed * proximity))
+    }
+
+    if (topDistance <= threshold && container.scrollTop > 0) {
+      const proximity = Math.min(1, Math.max(0, (threshold - topDistance) / threshold))
+      scrollDeltaY = -Math.max(6, Math.round(maxSpeed * proximity))
+    } else if (bottomDistance <= threshold) {
+      const proximity = Math.min(1, Math.max(0, (threshold - bottomDistance) / threshold))
+      scrollDeltaY = Math.max(6, Math.round(maxSpeed * proximity))
+    }
+
+    if (scrollDeltaX !== 0) {
+      container.scrollLeft = Math.max(0, container.scrollLeft + scrollDeltaX)
+    }
+
+    if (scrollDeltaY !== 0) {
+      container.scrollTop = Math.max(0, container.scrollTop + scrollDeltaY)
+    }
+
+    if (scrollDeltaX !== 0 || scrollDeltaY !== 0) {
+      const activeDraggedId = draggedIdRef.current
+      if (activeDraggedId) {
+        applyDragPositionFromPoint(pointer, activeDraggedId)
+      }
+    }
+
+    dragAutoScrollFrameRef.current = window.requestAnimationFrame(runDragAutoScroll)
+  }, [applyDragPositionFromPoint])
 
   const persistPendingGroupMap = useCallback((nextMap) => {
     if (!pendingGroupStorageKey || typeof window === 'undefined') return
@@ -874,7 +1004,7 @@ export default function useDeskItemInteractions({
     if (typeof e.isPrimary === 'boolean' && !e.isPrimary) return
     if (editingId) return
 
-    const { pageX, pageY } = getEventPosition(e)
+    dragCanvasElementRef.current = e.currentTarget?.closest('[data-desk-canvas="true"]') || null
 
     const itemKey = getItemKey(item)
     const currentMap = sanitizeGroupedMap()
@@ -902,12 +1032,17 @@ export default function useDeskItemInteractions({
     dragPointerIdRef.current = typeof e.pointerId === 'number' ? e.pointerId : null
     dragLastPositionRef.current = { x: item.x, y: item.y }
     dragLastGroupPositionsRef.current = { ...groupStartPositions }
+    dragLastPointerRef.current = getDragCanvasPoint(e)
 
-    dragOffsetRef.current = { x: pageX - item.x, y: pageY - item.y }
+    dragOffsetRef.current = { x: dragLastPointerRef.current.pageX - item.x, y: dragLastPointerRef.current.pageY - item.y }
 
     window.addEventListener('pointermove', handleDragMove)
     window.addEventListener('pointerup', handleDragEnd)
     window.addEventListener('pointercancel', handleDragEnd)
+
+    if (dragAutoScrollFrameRef.current === null) {
+      dragAutoScrollFrameRef.current = window.requestAnimationFrame(runDragAutoScroll)
+    }
   }
 
   function handleDragMove(e) {
@@ -923,44 +1058,9 @@ export default function useDeskItemInteractions({
       return
     }
 
-    const { pageX, pageY } = getEventPosition(e)
-
-    const dragResult = buildGroupDragResult(pageX, pageY, activeDraggedId)
-    if (!dragResult) {
-      dragLastPositionRef.current = null
-      dragLastGroupPositionsRef.current = {}
-      return
-    }
-
-    const activePosition = dragResult.positions[activeDraggedId]
-    if (!activePosition) {
-      dragLastPositionRef.current = null
-      dragLastGroupPositionsRef.current = {}
-      return
-    }
-
-    setCanvasWidth((prev) => {
-      if (dragResult.requiredWidth <= prev) return prev
-      return dragResult.requiredWidth
-    })
-
-    setCanvasHeight((prev) => {
-      if (dragResult.requiredHeight <= prev) return prev
-      const requiredHeight = dragResult.requiredHeight
-      const requiredSections = Math.ceil(requiredHeight / sectionHeight)
-      return Math.max(prev, requiredSections * sectionHeight)
-    })
-
-    dragLastPositionRef.current = { x: activePosition.x, y: activePosition.y }
-    dragLastGroupPositionsRef.current = dragResult.positions
-
-    setNotes((prev) =>
-      prev.map((item) =>
-        dragResult.positions[getItemKey(item)]
-          ? { ...item, x: dragResult.positions[getItemKey(item)].x, y: dragResult.positions[getItemKey(item)].y }
-          : item
-      )
-    )
+    const dragPoint = getDragCanvasPoint(e)
+    dragLastPointerRef.current = dragPoint
+    applyDragPositionFromPoint(dragPoint, activeDraggedId)
   }
 
   async function handleDragEnd(e) {
@@ -972,9 +1072,15 @@ export default function useDeskItemInteractions({
     draggedIdRef.current = null
     dragPointerIdRef.current = null
     isDraggingRef.current = false
+    dragLastPointerRef.current = null
     window.removeEventListener('pointermove', handleDragMove)
     window.removeEventListener('pointerup', handleDragEnd)
     window.removeEventListener('pointercancel', handleDragEnd)
+    if (dragAutoScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragAutoScrollFrameRef.current)
+      dragAutoScrollFrameRef.current = null
+    }
+    dragCanvasElementRef.current = null
 
     if (!activeDraggedId) {
       dragLastPositionRef.current = null

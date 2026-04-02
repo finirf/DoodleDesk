@@ -92,12 +92,15 @@ export {
 } from './utils/reminderUtils'
 export {
   clampDimension,
+  getDeskCanvasDimensions,
   getDecorationOption,
   getDefaultItemColor,
   getItemColor,
   getItemCreatorLabel,
   getItemFontFamily,
   getItemFontSize,
+  getItemFontStyle,
+  getItemFontWeight,
   getItemHeight,
   getItemKey,
   getStoredItemFontFamily,

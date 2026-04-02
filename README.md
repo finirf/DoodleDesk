@@ -86,7 +86,6 @@ Read this as:
 - `src/features/desk`: desk domain implementation (components, hooks, constants, utils, data).
 - `supabase/functions`: edge functions used by production workflows.
 - `BACKEND_SQL_README.md`: canonical SQL migration and security hardening source.
-- `SUPABASE_UPDATES_2026_03_22.sql`: SQL snapshot file.
 - `docs/PROJECT_ORGANIZATION.md`: maintainability conventions and decomposition guidance.
 - `new changes.md`: running changelog.
 

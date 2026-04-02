@@ -82,6 +82,10 @@ export function useDeskItemOperations({
   setEditFontSize,
   editFontFamily,
   setEditFontFamily,
+  editFontWeight,
+  setEditFontWeight,
+  editFontStyle,
+  setEditFontStyle,
   checklistEditItems,
   setChecklistEditItems,
   newChecklistItemText,
@@ -104,6 +108,7 @@ export function useDeskItemOperations({
   setShowStyleEditor
 }) {
   const groupIdPersistenceUnsupportedRef = useRef(false)
+  const textFormattingSchemaError = 'Bold/italic persistence requires the consolidated SQL migrations. Run BACKEND_SQL_README.md (Section 14) and try again.'
 
   // ===== Item Creation =====
 
@@ -176,7 +181,7 @@ export function useDeskItemOperations({
         .insert([{
           desk_id: selectedDeskId,
           user_id: userId,
-          content: 'New note',
+          content: noteOption.label,
           color: noteOption.color || '#fff59d',
           font_family: noteFontFamily,
           x: spawnPosition.x,
@@ -248,6 +253,8 @@ export function useDeskItemOperations({
       if (!canCurrentUserEditDeskItems) return
       if (!selectedDeskId) return
 
+      const defaultTextBoxFontSize = 22
+
       const spawnPosition = findAvailableSpawnPosition({
         baseX: 100,
         baseY: 100,
@@ -258,43 +265,57 @@ export function useDeskItemOperations({
       let data = null
       let error = null
 
-      const withUserResult = await supabase
-        .from('notes')
-        .insert([{
-          desk_id: selectedDeskId,
-          user_id: userId,
-          content: 'Text box',
-          color: 'transparent',
-          font_family: 'inherit',
-          x: spawnPosition.x,
-          y: spawnPosition.y,
-          rotation: 0,
-          width: 260,
-          height: 100
-        }])
-        .select()
+      const textBoxPayload = {
+        desk_id: selectedDeskId,
+        user_id: userId,
+        content: 'Text box',
+        color: 'transparent',
+        text_color: '#ffffff',
+        font_size: defaultTextBoxFontSize,
+        font_weight: 'normal',
+        font_style: 'normal',
+        font_family: 'inherit',
+        x: spawnPosition.x,
+        y: spawnPosition.y,
+        rotation: 0,
+        width: 260,
+        height: 100
+      }
+      const unsupportedTextBoxColumns = new Set()
+      const fallbackColumns = ['font_size', 'text_color']
 
-      data = withUserResult.data
-      error = withUserResult.error
-
-      if (error) {
-        const fallbackResult = await supabase
+      while (true) {
+        const insertResult = await supabase
           .from('notes')
-          .insert([{
-            desk_id: selectedDeskId,
-            content: 'Text box',
-            color: 'transparent',
-            font_family: 'inherit',
-            x: spawnPosition.x,
-            y: spawnPosition.y,
-            rotation: 0,
-            width: 260,
-            height: 100
-          }])
+          .insert([{ ...textBoxPayload }])
           .select()
 
-        data = fallbackResult.data
-        error = fallbackResult.error
+        data = insertResult.data
+        error = insertResult.error
+
+        if (!error) break
+
+        if (isMissingColumnError(error, 'font_weight') || isMissingColumnError(error, 'font_style')) {
+          console.error('Text box formatting columns are missing. Apply BACKEND_SQL_README.md (Section 14) to enable persistence.')
+          setEditSaveError(textFormattingSchemaError)
+          if (typeof showNewNoteMenuSetter === 'function') {
+            showNewNoteMenuSetter(false)
+          }
+          return
+        }
+
+        const missingColumn = fallbackColumns.find((columnName) => !unsupportedTextBoxColumns.has(columnName) && isMissingColumnError(error, columnName))
+        if (!missingColumn) break
+
+        unsupportedTextBoxColumns.add(missingColumn)
+        delete textBoxPayload[missingColumn]
+      }
+
+      if (error) {
+        const retryableColumns = Array.from(unsupportedTextBoxColumns)
+        if (retryableColumns.length > 0) {
+          console.warn('Text box insert retried without unsupported columns:', retryableColumns)
+        }
       }
 
       const createdTextBox = data?.[0]
@@ -323,6 +344,7 @@ export function useDeskItemOperations({
       setNotes,
       setEditSaveError,
       supabase,
+      textFormattingSchemaError,
       userId,
       fetchDeskItems,
       logDeskActivity,
@@ -655,6 +677,8 @@ export function useDeskItemOperations({
     setEditTextColor('#222222')
     setEditFontSize(16)
     setEditFontFamily('inherit')
+    setEditFontWeight('normal')
+    setEditFontStyle('normal')
     setEditSaveError('')
   }, [
     setEditingId,
@@ -666,6 +690,8 @@ export function useDeskItemOperations({
     setEditTextColor,
     setEditFontSize,
     setEditFontFamily,
+    setEditFontWeight,
+    setEditFontStyle,
     setEditSaveError
   ])
 
@@ -682,71 +708,59 @@ export function useDeskItemOperations({
       const itemKey = getItemKey(item)
 
       if (!isChecklistItem(item)) {
-        const basePayload = {
+        let updatePayload = {
           content: editValue,
           rotation: nextRotation,
           color: nextColor,
           font_family: persistedNoteFontFamily,
+          font_weight: editFontWeight === 'bold' ? 'bold' : 'normal',
+          font_style: editFontStyle === 'italic' ? 'italic' : 'normal',
+          text_color: nextTextColor,
+          font_size: nextFontSize,
+          edited_by_user_id: userId,
           desk_id: selectedDeskId
-        }
-        const editorMetadata = {
-          edited_by_user_id: userId
         }
         let persistedTextColor = nextTextColor
         let persistedFontSize = nextFontSize
+        let persistedFontWeight = editFontWeight === 'bold' ? 'bold' : 'normal'
+        let persistedFontStyle = editFontStyle === 'italic' ? 'italic' : 'normal'
         let didPersistEditorMetadata = true
 
-        let { error: saveError } = await supabase
-          .from('notes')
-          .update({ ...basePayload, ...editorMetadata, text_color: nextTextColor, font_size: nextFontSize })
-          .eq('id', item.id)
-          .eq('desk_id', selectedDeskId)
+        const unsupportedNoteColumns = new Set()
+        const noteColumnFallbacks = ['edited_by_user_id', 'text_color', 'font_size']
 
-        if (saveError && isMissingColumnError(saveError, 'edited_by_user_id')) {
-          didPersistEditorMetadata = false
-          const { error: retryError } = await supabase
+        let saveError = null
+        while (true) {
+          const { error } = await supabase
             .from('notes')
-            .update({ ...basePayload, text_color: nextTextColor, font_size: nextFontSize })
+            .update(updatePayload)
             .eq('id', item.id)
             .eq('desk_id', selectedDeskId)
 
-          if (!retryError) {
+          if (!error) {
             saveError = null
-          } else {
-            saveError = retryError
+            break
           }
-        }
 
-        if (saveError && isMissingColumnError(saveError, 'text_color')) {
-          const { error: retryError } = await supabase
-            .from('notes')
-            .update(basePayload)
-            .eq('id', item.id)
-            .eq('desk_id', selectedDeskId)
-
-          if (!retryError) {
-            saveError = null
-            persistedTextColor = getItemTextColor(item)
-            persistedFontSize = getItemFontSize(item)
-          } else {
-            saveError = retryError
+          const missingColumn = noteColumnFallbacks.find((columnName) => !unsupportedNoteColumns.has(columnName) && isMissingColumnError(error, columnName))
+          if (!missingColumn) {
+            saveError = error
+            break
           }
-        } else if (saveError && isMissingColumnError(saveError, 'font_size')) {
-          const { error: retryError } = await supabase
-            .from('notes')
-            .update({ ...basePayload, text_color: nextTextColor })
-            .eq('id', item.id)
-            .eq('desk_id', selectedDeskId)
 
-          if (!retryError) {
-            saveError = null
-            persistedFontSize = getItemFontSize(item)
-          } else {
-            saveError = retryError
-          }
+          unsupportedNoteColumns.add(missingColumn)
+          delete updatePayload[missingColumn]
+
+          if (missingColumn === 'edited_by_user_id') didPersistEditorMetadata = false
+          if (missingColumn === 'text_color') persistedTextColor = getItemTextColor(item)
+          if (missingColumn === 'font_size') persistedFontSize = getItemFontSize(item)
         }
 
         if (saveError) {
+          if (isMissingColumnError(saveError, 'font_weight') || isMissingColumnError(saveError, 'font_style')) {
+            console.error('Note formatting columns are missing. Apply BACKEND_SQL_README.md (Section 14) to enable persistence.')
+            return { ok: false, errorMessage: textFormattingSchemaError }
+          }
           console.error('Failed to save note:', saveError)
           return { ok: false, errorMessage: saveError?.message || 'Failed to save note.' }
         }
@@ -761,6 +775,8 @@ export function useDeskItemOperations({
               text_color: persistedTextColor,
               font_size: persistedFontSize,
               font_family: persistedNoteFontFamily,
+              font_weight: persistedFontWeight,
+              font_style: persistedFontStyle,
               ...(didPersistEditorMetadata ? { edited_by_user_id: userId } : {})
             } : row
           )
@@ -912,11 +928,14 @@ export function useDeskItemOperations({
       editValue,
       editFontSize,
       editFontFamily,
+      editFontWeight,
+      editFontStyle,
       editTextColor,
       checklistEditItems,
       selectedDeskId,
       userId,
       supabase,
+      textFormattingSchemaError,
       setNotes
     ]
   )

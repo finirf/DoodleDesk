@@ -168,7 +168,7 @@ export default function DeskModals({
               textAlign: 'center'
             }}
           >
-            <div id="delete-note-title" style={{ marginBottom: 12, color: 'var(--ui-ink)', fontWeight: 500 }}>Delete this note?</div>
+            <div id="delete-note-title" style={{ marginBottom: 12, color: 'var(--ui-ink)', fontWeight: 500 }}>Delete this item?</div>
             <div id="delete-note-description" style={{ fontSize: 12, color: 'var(--ui-ink-soft)', marginBottom: 16 }}>This action cannot be undone.</div>
             <button
               type="button"
