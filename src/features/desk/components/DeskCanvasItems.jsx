@@ -1940,7 +1940,7 @@ export default function DeskCanvasItems({
                   </div>
                   {shouldShowCreatorLabel && (
                     <div style={{ marginTop: 'auto', paddingTop: 8, fontSize: 10, color: 'inherit', textAlign: 'right' }}>
-                      Added by {creatorLabel}
+                      {creatorLabel}
                     </div>
                   )}
                 </>
@@ -1953,7 +1953,7 @@ export default function DeskCanvasItems({
                   <div>{item.content}</div>
                   {shouldShowCreatorLabel && (
                     <div style={{ marginTop: 'auto', paddingTop: 8, fontSize: 10, color: 'inherit', textAlign: 'right' }}>
-                      Added by {creatorLabel}
+                      {creatorLabel}
                     </div>
                   )}
                 </>
