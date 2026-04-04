@@ -5,7 +5,8 @@
 ### ✅ Decorations are no longer greyed out during grouping/ungroup overlay mode
 - **Issue**: Decorations could appear dimmed in desktop ungroup mode, making them look disabled in grouping workflows.
 - **Fix**: Updated ungroup overlay opacity logic so only ungrouped non-decoration items are dimmed.
-- **Follow-up Fix**: Raised decoration z-index while desktop grouping modifiers are active so decorations stay above the overlay even when they were not pre-clicked.
+- **Follow-up Fix**: Moved desktop grouping overlays below item layers and removed temporary decoration-only z-index promotion.
+- **Result**: Item layering levels are now preserved while grouping/ungrouping.
 - **Code Change**:
   - `src/features/desk/components/DeskCanvasItems.jsx`
 - **Status**: ✅ Runtime tested

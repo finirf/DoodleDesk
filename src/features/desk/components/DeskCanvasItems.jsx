@@ -921,7 +921,7 @@ export default function DeskCanvasItems({
             right: 0,
             bottom: 0,
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 100,
+            zIndex: 0,
             pointerEvents: 'auto'
           }}
           onClick={() => {
@@ -941,7 +941,7 @@ export default function DeskCanvasItems({
             right: 0,
             bottom: 0,
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 100,
+            zIndex: 0,
             pointerEvents: 'none'
           }}
         />
@@ -1119,9 +1119,7 @@ export default function DeskCanvasItems({
             ? 3000
             : (editingId === itemKey || (isDecoration && activeDecorationHandleId === itemKey)
               ? 2500
-              : (isDecoration
-                ? ((isCtrlHeld || groupSelectionMode) ? (baseZIndex + 200) : baseZIndex)
-                : (baseZIndex + 200)))
+              : (isDecoration ? baseZIndex : (baseZIndex + 200)))
         }}
       >
         {isDecoration ? (
