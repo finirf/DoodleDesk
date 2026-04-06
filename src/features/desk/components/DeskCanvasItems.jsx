@@ -195,6 +195,9 @@ export default function DeskCanvasItems({
   const suppressEditClickRef = useRef(false)
   const suppressEditClickTimerRef = useRef(null)
   const prevDraggedIdRef = useRef(draggedId)
+  const desktopDragPointerIdRef = useRef(null)
+  const desktopDragStartPointRef = useRef(null)
+  const didDesktopDragMoveRef = useRef(false)
   const [isShiftHeld, setIsShiftHeld] = useState(false)
   const [isCtrlHeld, setIsCtrlHeld] = useState(false)
   const [mobileContextMenuItemKey, setMobileContextMenuItemKey] = useState(null)
@@ -254,12 +257,45 @@ export default function DeskCanvasItems({
   // Suppress click-to-edit when drag ends to prevent opening editor after a drag
   useEffect(() => {
     if (prevDraggedIdRef.current !== null && draggedId === null) {
-      if (!isMobileLayout) {
-      temporarilySuppressEditClick()
+      if (!isMobileLayout && didDesktopDragMoveRef.current) {
+        temporarilySuppressEditClick()
       }
+      didDesktopDragMoveRef.current = false
+      desktopDragPointerIdRef.current = null
+      desktopDragStartPointRef.current = null
     }
     prevDraggedIdRef.current = draggedId
-  }, [draggedId, temporarilySuppressEditClick])
+  }, [draggedId, isMobileLayout, temporarilySuppressEditClick])
+
+  useEffect(() => {
+    const handleDesktopPointerMove = (event) => {
+      if (isMobileLayout) return
+      if (!draggedId) return
+      if (!desktopDragStartPointRef.current) return
+      if (desktopDragPointerIdRef.current !== null && event.pointerId !== desktopDragPointerIdRef.current) return
+
+      const deltaX = Math.abs(event.clientX - desktopDragStartPointRef.current.x)
+      const deltaY = Math.abs(event.clientY - desktopDragStartPointRef.current.y)
+      if (deltaX > MOBILE_DRAG_CANCEL_DISTANCE_PX || deltaY > MOBILE_DRAG_CANCEL_DISTANCE_PX) {
+        didDesktopDragMoveRef.current = true
+      }
+    }
+
+    const clearDesktopPointerTracking = () => {
+      desktopDragPointerIdRef.current = null
+      desktopDragStartPointRef.current = null
+    }
+
+    window.addEventListener('pointermove', handleDesktopPointerMove)
+    window.addEventListener('pointerup', clearDesktopPointerTracking)
+    window.addEventListener('pointercancel', clearDesktopPointerTracking)
+
+    return () => {
+      window.removeEventListener('pointermove', handleDesktopPointerMove)
+      window.removeEventListener('pointerup', clearDesktopPointerTracking)
+      window.removeEventListener('pointercancel', clearDesktopPointerTracking)
+    }
+  }, [draggedId, isMobileLayout])
 
   const clearPendingMobileDrag = useCallback(() => {
     if (mobileDragTimerRef.current) {
@@ -1052,6 +1088,10 @@ export default function DeskCanvasItems({
                 startMobileDragHold(e, item)
                 return
               }
+
+              desktopDragPointerIdRef.current = typeof e.pointerId === 'number' ? e.pointerId : null
+              desktopDragStartPointRef.current = { x: e.clientX, y: e.clientY }
+              didDesktopDragMoveRef.current = false
               handleDragStart(e, item)
             }
         }

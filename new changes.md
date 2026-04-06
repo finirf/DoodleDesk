@@ -1,5 +1,19 @@
 # New Changes
 
+## 2026-04-06 - Note Click-to-Edit Restored
+
+### ✅ Regular notes and checklists can be clicked to edit again
+- **Issue**: Single-click edit stopped working for notes/checklists after drag-end suppression updates.
+- **Root Cause**: Drag-end click suppression was firing for every desktop pointer down/up cycle, including plain clicks with no movement.
+- **Fix**: Made desktop suppression conditional on actual pointer movement distance before suppressing post-drag edit clicks.
+- **Behavior**:
+  - Regular notes and checklists open editor on single-click again.
+  - Text boxes keep double-click-to-edit behavior.
+  - Dragging still does not accidentally open editors.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+- **Validation**: ✅ Manual runtime test with test account login + production build passes.
+
 ## 2026-04-02 - Decorations Stay Visible in Ungroup Mode
 
 ### ✅ Decorations are no longer greyed out during grouping/ungroup overlay mode
