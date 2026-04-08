@@ -214,6 +214,27 @@ export default function useDeskItemInteractions({
     dragAutoScrollFrameRef.current = window.requestAnimationFrame(runDragAutoScroll)
   }, [applyDragPositionFromPoint])
 
+  const moveItemsToFront = useCallback((itemKeys) => {
+    if (!Array.isArray(itemKeys) || !itemKeys.length) return
+
+    const keySet = new Set(itemKeys)
+    setNotes((prev) => {
+      const movingItems = []
+      const remainingItems = []
+
+      prev.forEach((entry) => {
+        if (keySet.has(getItemKey(entry))) {
+          movingItems.push(entry)
+          return
+        }
+        remainingItems.push(entry)
+      })
+
+      if (!movingItems.length) return prev
+      return [...remainingItems, ...movingItems]
+    })
+  }, [getItemKey, setNotes])
+
   const persistPendingGroupMap = useCallback((nextMap) => {
     if (!pendingGroupStorageKey || typeof window === 'undefined') return
 
@@ -1012,6 +1033,10 @@ export default function useDeskItemInteractions({
     const dragGroupKeys = itemGroupId
       ? Object.keys(currentMap).filter((key) => currentMap[key] === itemGroupId)
       : [itemKey]
+
+    if (isDecorationItem(item)) {
+      moveItemsToFront(dragGroupKeys)
+    }
 
     const groupStartPositions = {}
     dragGroupKeys.forEach((key) => {

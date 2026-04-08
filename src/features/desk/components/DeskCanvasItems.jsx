@@ -243,6 +243,51 @@ export default function DeskCanvasItems({
     return nextMap
   }, [groupedItemGroupMap])
 
+  const layerZIndexMap = useMemo(() => {
+    const SLOT_STEP = 1000
+    const NOTE_LAYER_OFFSET = 500
+    const groupSlotById = {}
+    const groupMemberOrder = {}
+    const singleSlotByKey = {}
+    const nextGroupMemberIndex = {}
+    let nextSlot = 1
+
+    notes.forEach((item) => {
+      const itemKey = getItemKey(item)
+      const groupId = groupedItemGroupMap?.[itemKey] || null
+
+      if (groupId) {
+        if (!Object.prototype.hasOwnProperty.call(groupSlotById, groupId)) {
+          groupSlotById[groupId] = nextSlot
+          nextSlot += 1
+          nextGroupMemberIndex[groupId] = 0
+        }
+
+        groupMemberOrder[itemKey] = nextGroupMemberIndex[groupId]
+        nextGroupMemberIndex[groupId] += 1
+        return
+      }
+
+      singleSlotByKey[itemKey] = nextSlot
+      nextSlot += 1
+    })
+
+    const nextLayerMap = {}
+    notes.forEach((item) => {
+      const itemKey = getItemKey(item)
+      const groupId = groupedItemGroupMap?.[itemKey] || null
+      const slot = groupId ? groupSlotById[groupId] : singleSlotByKey[itemKey]
+      const memberIndex = groupId ? (groupMemberOrder[itemKey] || 0) : 0
+      const slotBase = (slot || 1) * SLOT_STEP
+      const isDecoration = isDecorationItem(item)
+      nextLayerMap[itemKey] = isDecoration
+        ? (slotBase + memberIndex)
+        : (slotBase + NOTE_LAYER_OFFSET + memberIndex)
+    })
+
+    return nextLayerMap
+  }, [notes, groupedItemGroupMap, getItemKey])
+
   const temporarilySuppressEditClick = useCallback(() => {
     suppressEditClickRef.current = true
     if (suppressEditClickTimerRef.current) {
@@ -983,7 +1028,7 @@ export default function DeskCanvasItems({
         />
       )}
 
-      {notes.map((item, index) => {
+      {notes.map((item) => {
         const itemKey = getItemKey(item)
         const isChecklist = isChecklistItem(item)
         const isDecoration = isDecorationItem(item)
@@ -997,7 +1042,6 @@ export default function DeskCanvasItems({
           : itemWidth
         const itemHeight = getItemHeight(item)
         const contentMinHeight = Math.max(40, itemHeight - 40)
-        const baseZIndex = index + 1
         const groupId = groupedItemGroupMap?.[itemKey] || null
         const isGrouped = Boolean(groupId)
         const groupColor = groupId ? groupColorMap[groupId] : null
@@ -1159,7 +1203,7 @@ export default function DeskCanvasItems({
             ? 3000
             : (editingId === itemKey || (isDecoration && activeDecorationHandleId === itemKey)
               ? 2500
-              : (isDecoration ? baseZIndex : (baseZIndex + 200)))
+              : (layerZIndexMap[itemKey] || 1))
         }}
       >
         {isDecoration ? (

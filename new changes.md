@@ -1,5 +1,23 @@
 # New Changes
 
+## 2026-04-08 - Grouped Items Share One External Layer
+
+### ✅ Grouped items now behave as one layer relative to outside items
+- **Change**: Updated canvas z-index composition so each group occupies a single external layer slot.
+- **In-group behavior**: Items keep their relative layering order inside the group.
+- **Cross-group behavior**: Outside items can no longer appear layered between members of the same group.
+- **Code Change**:
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+## 2026-04-08 - Decoration Drag Layer Promotion
+
+### ✅ Dragging decorations now brings them to the front spatially
+- **Change**: On drag start, decorations are promoted to the front of canvas layer order.
+- **Grouped behavior**: If a decoration belongs to a group, the full group is moved to the front together.
+- **Layer preservation**: Internal ordering of items inside the group is preserved while promoting the group.
+- **Code Change**:
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+
 ## 2026-04-06 - Note Click-to-Edit Restored
 
 ### ✅ Regular notes and checklists can be clicked to edit again
