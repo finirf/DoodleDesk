@@ -286,7 +286,7 @@ export default function DeskCanvasItems({
     })
 
     return nextLayerMap
-  }, [notes, groupedItemGroupMap, getItemKey])
+  }, [notes, groupedItemGroupMap])
 
   const temporarilySuppressEditClick = useCallback(() => {
     suppressEditClickRef.current = true

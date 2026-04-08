@@ -102,6 +102,35 @@ export default function useDeskItemInteractions({
     }
   }, [])
 
+  const getEventPosition = useCallback((event) => {
+    if (event?.touches?.length) {
+      const touch = event.touches[0]
+      return {
+        pageX: touch.pageX,
+        pageY: touch.pageY,
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      }
+    }
+
+    if (event?.changedTouches?.length) {
+      const touch = event.changedTouches[0]
+      return {
+        pageX: touch.pageX,
+        pageY: touch.pageY,
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      }
+    }
+
+    return {
+      pageX: event?.pageX ?? 0,
+      pageY: event?.pageY ?? 0,
+      clientX: event?.clientX ?? 0,
+      clientY: event?.clientY ?? 0
+    }
+  }, [])
+
   const getDragCanvasPoint = useCallback((event) => {
     const { pageX, pageY, clientX, clientY } = getEventPosition(event)
     const { left, top } = getCanvasScrollOffset()
@@ -111,7 +140,69 @@ export default function useDeskItemInteractions({
       clientX,
       clientY
     }
-  }, [getCanvasScrollOffset])
+  }, [getCanvasScrollOffset, getEventPosition])
+
+  const buildGroupDragResult = useCallback((pageX, pageY, activeDraggedId) => {
+    const startPositions = dragGroupStartPositionsRef.current
+    const activeStart = startPositions[activeDraggedId]
+    if (!activeStart) return null
+
+    const groupEntries = dragGroupKeysRef.current
+      .map((key) => {
+        const item = notesRef.current.find((entry) => getItemKey(entry) === key)
+        if (!item) return null
+        const start = startPositions[key]
+        if (!start) return null
+        return { key, item, start }
+      })
+      .filter(Boolean)
+
+    if (!groupEntries.length) return null
+
+    const minStartX = Math.min(...groupEntries.map((entry) => entry.start.x))
+    const minStartY = Math.min(...groupEntries.map((entry) => entry.start.y))
+
+    const rawNextX = pageX - dragOffsetRef.current.x
+    const rawNextY = pageY - dragOffsetRef.current.y
+    let deltaX = rawNextX - activeStart.x
+    let deltaY = rawNextY - activeStart.y
+
+    deltaX = Math.max(deltaX, -minStartX)
+    deltaY = Math.max(deltaY, -minStartY)
+
+    let activeNextX = activeStart.x + deltaX
+    let activeNextY = activeStart.y + deltaY
+
+    if (snapToGrid) {
+      activeNextX = Math.max(0, Math.round(activeNextX / gridSize) * gridSize)
+      activeNextY = Math.max(0, Math.round(activeNextY / gridSize) * gridSize)
+      deltaX = activeNextX - activeStart.x
+      deltaY = activeNextY - activeStart.y
+      deltaX = Math.max(deltaX, -minStartX)
+      deltaY = Math.max(deltaY, -minStartY)
+    }
+
+    const positions = {}
+    let maxRight = 0
+    let maxBottom = 0
+
+    groupEntries.forEach((entry) => {
+      const nextX = entry.start.x + deltaX
+      const nextY = entry.start.y + deltaY
+      positions[entry.key] = { x: nextX, y: nextY }
+
+      const rightEdge = nextX + getItemWidth(entry.item)
+      const bottomEdge = nextY + getItemHeight(entry.item)
+      if (rightEdge > maxRight) maxRight = rightEdge
+      if (bottomEdge > maxBottom) maxBottom = bottomEdge
+    })
+
+    return {
+      positions,
+      requiredWidth: Math.ceil(maxRight + growThreshold),
+      requiredHeight: maxBottom + growThreshold
+    }
+  }, [getItemHeight, getItemKey, getItemWidth, gridSize, growThreshold, notesRef, snapToGrid])
 
   const applyDragPositionFromPoint = useCallback((point, activeDraggedId) => {
     if (!point || !activeDraggedId) return null
@@ -154,9 +245,9 @@ export default function useDeskItemInteractions({
     )
 
     return dragResult
-  }, [sectionHeight, setCanvasHeight, setCanvasWidth, setNotes])
+  }, [buildGroupDragResult, getItemKey, sectionHeight, setCanvasHeight, setCanvasWidth, setNotes])
 
-  const runDragAutoScroll = useCallback(() => {
+  function runDragAutoScroll() {
     if (!isDraggingRef.current) {
       dragAutoScrollFrameRef.current = null
       return
@@ -212,7 +303,7 @@ export default function useDeskItemInteractions({
     }
 
     dragAutoScrollFrameRef.current = window.requestAnimationFrame(runDragAutoScroll)
-  }, [applyDragPositionFromPoint])
+  }
 
   const moveItemsToFront = useCallback((itemKeys) => {
     if (!Array.isArray(itemKeys) || !itemKeys.length) return
@@ -256,35 +347,6 @@ export default function useDeskItemInteractions({
       // Ignore localStorage errors in private/blocked environments.
     }
   }, [pendingGroupStorageKey])
-
-  function getEventPosition(event) {
-    if (event?.touches?.length) {
-      const touch = event.touches[0]
-      return {
-        pageX: touch.pageX,
-        pageY: touch.pageY,
-        clientX: touch.clientX,
-        clientY: touch.clientY
-      }
-    }
-
-    if (event?.changedTouches?.length) {
-      const touch = event.changedTouches[0]
-      return {
-        pageX: touch.pageX,
-        pageY: touch.pageY,
-        clientX: touch.clientX,
-        clientY: touch.clientY
-      }
-    }
-
-    return {
-      pageX: event?.pageX ?? 0,
-      pageY: event?.pageY ?? 0,
-      clientX: event?.clientX ?? 0,
-      clientY: event?.clientY ?? 0
-    }
-  }
 
   function isGroupableItem(item) {
     return Boolean(item)
@@ -688,68 +750,6 @@ export default function useDeskItemInteractions({
     setGroupedMap(pruneSingletonGroups(nextMap, targetGroupId))
     ctrlGroupSessionIdRef.current = targetGroupId
     return true
-  }
-
-  function buildGroupDragResult(pageX, pageY, activeDraggedId) {
-    const startPositions = dragGroupStartPositionsRef.current
-    const activeStart = startPositions[activeDraggedId]
-    if (!activeStart) return null
-
-    const groupEntries = dragGroupKeysRef.current
-      .map((key) => {
-        const item = notesRef.current.find((entry) => getItemKey(entry) === key)
-        if (!item) return null
-        const start = startPositions[key]
-        if (!start) return null
-        return { key, item, start }
-      })
-      .filter(Boolean)
-
-    if (!groupEntries.length) return null
-
-    const minStartX = Math.min(...groupEntries.map((entry) => entry.start.x))
-    const minStartY = Math.min(...groupEntries.map((entry) => entry.start.y))
-
-    const rawNextX = pageX - dragOffsetRef.current.x
-    const rawNextY = pageY - dragOffsetRef.current.y
-    let deltaX = rawNextX - activeStart.x
-    let deltaY = rawNextY - activeStart.y
-
-    deltaX = Math.max(deltaX, -minStartX)
-    deltaY = Math.max(deltaY, -minStartY)
-
-    let activeNextX = activeStart.x + deltaX
-    let activeNextY = activeStart.y + deltaY
-
-    if (snapToGrid) {
-      activeNextX = Math.max(0, Math.round(activeNextX / gridSize) * gridSize)
-      activeNextY = Math.max(0, Math.round(activeNextY / gridSize) * gridSize)
-      deltaX = activeNextX - activeStart.x
-      deltaY = activeNextY - activeStart.y
-      deltaX = Math.max(deltaX, -minStartX)
-      deltaY = Math.max(deltaY, -minStartY)
-    }
-
-    const positions = {}
-    let maxRight = 0
-    let maxBottom = 0
-
-    groupEntries.forEach((entry) => {
-      const nextX = entry.start.x + deltaX
-      const nextY = entry.start.y + deltaY
-      positions[entry.key] = { x: nextX, y: nextY }
-
-      const rightEdge = nextX + getItemWidth(entry.item)
-      const bottomEdge = nextY + getItemHeight(entry.item)
-      if (rightEdge > maxRight) maxRight = rightEdge
-      if (bottomEdge > maxBottom) maxBottom = bottomEdge
-    })
-
-    return {
-      positions,
-      requiredWidth: Math.ceil(maxRight + growThreshold),
-      requiredHeight: maxBottom + growThreshold
-    }
   }
 
   function handleResizeMouseDown(e, item) {

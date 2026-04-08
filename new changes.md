@@ -1,5 +1,43 @@
 # New Changes
 
+## 2026-04-08 - Safe Dependency Refresh (Patch/Minor)
+
+### ✅ Updated core frontend and lint toolchain dependencies
+- **Change**: Upgraded packages to latest non-major versions in the current major line.
+- **Updated**:
+  - `@supabase/supabase-js`: `^2.97.0` -> `^2.102.1`
+  - `@eslint/js`: `^9.39.1` -> `^9.39.4`
+  - `eslint`: `^9.39.1` -> `^9.39.4`
+  - `@vitejs/plugin-react`: `^5.1.1` -> `^5.2.0`
+  - `vite`: `^7.3.1` -> `^7.3.2`
+- **Files Updated**:
+  - `package.json`
+  - `package-lock.json`
+
+### ✅ Security transitive dependencies remediated
+- **Change**: Ran `npm audit fix` after upgrades.
+- **Result**: `npm audit` now reports `0 vulnerabilities`.
+
+### ✅ Validation status after updates
+- `npm run lint` passes
+- `npm run build` passes
+- `npm test` passes (5/5)
+
+## 2026-04-08 - Lint Cleanup + SQL Doc Reference Cleanup
+
+### ✅ Interaction hook lint errors resolved
+- **Change**: Fixed hook ordering and dependency wiring in desk interaction logic so lint no longer reports TDZ/immutability issues.
+- **Result**: `npm run lint` now passes cleanly.
+- **Code Changes**:
+  - `src/features/desk/hooks/useDeskItemInteractions.js`
+  - `src/features/desk/components/DeskCanvasItems.jsx`
+
+### ✅ Removed stale temporary SQL file reference from changelog guidance
+- **Change**: Updated historical formatting-migration note to reference canonical backend SQL docs instead of a removed temporary SQL file.
+- **Result**: Project docs now match the current cleanup decision (no temporary SQL files kept in repo).
+- **Doc Changes**:
+  - `new changes.md`
+
 ## 2026-04-08 - Grouped Items Share One External Layer
 
 ### ✅ Grouped items now behave as one layer relative to outside items
@@ -138,8 +176,8 @@
 - **Root Cause**: The `font_weight`, `font_style`, `text_color`, and `font_size` columns did not exist in the database tables (notes and checklists). The fallback retry logic was removing these fields from the update payload when it encountered missing column errors, so formatting changes were never persisted.
 - **Solution**: Added new columns to both `notes` and `checklists` tables with proper defaults and constraints.
 - **Action Required**: Run the SQL migration in your Supabase SQL Editor:
-  - File: `SUPABASE_UPDATES_2026_04_02_TEXT_FORMATTING.sql`
-  - Or copy the ALTER TABLE statements and run them to add the four formatting columns to both notes and checklists tables
+  - Use the canonical SQL steps documented in `BACKEND_SQL_README.md`
+  - Apply the ALTER TABLE statements that add the four formatting columns to both notes and checklists tables
 - **After Migration**: Bold, italic, text color, and font size will persist across save/reload cycles
 - **Code Changes** (all now working correctly once migration is applied):
   - `src/features/desk/hooks/useDeskItemOperations.js` (fixed: now properly persists formatting values)
