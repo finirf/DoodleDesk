@@ -173,11 +173,21 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { userId } = await req.json()
+    let body: { userId?: string } = {}
+    try {
+      body = await req.json()
+    } catch {
+      return new Response(JSON.stringify({ success: false, eventCount: 0, error: 'Invalid JSON request body' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const userId = body?.userId
 
     if (!userId) {
-      return new Response(JSON.stringify({ error: 'userId is required' }), {
-        status: 400,
+      return new Response(JSON.stringify({ success: false, eventCount: 0, error: 'userId is required' }), {
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
@@ -203,6 +213,7 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {
+    console.error('[export-activities] Unhandled error:', error)
     return new Response(
       JSON.stringify({
         success: false,
@@ -210,7 +221,7 @@ Deno.serve(async (req) => {
         error: error instanceof Error ? error.message : String(error),
       }),
       {
-        status: 500,
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     )

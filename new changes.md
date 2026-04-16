@@ -21,6 +21,31 @@
 
 ---
 
+## 2026-04-16 - LATEST PROGRESS UPDATE (SESSION CONTINUED)
+
+### ✅ Newly Completed In This Stretch
+- ✅ Analytics overlay stacking fix in app shell (moved overlay outside desk canvas stacking context)
+- ✅ Overlay/build regressions fixed (JSX fragment + clean build)
+- ✅ CORS preflight expanded for Supabase client headers (`x-client-info`, `apikey`)
+- ✅ Dashboard export button visibility fix (inline style updated to override global button background)
+- ✅ Sample data generation no longer auto-downloads JSON file to user machine
+- ✅ Local quality checks passing (`npm run lint`, `npm run build`)
+
+### 🟡 Current Export Blocker
+- Supabase Edge Function requests reach the endpoint, but Azure upload path still failing at runtime in some invocations.
+- Function was updated with stronger signing/error handling and redeployed (latest active version), but validation is still pending on newest invocation rows.
+
+### 🔎 Current Verification Target
+- In Supabase Invocations, inspect the **newest** POST entry after a fresh export click (not older version-8 rows).
+- Confirm returned JSON error text from latest function response.
+- Verify Azure account settings remain:
+  - Storage key access enabled
+  - Correct account/key values in Supabase Secrets
+  - `raw-events` container exists
+  - Storage networking allows public endpoint access from Supabase Edge runtime
+
+---
+
 ## STATUS DASHBOARD
 
 ### ✅ COMPLETED (4/16/2026)
