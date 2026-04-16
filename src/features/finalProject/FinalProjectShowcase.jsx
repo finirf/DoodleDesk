@@ -3,6 +3,7 @@ import './FinalProjectShowcase.css'
 import { useDeskActivityCapture, useDeskEngagementMetrics, ActivityExportDialog, EngagementTierBadge, EngagementChart } from '../desk'
 import { exportActivitiesToAzure } from '../desk/utils/exportActivitiesToAzure'
 import { ENABLE_FINAL_PROJECT } from '../../config'
+import { supabase } from '../../supabase'
 
 const dashboardMetrics = [
   { label: 'Raw data', value: 'Blob', detail: 'CSV / JSON activity logs' },
@@ -278,13 +279,23 @@ export default function FinalProjectShowcase() {
     )
 
     // Auto-export sample data to Azure if analytics is enabled
-    if (ENABLE_FINAL_PROJECT && mockUserId) {
+    if (ENABLE_FINAL_PROJECT) {
       handleExportToAzure()
     }
   }
 
+  async function resolveExportUserId() {
+    const { data, error } = await supabase.auth.getUser()
+    if (error) {
+      console.warn('[Analytics] Could not resolve current auth user:', error)
+      return null
+    }
+
+    return data?.user?.id || null
+  }
+
   async function handleExportToAzure() {
-    if (!ENABLE_FINAL_PROJECT || !mockUserId) {
+    if (!ENABLE_FINAL_PROJECT) {
       setExportMessage('Analytics export is not enabled.')
       return
     }
@@ -293,7 +304,14 @@ export default function FinalProjectShowcase() {
     setExportMessage('Exporting activities to Azure...')
 
     try {
-      const result = await exportActivitiesToAzure(mockUserId)
+      const exportUserId = await resolveExportUserId()
+
+      if (!exportUserId) {
+        setExportMessage('Export failed: Could not resolve signed-in user id for export.')
+        return
+      }
+
+      const result = await exportActivitiesToAzure(exportUserId)
       if (result.success) {
         setExportMessage(
           `✓ Exported ${result.eventCount} activities to Azure. File: ${result.filename || 'unknown'}`
