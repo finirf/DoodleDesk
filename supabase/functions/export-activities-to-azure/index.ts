@@ -38,53 +38,58 @@ async function uploadToAzure(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const url = `https://${AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/${AZURE_CONTAINER}/${filename}`
-    console.log(`[uploadToAzure] Attempting upload to: ${url}`)
-    
+    const payloadLength = new TextEncoder().encode(content).length
+    const msDate = new Date().toUTCString()
+    const msVersion = '2021-06-08'
+
+    // SharedKey requires canonicalized x-ms-* headers sorted lexicographically.
+    const canonicalizedHeaders = [
+      'x-ms-blob-type:BlockBlob',
+      `x-ms-date:${msDate}`,
+      `x-ms-version:${msVersion}`,
+    ].join('\n') + '\n'
+
+    const canonicalizedResource = `/${AZURE_STORAGE_ACCOUNT}/${AZURE_CONTAINER}/${filename}`
+    const stringToSign = [
+      'PUT',
+      '',
+      '',
+      payloadLength.toString(),
+      '',
+      'application/json',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      `${canonicalizedHeaders}${canonicalizedResource}`,
+    ].join('\n')
+
+    const keyBytes = Uint8Array.from(atob(AZURE_STORAGE_KEY), (char) => char.charCodeAt(0))
+    const hmacKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    const signatureBytes = await crypto.subtle.sign('HMAC', hmacKey, new TextEncoder().encode(stringToSign))
+    const signature = btoa(String.fromCharCode(...new Uint8Array(signatureBytes)))
+    const authorization = `SharedKey ${AZURE_STORAGE_ACCOUNT}:${signature}`
+
     const response = await fetch(url, {
       method: 'PUT',
       headers: {
-        'x-ms-version': '2021-06-08',
+        'x-ms-version': msVersion,
         'x-ms-blob-type': 'BlockBlob',
+        'x-ms-date': msDate,
         'Content-Type': 'application/json',
-        'Content-Length': new TextEncoder().encode(content).length.toString(),
+        'Content-Length': payloadLength.toString(),
+        Authorization: authorization,
       },
       body: content,
     })
 
-    console.log(`[uploadToAzure] Direct upload response status: ${response.status}`)
-
     if (!response.ok) {
-      console.log(`[uploadToAzure] Direct upload failed, attempting SharedKey auth...`)
-      // Try with shared key authentication if direct upload fails
-      const timestamp = new Date().toUTCString()
-      const stringToSign = `PUT\n\n\n${new TextEncoder().encode(content).length}\n\napplication/json\n\n\n\n\n\nx-ms-blob-type:BlockBlob\nx-ms-version:2021-06-08\n/${AZURE_STORAGE_ACCOUNT}/${AZURE_CONTAINER}/${filename}`
-      
-      const encoder = new TextEncoder()
-      const keyBytes = new Uint8Array(atob(AZURE_STORAGE_KEY).split('').map(c => c.charCodeAt(0)))
-      const signatureBytes = await crypto.subtle.sign('HMAC', 
-        await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']),
-        encoder.encode(stringToSign)
-      )
-      const signature = btoa(String.fromCharCode(...new Uint8Array(signatureBytes)))
-      const authHeader = `SharedKey ${AZURE_STORAGE_ACCOUNT}:${signature}`
-
-      const retryResponse = await fetch(url, {
-        method: 'PUT',
-        headers: {
-          'x-ms-version': '2021-06-08',
-          'x-ms-blob-type': 'BlockBlob',
-          'Content-Type': 'application/json',
-          'Content-Length': new TextEncoder().encode(content).length.toString(),
-          'x-ms-date': timestamp,
-          'Authorization': authHeader,
-        },
-        body: content,
-      })
-
-      console.log(`[uploadToAzure] SharedKey retry response status: ${retryResponse.status}`)
-
-      if (!retryResponse.ok) {
-        return { success: false, error: `Azure upload failed: ${retryResponse.statusText}` }
+      const azureErrorText = await response.text()
+      return {
+        success: false,
+        error: `Azure upload failed (${response.status}): ${azureErrorText || response.statusText}`,
       }
     }
 
@@ -186,7 +191,7 @@ Deno.serve(async (req) => {
       const errorMsg = `Azure credentials missing: account=${!!AZURE_STORAGE_ACCOUNT}, key=${!!AZURE_STORAGE_KEY}`
       console.error(`[export-activities] ${errorMsg}`)
       return new Response(JSON.stringify({ success: false, eventCount: 0, error: errorMsg }), {
-        status: 401,
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
@@ -194,7 +199,7 @@ Deno.serve(async (req) => {
     const result = await exportActivitiesToAzure(userId)
 
     return new Response(JSON.stringify(result), {
-      status: result.success ? 200 : 500,
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {

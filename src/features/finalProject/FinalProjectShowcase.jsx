@@ -270,23 +270,11 @@ export default function FinalProjectShowcase() {
     const events = createSyntheticActivityBatch(Number(sampleTargetSize) || 500)
     const generatedAt = Date.now()
     const filename = `sample_activity_events_generated_${generatedAt}.json`
-    const content = JSON.stringify(events, null, 2)
 
-    const blob = new Blob([content], { type: 'application/json;charset=utf-8;' })
-    const link = document.createElement('a')
-    const url = URL.createObjectURL(blob)
-
-    link.setAttribute('href', url)
-    link.setAttribute('download', filename)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-
+    // Don't auto-download; user can still export to Azure if they want
     setRawFileName(filename)
     setSampleGenerationMessage(
-      `Generated ${events.length} events. Download ready for raw-events upload to Azure.`
+      `Generated ${events.length} events. Click "Export to Azure" to upload, or copy the JSON manually.`
     )
 
     // Auto-export sample data to Azure if analytics is enabled
@@ -533,7 +521,7 @@ export default function FinalProjectShowcase() {
             disabled={exportingToAzure}
             style={{
               padding: '6px 12px',
-              backgroundColor: exportingToAzure ? '#9ca3af' : '#3b82f6',
+              background: exportingToAzure ? '#9ca3af' : '#3b82f6',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
@@ -543,10 +531,10 @@ export default function FinalProjectShowcase() {
               transition: 'background-color 0.2s ease',
             }}
             onMouseEnter={(e) => {
-              if (!exportingToAzure) e.currentTarget.style.backgroundColor = '#2563eb'
+              if (!exportingToAzure) e.currentTarget.style.background = '#2563eb'
             }}
             onMouseLeave={(e) => {
-              if (!exportingToAzure) e.currentTarget.style.backgroundColor = '#3b82f6'
+              if (!exportingToAzure) e.currentTarget.style.background = '#3b82f6'
             }}
           >
             {exportingToAzure ? 'Exporting...' : 'Export to Azure'}
