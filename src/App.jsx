@@ -158,7 +158,7 @@ function Desk({ user }) {
     }
     // Proceed with logout regardless of export success/failure
     handleLogout()
-  }, [user?.id, handleLogout])
+  }, [user.id, handleLogout])
 
   const { isMobileLayout, isTouchInteractionMode, isCurrentUserViewer, pendingFriendRequestCount, totalItemsCount, joinDate, topOverlayTop, topMenuTop, newNoteDesktopTop, mobileNoteMaxWidth, autoSaveLabel, autoSaveBadgeStyle, menuInputStyle, menuCompactInputStyle, menuPrimaryActionStyle, menuSubtleActionStyle, menuSuccessActionStyle, menuDangerActionStyle, menuNeutralActionStyle, menuSectionDividerStyle, renderDeskShelfTree, renderShelfOrganizerPanel, showCommandPalette, commandPaletteQuery, commandPaletteActiveIndex, commandPaletteInputRef, commandPaletteFilteredActions, setCommandPaletteQuery, setCommandPaletteActiveIndex, closeCommandPalette, executeCommandPaletteAction } = useDeskUiOrchestration({ derivedValues: { desks, getDeskNameValue, viewportWidth, currentDesk, userId: user.id, selectedDeskMemberRole, selectedDeskMemberRoleLoading, incomingFriendRequests, notes, userCreatedAt: user.created_at, formatDate, getDeskEffectiveShelfId, getCustomShelfOptions, historySyncing, isSavingEdit, autoSaveStatus }, shelfTreeRenderers: { builtInShelves: BUILT_IN_SHELVES, handleSelectDesk, selectedDeskId, getDeskNameValue, getDeskGroupLabel, getChildDeskShelves, expandedDeskShelves, toggleDeskShelfExpanded, showShelfHierarchyTools, setShowShelfHierarchyTools, newShelfNameInput, setNewShelfNameInput, setShelfActionError, createDeskShelf, newShelfParentId, setNewShelfParentId, currentDesk, getDeskAssignedCustomShelfId, setSelectedDeskCustomShelf, shelfActionError, renameDeskShelf: openShelfRenameDialog, deleteDeskShelf }, commandPalette: { hasModalOpen, selectedDeskId, canCurrentUserEditDeskItems, snapToGrid, setSnapToGrid, forceSaveInProgress, historySyncing, canUndo, canRedo, getDeskNameValue, handleSelectDesk, fetchCurrentUserProfile, fetchDeskActivity, addStickyNote, addChecklistNote, addDecoration, decorationOptions: DECORATION_OPTIONS, forceSaveAndClearHistory, undoNotesChange, redoNotesChange, setShowDeskMenu, setShowProfileMenu, setShowNewNoteMenu } })
 
@@ -220,7 +220,8 @@ function Desk({ user }) {
   }, [growThreshold, notes, sectionHeight, setCanvasHeight, setCanvasWidth, viewportWidth])
 
   return (
-    <DeskCanvasContainer
+    <>
+      <DeskCanvasContainer
       ref={deskCanvasRef}
       canvasWidth={canvasWidth}
       canvasHeight={canvasHeight}
@@ -598,5 +599,6 @@ function Desk({ user }) {
         </div>
       </div>
     )}
+    </>
   )
 }
