@@ -182,6 +182,15 @@ Deno.serve(async (req) => {
     console.log(`[export-activities] Azure account configured: ${!!AZURE_STORAGE_ACCOUNT}`)
     console.log(`[export-activities] Azure key configured: ${!!AZURE_STORAGE_KEY}`)
 
+    if (!AZURE_STORAGE_ACCOUNT || !AZURE_STORAGE_KEY) {
+      const errorMsg = `Azure credentials missing: account=${!!AZURE_STORAGE_ACCOUNT}, key=${!!AZURE_STORAGE_KEY}`
+      console.error(`[export-activities] ${errorMsg}`)
+      return new Response(JSON.stringify({ success: false, eventCount: 0, error: errorMsg }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const result = await exportActivitiesToAzure(userId)
 
     return new Response(JSON.stringify(result), {
