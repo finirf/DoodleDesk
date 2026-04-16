@@ -570,11 +570,12 @@ function Desk({ user }) {
         style={{
           position: 'fixed',
           inset: 0,
-          zIndex: 9999,
+          zIndex: 99999,
           background: 'rgba(10, 12, 16, 0.75)',
           overflowY: 'auto',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          pointerEvents: 'auto'
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 16, flexShrink: 0 }}>
