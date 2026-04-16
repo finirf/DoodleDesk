@@ -26,6 +26,17 @@ interface ActivityEvent {
   metadata_json?: Record<string, unknown>
 }
 
+type DeskActivityRow = {
+  id?: string
+  desk_id?: string
+  actor_user_id?: string
+  action_type?: string
+  item_type?: string
+  item_id?: string | null
+  details?: Record<string, unknown> | null
+  created_at?: string
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -101,15 +112,55 @@ async function uploadToAzure(
 
 async function exportActivitiesToAzure(userId: string): Promise<{ success: boolean; eventCount: number; filename?: string; error?: string }> {
   try {
-    // Query activity events for user
-    const { data: events, error: queryError } = await supabase
+    // Prefer activity_events if present; fallback to desk_activity for current schema.
+    let events: ActivityEvent[] | null = null
+
+    const { data: activityRows, error: activityEventsError } = await supabase
       .from('activity_events')
       .select('*')
       .eq('user_id', userId)
       .order('event_ts_utc', { ascending: true })
 
-    if (queryError) {
-      return { success: false, eventCount: 0, error: `Query error: ${queryError.message}` }
+    if (!activityEventsError) {
+      events = (activityRows || []) as ActivityEvent[]
+    } else {
+      const tableMissing = /Could not find the table 'public\.activity_events'|relation .*activity_events.* does not exist/i.test(
+        activityEventsError.message || ''
+      )
+
+      if (!tableMissing) {
+        return { success: false, eventCount: 0, error: `Query error: ${activityEventsError.message}` }
+      }
+
+      const { data: deskRows, error: deskActivityError } = await supabase
+        .from('desk_activity')
+        .select('*')
+        .eq('actor_user_id', userId)
+        .order('created_at', { ascending: true })
+
+      if (deskActivityError) {
+        return { success: false, eventCount: 0, error: `Query error: ${deskActivityError.message}` }
+      }
+
+      events = (deskRows || []).map((row: DeskActivityRow) => ({
+        event_id: row.id || `desk_evt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        user_id: row.actor_user_id || userId,
+        desk_id: row.desk_id || 'unknown',
+        event_type: row.action_type ? `desk_${row.action_type}` : 'desk_activity',
+        event_ts_utc: row.created_at || new Date().toISOString(),
+        session_id: null,
+        note_id: row.item_id || null,
+        edit_count: row.action_type === 'edited' ? 1 : 0,
+        collaboration_count: row.action_type === 'collaboration' ? 1 : 0,
+        session_seconds: 0,
+        device_type: 'unknown',
+        platform: 'doodledesk-web',
+        metadata_json: {
+          source_table: 'desk_activity',
+          item_type: row.item_type || 'item',
+          details: row.details || {},
+        },
+      }))
     }
 
     if (!events || events.length === 0) {
