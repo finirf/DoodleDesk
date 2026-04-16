@@ -568,12 +568,14 @@ function Desk({ user }) {
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: menuLayerZIndex + 100,
+            zIndex: 9999,
             background: 'rgba(10, 12, 16, 0.75)',
-            overflowY: 'auto'
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 16, flexShrink: 0 }}>
             <button
               type="button"
               onClick={() => setShowFinalProjectOverlay(false)}
@@ -590,7 +592,9 @@ function Desk({ user }) {
               Close Analytics
             </button>
           </div>
-          <FinalProjectShowcase />
+          <div style={{ flex: 1, overflow: 'auto' }}>
+            <FinalProjectShowcase />
+          </div>
         </div>
       )}
     </DeskCanvasContainer>
