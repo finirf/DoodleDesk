@@ -6,6 +6,8 @@
 - Outputs `engagement_tiers_output.csv` to `model-output` blob container
 - Can be automatically triggered after ADF Copy Data completes
 
+**Concurrency note:** The pipeline is parameterized so ADF can pass the exact curated Parquet blob name to process. That avoids the "newest file" fallback when several exports arrive close together.
+
 ---
 
 ## Step 1: Update Your Notebook with CSV Export
@@ -109,6 +111,8 @@ published_pipeline = pipeline.publish(
 print(f"Published pipeline ID: {published_pipeline.id}")
 ```
 
+**Recommended production pattern:** Pass the curated Parquet blob name from ADF into the pipeline parameter `input_blob_name` so each run processes one specific file.
+
 ### Option B: Using Azure ML Studio UI
 
 1. Go to **Azure ML Studio** → **Designer**
@@ -147,6 +151,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_datastore", type=str, required=True, help="Input datastore name")
     parser.add_argument("--output_datastore", type=str, required=True, help="Output datastore name")
+    parser.add_argument("--input_blob_name", type=str, default=None, help="Optional specific curated Parquet blob to process")
     args = parser.parse_args()
     
     # Get context
@@ -163,10 +168,14 @@ def main():
     
     # Find parquet files
     parquet_files = list(target_dir.rglob("*.parquet"))
+    if args.input_blob_name:
+        parquet_files = [f for f in parquet_files if f.name == args.input_blob_name]
+        if not parquet_files:
+            raise ValueError(f"Specific parquet blob not found: {args.input_blob_name}")
     if not parquet_files:
         raise ValueError("No parquet files found in curated data")
-    
-    print(f"Found {len(parquet_files)} parquet files")
+
+    print(f"Found {len(parquet_files)} parquet file(s)")
     
     # Load and combine all parquet files
     dfs = [pd.read_parquet(f) for f in parquet_files]

@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--storage_account", type=str, required=True, help="Storage account name")
     parser.add_argument("--input_container", type=str, required=True, help="Input blob container")
     parser.add_argument("--output_container", type=str, required=True, help="Output blob container")
+    parser.add_argument("--input_blob_name", type=str, default="__AUTO__", help="Optional specific Parquet blob to process")
     args = parser.parse_args()
     
     # Get Azure ML run context for logging
@@ -37,28 +38,43 @@ def main():
     print(f"Downloading from {storage_account}/{input_container}...")
     credential = DefaultAzureCredential()
     
-    # List and download parquet files from blob container
+    # List parquet files and pick the newest one unless a specific blob was provided
     container_url = f"https://{storage_account}.blob.core.windows.net/{input_container}"
-    container_client = ContainerClient(container_url, credential=credential)
+    container_client = ContainerClient.from_container_url(container_url, credential=credential)
     
-    parquet_files = []
+    parquet_blobs = []
     for blob in container_client.list_blobs():
         if blob.name.endswith(".parquet"):
-            blob_client = container_client.get_blob_client(blob.name)
-            file_path = target_dir / blob.name
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            with open(file_path, "wb") as f:
-                download_stream = blob_client.download_blob()
-                f.write(download_stream.readall())
-            
-            parquet_files.append(file_path)
-            print(f"  Downloaded: {blob.name}")
-    
+            parquet_blobs.append(blob)
+
+    input_blob_name = (args.input_blob_name or "").strip()
+
+    if input_blob_name and input_blob_name != "__AUTO__":
+        selected_blobs = [blob for blob in parquet_blobs if blob.name == input_blob_name]
+        if not selected_blobs:
+            raise ValueError(f"Specific input blob not found: {input_blob_name}")
+    else:
+        if not parquet_blobs:
+            raise ValueError("No parquet files found in input container")
+        selected_blobs = [max(parquet_blobs, key=lambda blob: blob.last_modified)]
+
+    parquet_files = []
+    for blob in selected_blobs:
+        blob_client = container_client.get_blob_client(blob.name)
+        file_path = target_dir / blob.name
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(file_path, "wb") as f:
+            download_stream = blob_client.download_blob()
+            f.write(download_stream.readall())
+
+        parquet_files.append(file_path)
+        print(f"  Downloaded: {blob.name}")
+
     if not parquet_files:
         raise ValueError("No parquet files found in input container")
     
-    print(f"Found {len(parquet_files)} parquet files")
+    print(f"Found {len(parquet_files)} parquet file(s)")
     
     # Load and combine all parquet files
     dfs = [pd.read_parquet(f) for f in parquet_files]
@@ -90,28 +106,44 @@ def main():
     
     # Prepare features
     X = user_metrics[required].fillna(0).values
-    
+
     if len(X) < 3:
-        raise ValueError(f"Need at least 3 users for clustering. Found {len(X)}")
-    
-    # Standardize and cluster
-    X_scaled = StandardScaler().fit_transform(X)
-    kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
-    clusters = kmeans.fit_predict(X_scaled)
-    
-    # Calculate silhouette score
-    if len(set(clusters)) > 1:
-        sil = silhouette_score(X_scaled, clusters)
-        print(f"Silhouette Score: {sil:.4f}")
-        run.log("silhouette_score", sil)
-    
-    # Map clusters to tiers
-    tier_order = np.argsort(kmeans.cluster_centers_.sum(axis=1))
-    tier_map = {tier_order[i]: ["low", "medium", "high"][i] for i in range(3)}
-    
-    user_metrics["cluster"] = clusters
-    user_metrics["engagement_tier"] = user_metrics["cluster"].map(tier_map)
-    user_metrics["engagement_score"] = np.clip((clusters + 1) * 33, 0, 100)
+        # Fallback for low-volume runs: avoid hard-failing the pipeline.
+        print(f"Only {len(X)} user(s) found; using fallback tier assignment.")
+        metric_sum = user_metrics[required].fillna(0).sum(axis=1)
+
+        if len(X) == 1:
+            user_metrics["cluster"] = 1
+            user_metrics["engagement_tier"] = "medium"
+            user_metrics["engagement_score"] = 50
+        else:
+            order = metric_sum.rank(method="first").astype(int) - 1
+            tier_map_small = {0: "low", 1: "high"}
+            score_map_small = {0: 33, 1: 67}
+            user_metrics["cluster"] = order
+            user_metrics["engagement_tier"] = order.map(tier_map_small)
+            user_metrics["engagement_score"] = order.map(score_map_small)
+
+        run.log("fallback_tiering_used", 1)
+    else:
+        # Standardize and cluster
+        X_scaled = StandardScaler().fit_transform(X)
+        kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
+        clusters = kmeans.fit_predict(X_scaled)
+
+        # Calculate silhouette score
+        if len(set(clusters)) > 1:
+            sil = silhouette_score(X_scaled, clusters)
+            print(f"Silhouette Score: {sil:.4f}")
+            run.log("silhouette_score", sil)
+
+        # Map clusters to tiers
+        tier_order = np.argsort(kmeans.cluster_centers_.sum(axis=1))
+        tier_map = {tier_order[i]: ["low", "medium", "high"][i] for i in range(3)}
+
+        user_metrics["cluster"] = clusters
+        user_metrics["engagement_tier"] = user_metrics["cluster"].map(tier_map)
+        user_metrics["engagement_score"] = np.clip((clusters + 1) * 33, 0, 100)
     
     print(f"Updated {len(user_metrics)} users with engagement tiers")
     
@@ -135,7 +167,7 @@ def main():
     
     try:
         credential = DefaultAzureCredential()
-        blob_client = BlobClient(blob_url, credential=credential)
+        blob_client = BlobClient.from_blob_url(blob_url, credential=credential)
         
         with open(output_csv, "rb") as data:
             blob_client.upload_blob(data, overwrite=True)

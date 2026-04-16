@@ -4,8 +4,10 @@
 
 from azureml.core import Workspace, Environment
 from azureml.pipeline.core import Pipeline
+from azureml.pipeline.core import PipelineParameter
 from azureml.pipeline.steps import PythonScriptStep
 from azureml.core.runconfig import RunConfiguration
+from datetime import datetime
 
 # ============================================================
 # CONFIGURATION
@@ -24,6 +26,11 @@ def main():
     print("Loading workspace...")
     ws = Workspace.from_config()
     print(f"✓ Workspace: {ws.name}")
+
+    input_blob_name = PipelineParameter(
+        name="input_blob_name",
+        default_value="__AUTO__",
+    )
     
     # Get or create environment
     print("Setting up environment...")
@@ -59,7 +66,8 @@ def main():
         arguments=[
             "--storage_account", STORAGE_ACCOUNT_NAME,
             "--input_container", INPUT_BLOB_CONTAINER,
-            "--output_container", OUTPUT_BLOB_CONTAINER
+            "--output_container", OUTPUT_BLOB_CONTAINER,
+            "--input_blob_name", input_blob_name
         ],
         compute_target=COMPUTE_CLUSTER_NAME,
         runconfig=run_config,
@@ -72,10 +80,11 @@ def main():
     
     # Publish pipeline
     print("Publishing pipeline to Azure ML...")
+    pipeline_version = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     published_pipeline = pipeline.publish(
         name="DoodleDesk-Clustering-Pipeline",
         description="K-means clustering for engagement tier assignment",
-        version="1.0"
+        version=pipeline_version
     )
     
     print("\n" + "="*60)
@@ -83,11 +92,13 @@ def main():
     print("="*60)
     print(f"Pipeline ID: {published_pipeline.id}")
     print(f"Pipeline Name: {published_pipeline.name}")
+    print(f"Pipeline Version: {pipeline_version}")
     print("\nNext steps:")
     print("1. Go to Azure Data Factory → Your pipeline")
     print("2. Add an 'Azure ML Pipeline Run' activity")
     print("3. Paste the Pipeline ID above")
     print("4. Set it to run after the Copy Data activity succeeds")
+    print("5. Optionally pass the curated Parquet blob name into the pipeline parameter input_blob_name")
     print("="*60)
 
 if __name__ == "__main__":
