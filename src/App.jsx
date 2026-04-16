@@ -560,43 +560,43 @@ function Desk({ user }) {
         tutorialDialogOpen={tutorialDialogOpen}
         closeTutorialDialog={closeTutorialDialog}
       />
-
-      {showFinalProjectOverlay && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 9999,
-            background: 'rgba(10, 12, 16, 0.75)',
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 16, flexShrink: 0 }}>
-            <button
-              type="button"
-              onClick={() => setShowFinalProjectOverlay(false)}
-              style={{
-                border: '1px solid #cbd5e1',
-                background: '#ffffff',
-                color: '#0f172a',
-                borderRadius: 8,
-                padding: '8px 12px',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              Close Analytics
-            </button>
-          </div>
-          <div style={{ flex: 1, overflow: 'auto' }}>
-            <FinalProjectShowcase />
-          </div>
-        </div>
-      )}
     </DeskCanvasContainer>
+
+    {showFinalProjectOverlay && (
+      <div
+        role="dialog"
+        aria-modal="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 9999,
+          background: 'rgba(10, 12, 16, 0.75)',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 16, flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => setShowFinalProjectOverlay(false)}
+            style={{
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#0f172a',
+              borderRadius: 8,
+              padding: '8px 12px',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            Close Analytics
+          </button>
+        </div>
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <FinalProjectShowcase />
+        </div>
+      </div>
+    )}
   )
 }
