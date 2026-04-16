@@ -4,45 +4,128 @@
 
 ## 🎯 QUICK REFERENCE: What To Do Next
 
-**You are at: Step 6 - Dashboard Validation**
+**You are at: Step 7 - Pipeline Automation**
 
 ### Your Checklist (Do in order):
-- [ ] Set `VITE_ENABLE_FINAL_PROJECT=true` in `.env.local`
-- [ ] Configure Azure storage creds in Supabase: `AZURE_STORAGE_ACCOUNT_NAME`, `AZURE_STORAGE_ACCOUNT_KEY`
-- [ ] Run: `supabase functions deploy export-activities-to-azure`
-- [ ] Log in to DoodleDesk → check Azure blob for `activity_export_*.json`
-- [ ] Add test row to `user_engagement_tiers` (user_id='user_1024', engagement_tier='high')
-- [ ] Open analytics dashboard → verify badge shows real data
-- [ ] Click "Export to Azure" button → confirm success
-- [ ] Generate sample data → verify auto-export
-- [ ] Log out → verify final export
+- [x] Export to Azure from deployed app succeeds and file appears in `raw-events`
+- [x] Phase 12.1: Add ADF storage-event trigger on `raw-events/*.json` to produce `curated-features`
+- [ ] Phase 12.2: Auto-run Azure ML clustering job after curated data refresh
+- [ ] Phase 12.3: Auto-sync `model-output/*.csv` back into Supabase engagement tables
+- [ ] Phase 12.4: Add freshness/failure alerting and run-health checks
 
-**When done:** Move to Phases 12.1-12.4 (ADF triggers, model job, Supabase sync, alerting)
+**When done:** Dashboard tiers/metrics will refresh from automated model output without manual export/import steps.
 
 ---
 
-## 2026-04-16 - LATEST PROGRESS UPDATE (SESSION CONTINUED)
+## 2026-04-16 - LATEST PROGRESS UPDATE (PHASE 12 AUTOMATION LAUNCH - CONTINUED)
 
-### ✅ Newly Completed In This Stretch
+### ✅ Completed in Current Session (Phase 12 Automation)
+
+**Phase 12.1: ADF Event Trigger** ✅ COMPLETE
+- ✅ Corrected dataset file path type to use "Wildcard file path" option
+- ✅ Configured filter: Container `raw-events`, file pattern `activity_export_*.json`
+- ✅ Pipeline runs successfully and copies all matching JSON files from `raw-events` to `curated-features` as Parquet
+- ✅ Validated with 5 existing activity export files
+- ✅ Ready for event-driven automation
+
+**Phase 12.2: ML Pipeline SDK Implementation** 🔄 IN PROGRESS
+- ✅ Chose Option A (SDK) over Studio UI for version control + reproducibility
+- ✅ Created `azure-ml/clustering_script.py` — standalone clustering script with CSV export to blob storage
+- ✅ Created `azure-ml/create_pipeline.py` — SDK script to publish pipeline to Azure ML
+- 🔄 **NEXT:** Provide 3 config values to complete pipeline publishing:
+  1. Azure ML Workspace name
+  2. Compute cluster name
+  3. Subscription ID
+- Then: Update config, run `create_pipeline.py`, get Pipeline ID
+- Then: Add Azure ML Pipeline Run activity to ADF with success dependency on Copy Data
+
+**Phase 12.2: ML Pipeline Documentation** ✅ COMPLETE
+- ✅ Created comprehensive guide: [PHASE_12_2_ML_PIPELINE_SETUP.md](./docs/azure/PHASE_12_2_ML_PIPELINE_SETUP.md)
+- ✅ Documented CSV export code for clustering notebook
+- ✅ Provided standalone `clustering_script.py` refactored for Azure ML Pipeline
+- ✅ Detailed options for both SDK-based (Option A) and Studio UI (Option B) pipeline creation
+- ✅ Included ADF integration steps with success dependencies
+- ✅ Included end-to-end testing procedure
+
+### ✅ Earlier Completions This Session
+- ✅ Analytics overlay z-index fix (moved outside stacking context)
+- ✅ Export button text visibility fix (CSS override)
+- ✅ CORS headers expanded for Supabase client
+- ✅ Edge Function auth gateway issue resolved (`--no-verify-jwt`)
+- ✅ Export query schema fallback added (`desk_activity` table support)
+- ✅ Export user-ID UUID constraint fixed (authenticated user resolution)
+- ✅ Azure blob signing corrected (canonical header order)
+- ✅ End-to-end validation complete (files confirmed in `raw-events`)
+- ✅ Local quality gates passing (`npm run lint`, `npm run build`)
+
+### ✅ Prior Sessions
 - ✅ Analytics overlay stacking fix in app shell (moved overlay outside desk canvas stacking context)
 - ✅ Overlay/build regressions fixed (JSX fragment + clean build)
 - ✅ CORS preflight expanded for Supabase client headers (`x-client-info`, `apikey`)
 - ✅ Dashboard export button visibility fix (inline style updated to override global button background)
 - ✅ Sample data generation no longer auto-downloads JSON file to user machine
 - ✅ Local quality checks passing (`npm run lint`, `npm run build`)
+- ✅ Edge Function auth compatibility fixed (`--no-verify-jwt`) to bypass unsupported token algorithm gateway rejection
+- ✅ Export query path fixed for current schema (`desk_activity` fallback when `activity_events` is absent)
+- ✅ Export user-id mismatch fixed (uses authenticated Supabase UUID, not demo `user_1024` id)
+- ✅ End-to-end validation complete: export now writes files to Azure `raw-events` container from deployed app
 
-### 🟡 Current Export Blocker
-- Supabase Edge Function requests reach the endpoint, but Azure upload path still failing at runtime in some invocations.
-- Function was updated with stronger signing/error handling and redeployed (latest active version), but validation is still pending on newest invocation rows.
+### 🟡 Current Focus
+- Automate the downstream pipeline so newly uploaded `raw-events` files flow through ML and back into DoodleDesk automatically.
 
-### 🔎 Current Verification Target
-- In Supabase Invocations, inspect the **newest** POST entry after a fresh export click (not older version-8 rows).
-- Confirm returned JSON error text from latest function response.
-- Verify Azure account settings remain:
-  - Storage key access enabled
-  - Correct account/key values in Supabase Secrets
-  - `raw-events` container exists
-  - Storage networking allows public endpoint access from Supabase Edge runtime
+### 🔎 Next Verification Target
+- Confirm ADF trigger runs automatically when a new `raw-events/*.json` file lands.
+- Confirm curated output lands in `curated-features`.
+- Confirm ML output lands in `model-output`.
+- Confirm sync/upsert writes latest tier rows to Supabase tables used by dashboard.
+
+### 📌 Immediate Next Steps (Phase 12.2 SDK Implementation)
+
+**PHASE 12.2 - CRITICAL PATH (Do Now):**
+
+1. **Provide 3 Configuration Values:**
+   - Azure ML Workspace name (from Azure Portal → Azure Machine Learning)
+   - Compute cluster name (from Azure ML Studio → Compute → Compute clusters)
+   - Subscription ID (from Azure Portal → Subscriptions)
+
+2. **Update Configuration:**
+   - Agent updates `azure-ml/create_pipeline.py` with your 3 values
+
+3. **Run Pipeline Publisher:**
+   ```bash
+   cd azure-ml
+   python create_pipeline.py
+   ```
+   - Output will show: Pipeline ID (copy this!)
+
+4. **Add to ADF:**
+   - Open your ADF pipeline
+   - Add new activity: "Azure ML Pipeline Run"
+   - Paste the Pipeline ID
+   - Set it to run after Copy Data succeeds (success dependency)
+   - Publish the ADF pipeline
+
+5. **Test End-to-End:**
+   - Export from DoodleDesk (click Export button or manually export)
+   - Monitor ADF pipeline run
+   - Monitor ADF→ML pipeline run
+   - Verify CSV appears in `model-output` container
+   - Confirm CSV has columns: `user_id`, `engagement_tier`, `engagement_score`, etc.
+
+**Estimated Time:** 30-45 minutes
+
+---
+
+**PHASE 12.3 - SUPABASE SYNC (After 12.2 succeeds):**
+- Build blob-triggered Azure Function
+- Parse CSV and upsert to `user_engagement_tiers` and `user_engagement_metrics` tables in Azure SQL
+- Sync to Supabase via Supabase API
+- Estimated time: 1-2 hours
+
+**PHASE 12.4 - GUARDRAILS (Polish):**
+- Add alerting for stale data
+- Add health checks for dashboard
+- Estimated time: 30 min
 
 ---
 
@@ -55,26 +138,24 @@
 - ✅ Automatic activity export to Azure (login, logout, manual button, sample generation)
 - ✅ Dashboard visualization (badge, charts, export controls)
 
-### 🟡 IN PROGRESS - Step 6: Dashboard Validation
-**What you need to do:**
-1. **Environment Setup**
-   - [ ] Set `VITE_ENABLE_FINAL_PROJECT=true` in `.env.local`
-   - [ ] Configure Supabase Edge Function variables: `AZURE_STORAGE_ACCOUNT_NAME`, `AZURE_STORAGE_ACCOUNT_KEY`
-   - [ ] Run: `supabase functions deploy export-activities-to-azure`
+### ✅ COMPLETED - Step 6: Dashboard Validation + Export Reliability
+- ✅ Export to Azure now works from deployed app and writes files to `raw-events`
+- ✅ Login/logout/manual/sample-generation triggers all wired and functional
+- ✅ CORS and auth gateway issues resolved for function invocation
+- ✅ Query path aligned with current schema (`desk_activity` fallback)
+- ✅ Export uses authenticated user UUID to satisfy DB UUID constraints
 
-2. **Manual Testing** (in this order)
-   - [ ] Log in → check Azure `raw-events` blob for `activity_export_*.json` files
-   - [ ] Add test row to `user_engagement_tiers` table (user_id='user_1024', engagement_tier='high', etc.)
-   - [ ] Open DoodleDesk → profile menu → "Open Analytics Page"
-   - [ ] Click "Export to Azure" → verify success message
-   - [ ] Verify badge shows real data from Supabase (not mock values)
-   - [ ] Generate sample data (300/500/1000) → verify auto-export and file appears in blob
-   - [ ] Log out → verify final export completes
+### 🟡 IN PROGRESS - Step 7: Automation Phases 12.1-12.4
+- [x] 12.1 ADF event trigger (`raw-events/*.json` -> `curated-features`) ✅ COMPLETE
+- [~] 12.2 ML auto-run and output write (`model-output/*.csv`) — **SDK scripts created, awaiting config values**
+- [ ] 12.3 Sync/upsert from model output -> Supabase tables
+- [ ] 12.4 Alerting and freshness monitoring
 
-### 🔴 PENDING - Phases 12.1-12.4 (Full Automation)
-- ⏳ Phase 12.1: ADF storage event trigger for `raw-events/*.json` → `curated-features` Parquet
-- ⏳ Phase 12.2: Scheduled K-means job or ADF-triggered model execution
-- ⏳ Phase 12.3: Azure Function/ADF to sync `model-output/*.csv` → Supabase tables
+### 🔴 PENDING - Remaining Phases (Full Automation)
+- ⏳ Phase 12.2 Config & Publish: Provide workspace name / compute cluster / subscription ID, then publish pipeline to Azure ML
+- ⏳ Phase 12.2 ADF Integration: Add Azure ML Pipeline Run activity to ADF with success dependency on Copy Data
+- ⏳ Phase 12.2 Testing: Trigger full flow (export → ADF → ML → CSV in `model-output`)
+- ⏳ Phase 12.3: Build blob-triggered Azure Function to sync `model-output/*.csv` → Supabase tables
 - ⏳ Phase 12.4: Operational alerting (freshness, failures, optional Slack integration)
 
 ---

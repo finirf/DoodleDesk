@@ -528,6 +528,13 @@ ORDER BY engagement_score DESC;
 3. Keep sink as Parquet in `curated-features`.
 
 ### Step 12.2 - Auto-run model job on new curated data
+
+**📋 Detailed Guide**: See [PHASE_12_2_ML_PIPELINE_SETUP.md](./PHASE_12_2_ML_PIPELINE_SETUP.md) for complete instructions on:
+- Converting your K-means clustering notebook to an Azure ML Pipeline
+- Wiring the pipeline into ADF with success dependencies
+- Testing end-to-end flow
+
+**Quick Overview**:
 1. In Azure ML, save the clustering logic as a reusable job/script (or notebook pipeline).
 2. Trigger this job on a schedule (for example every 15 minutes) or from ADF after curated copy succeeds.
 3. Ensure the job writes `engagement_tiers_output.csv` to `model-output`.
