@@ -38,6 +38,7 @@ async function uploadToAzure(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const url = `https://${AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/${AZURE_CONTAINER}/${filename}`
+    console.log(`[uploadToAzure] Attempting upload to: ${url}`)
     
     const response = await fetch(url, {
       method: 'PUT',
@@ -50,7 +51,10 @@ async function uploadToAzure(
       body: content,
     })
 
+    console.log(`[uploadToAzure] Direct upload response status: ${response.status}`)
+
     if (!response.ok) {
+      console.log(`[uploadToAzure] Direct upload failed, attempting SharedKey auth...`)
       // Try with shared key authentication if direct upload fails
       const timestamp = new Date().toUTCString()
       const stringToSign = `PUT\n\n\n${new TextEncoder().encode(content).length}\n\napplication/json\n\n\n\n\n\nx-ms-blob-type:BlockBlob\nx-ms-version:2021-06-08\n/${AZURE_STORAGE_ACCOUNT}/${AZURE_CONTAINER}/${filename}`
@@ -76,6 +80,8 @@ async function uploadToAzure(
         },
         body: content,
       })
+
+      console.log(`[uploadToAzure] SharedKey retry response status: ${retryResponse.status}`)
 
       if (!retryResponse.ok) {
         return { success: false, error: `Azure upload failed: ${retryResponse.statusText}` }
@@ -170,6 +176,11 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+
+    // Log environment check
+    console.log(`[export-activities] Starting export for user: ${userId}`)
+    console.log(`[export-activities] Azure account configured: ${!!AZURE_STORAGE_ACCOUNT}`)
+    console.log(`[export-activities] Azure key configured: ${!!AZURE_STORAGE_KEY}`)
 
     const result = await exportActivitiesToAzure(userId)
 
