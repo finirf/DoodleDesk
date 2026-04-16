@@ -1,0 +1,290 @@
+[
+  {
+    "event_id": "evt_20260418_3001",
+    "user_id": "user_9010",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-18T09:00:11Z",
+    "session_id": "sess_20260418_u9010_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Ubuntu 24.04",
+    "metadata_json": {
+      "entry_point": "dashboard",
+      "app_version": "1.8.4"
+    }
+  },
+  {
+    "event_id": "evt_20260418_3002",
+    "user_id": "user_9010",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "note_create",
+    "event_ts_utc": "2026-04-18T09:02:03Z",
+    "session_id": "sess_20260418_u9010_a",
+    "note_id": "note_q3_01",
+    "edit_count": 1,
+    "collaboration_count": 0,
+    "session_seconds": 112,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Ubuntu 24.04",
+    "metadata_json": {
+      "note_type": "text",
+      "priority": "high"
+    }
+  },
+  {
+    "event_id": "evt_20260418_3003",
+    "user_id": "user_9010",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-18T09:03:28Z",
+    "session_id": "sess_20260418_u9010_a",
+    "note_id": "note_q3_01",
+    "edit_count": 6,
+    "collaboration_count": 0,
+    "session_seconds": 197,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Ubuntu 24.04",
+    "metadata_json": {
+      "fields_changed": ["text", "font_size", "font_weight", "position"],
+      "shared_edit": false
+    }
+  },
+  {
+    "event_id": "evt_20260418_3004",
+    "user_id": "user_9010",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-18T09:05:04Z",
+    "session_id": "sess_20260418_u9010_a",
+    "note_id": "note_q3_01",
+    "edit_count": 8,
+    "collaboration_count": 0,
+    "session_seconds": 293,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Ubuntu 24.04",
+    "metadata_json": {
+      "fields_changed": ["text", "rotation", "text_color"],
+      "shared_edit": false
+    }
+  },
+  {
+    "event_id": "evt_20260418_3005",
+    "user_id": "user_9010",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "note_create",
+    "event_ts_utc": "2026-04-18T09:06:22Z",
+    "session_id": "sess_20260418_u9010_a",
+    "note_id": "note_q3_02",
+    "edit_count": 1,
+    "collaboration_count": 0,
+    "session_seconds": 371,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Ubuntu 24.04",
+    "metadata_json": {
+      "note_type": "checklist",
+      "priority": "medium"
+    }
+  },
+  {
+    "event_id": "evt_20260418_3006",
+    "user_id": "user_9010",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "checklist_toggle",
+    "event_ts_utc": "2026-04-18T09:07:18Z",
+    "session_id": "sess_20260418_u9010_a",
+    "note_id": "note_q3_02",
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 427,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Ubuntu 24.04",
+    "metadata_json": {
+      "item_state": "checked",
+      "checklist_item_count": 14
+    }
+  },
+  {
+    "event_id": "evt_20260418_3007",
+    "user_id": "user_1450",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-18T09:08:31Z",
+    "session_id": "sess_20260418_u1450_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "desktop",
+    "platform": "Edge 135 / Windows 11",
+    "metadata_json": {
+      "entry_point": "shared_link",
+      "app_version": "1.8.4"
+    }
+  },
+  {
+    "event_id": "evt_20260418_3008",
+    "user_id": "user_1450",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "collaboration",
+    "event_ts_utc": "2026-04-18T09:09:46Z",
+    "session_id": "sess_20260418_u1450_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 2,
+    "session_seconds": 75,
+    "device_type": "desktop",
+    "platform": "Edge 135 / Windows 11",
+    "metadata_json": {
+      "action": "comment_thread",
+      "peer_user_id": "user_9010"
+    }
+  },
+  {
+    "event_id": "evt_20260418_3009",
+    "user_id": "user_1450",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-18T09:11:39Z",
+    "session_id": "sess_20260418_u1450_a",
+    "note_id": "note_q3_02",
+    "edit_count": 3,
+    "collaboration_count": 1,
+    "session_seconds": 188,
+    "device_type": "desktop",
+    "platform": "Edge 135 / Windows 11",
+    "metadata_json": {
+      "fields_changed": ["text", "color"],
+      "shared_edit": true
+    }
+  },
+  {
+    "event_id": "evt_20260418_3010",
+    "user_id": "user_9010",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "collaboration",
+    "event_ts_utc": "2026-04-18T09:12:24Z",
+    "session_id": "sess_20260418_u9010_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 4,
+    "session_seconds": 722,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Ubuntu 24.04",
+    "metadata_json": {
+      "action": "reaction_and_reply",
+      "peer_user_id": "user_1450"
+    }
+  },
+  {
+    "event_id": "evt_20260418_3011",
+    "user_id": "user_2555",
+    "desk_id": "desk_retro_board",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-18T10:20:12Z",
+    "session_id": "sess_20260418_u2555_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "entry_point": "notification",
+      "app_version": "1.8.4"
+    }
+  },
+  {
+    "event_id": "evt_20260418_3012",
+    "user_id": "user_2555",
+    "desk_id": "desk_retro_board",
+    "event_type": "note_create",
+    "event_ts_utc": "2026-04-18T10:21:03Z",
+    "session_id": "sess_20260418_u2555_a",
+    "note_id": "note_rt_11",
+    "edit_count": 1,
+    "collaboration_count": 0,
+    "session_seconds": 51,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "note_type": "text",
+      "priority": "low"
+    }
+  },
+  {
+    "event_id": "evt_20260418_3013",
+    "user_id": "user_2555",
+    "desk_id": "desk_retro_board",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-18T10:21:59Z",
+    "session_id": "sess_20260418_u2555_a",
+    "note_id": "note_rt_11",
+    "edit_count": 4,
+    "collaboration_count": 0,
+    "session_seconds": 107,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "fields_changed": ["text", "font_style"],
+      "shared_edit": false
+    }
+  },
+  {
+    "event_id": "evt_20260418_3014",
+    "user_id": "user_9010",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "session_end",
+    "event_ts_utc": "2026-04-18T10:30:40Z",
+    "session_id": "sess_20260418_u9010_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 5430,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Ubuntu 24.04",
+    "metadata_json": {
+      "idle_timeout": false,
+      "autosave_status": "saved"
+    }
+  },
+  {
+    "event_id": "evt_20260418_3015",
+    "user_id": "user_1450",
+    "desk_id": "desk_roadmap_q3",
+    "event_type": "session_end",
+    "event_ts_utc": "2026-04-18T10:30:55Z",
+    "session_id": "sess_20260418_u1450_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 4944,
+    "device_type": "desktop",
+    "platform": "Edge 135 / Windows 11",
+    "metadata_json": {
+      "idle_timeout": false,
+      "autosave_status": "saved"
+    }
+  },
+  {
+    "event_id": "evt_20260418_3016",
+    "user_id": "user_2555",
+    "desk_id": "desk_retro_board",
+    "event_type": "session_end",
+    "event_ts_utc": "2026-04-18T10:31:06Z",
+    "session_id": "sess_20260418_u2555_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 654,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "idle_timeout": false,
+      "autosave_status": "saved"
+    }
+  }
+]

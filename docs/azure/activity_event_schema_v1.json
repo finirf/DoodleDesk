@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://doodledesk.local/schemas/activity_event_schema_v1.json",
+  "title": "DoodleDesk Activity Event Schema v1",
+  "description": "Schema for raw activity events exported from DoodleDesk for Azure Blob ingestion and Azure Data Factory processing.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "Unique identifier for the activity event."
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Stable identifier for the DoodleDesk user."
+    },
+    "desk_id": {
+      "type": "string",
+      "description": "Identifier for the desk where the event occurred."
+    },
+    "event_type": {
+      "type": "string",
+      "description": "Type of activity captured by the event.",
+      "enum": [
+        "note_create",
+        "note_edit",
+        "checklist_toggle",
+        "collaboration",
+        "session_start",
+        "session_end"
+      ]
+    },
+    "event_ts_utc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp when the event occurred."
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Identifier for the user session associated with the event."
+    },
+    "note_id": {
+      "type": ["string", "null"],
+      "description": "Optional note identifier for note-level activity."
+    },
+    "edit_count": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Number of edits recorded during the event window, when applicable."
+    },
+    "collaboration_count": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Count of collaboration actions associated with the event, when applicable."
+    },
+    "session_seconds": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Duration in seconds for the active session segment, when applicable."
+    },
+    "device_type": {
+      "type": ["string", "null"],
+      "description": "Optional device type used during the event, such as desktop or mobile."
+    },
+    "platform": {
+      "type": ["string", "null"],
+      "description": "Optional platform or browser context for the event."
+    },
+    "metadata_json": {
+      "type": ["object", "null"],
+      "description": "Optional free-form metadata for downstream enrichment.",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_id",
+    "user_id",
+    "desk_id",
+    "event_type",
+    "event_ts_utc",
+    "session_id"
+  ]
+}

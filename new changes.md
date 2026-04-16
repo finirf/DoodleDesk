@@ -1,5 +1,498 @@
 # New Changes
 
+---
+
+## 🎯 QUICK REFERENCE: What To Do Next
+
+**You are at: Step 6 - Dashboard Validation**
+
+### Your Checklist (Do in order):
+- [ ] Set `VITE_ENABLE_FINAL_PROJECT=true` in `.env.local`
+- [ ] Configure Azure storage creds in Supabase: `AZURE_STORAGE_ACCOUNT_NAME`, `AZURE_STORAGE_ACCOUNT_KEY`
+- [ ] Run: `supabase functions deploy export-activities-to-azure`
+- [ ] Log in to DoodleDesk → check Azure blob for `activity_export_*.json`
+- [ ] Add test row to `user_engagement_tiers` (user_id='user_1024', engagement_tier='high')
+- [ ] Open analytics dashboard → verify badge shows real data
+- [ ] Click "Export to Azure" button → confirm success
+- [ ] Generate sample data → verify auto-export
+- [ ] Log out → verify final export
+
+**When done:** Move to Phases 12.1-12.4 (ADF triggers, model job, Supabase sync, alerting)
+
+---
+
+## STATUS DASHBOARD
+
+### ✅ COMPLETED (4/16/2026)
+- ✅ Real engagement metrics querying (Supabase table-backed)
+- ✅ Analytics access moved to profile menu link
+- ✅ Sample data generator (300/500/1000 events)
+- ✅ Automatic activity export to Azure (login, logout, manual button, sample generation)
+- ✅ Dashboard visualization (badge, charts, export controls)
+
+### 🟡 IN PROGRESS - Step 6: Dashboard Validation
+**What you need to do:**
+1. **Environment Setup**
+   - [ ] Set `VITE_ENABLE_FINAL_PROJECT=true` in `.env.local`
+   - [ ] Configure Supabase Edge Function variables: `AZURE_STORAGE_ACCOUNT_NAME`, `AZURE_STORAGE_ACCOUNT_KEY`
+   - [ ] Run: `supabase functions deploy export-activities-to-azure`
+
+2. **Manual Testing** (in this order)
+   - [ ] Log in → check Azure `raw-events` blob for `activity_export_*.json` files
+   - [ ] Add test row to `user_engagement_tiers` table (user_id='user_1024', engagement_tier='high', etc.)
+   - [ ] Open DoodleDesk → profile menu → "Open Analytics Page"
+   - [ ] Click "Export to Azure" → verify success message
+   - [ ] Verify badge shows real data from Supabase (not mock values)
+   - [ ] Generate sample data (300/500/1000) → verify auto-export and file appears in blob
+   - [ ] Log out → verify final export completes
+
+### 🔴 PENDING - Phases 12.1-12.4 (Full Automation)
+- ⏳ Phase 12.1: ADF storage event trigger for `raw-events/*.json` → `curated-features` Parquet
+- ⏳ Phase 12.2: Scheduled K-means job or ADF-triggered model execution
+- ⏳ Phase 12.3: Azure Function/ADF to sync `model-output/*.csv` → Supabase tables
+- ⏳ Phase 12.4: Operational alerting (freshness, failures, optional Slack integration)
+
+---
+
+## 2026-04-16 - SESSION SUMMARY
+
+### 📝 What Was Built Today
+1. **Supabase Edge Function** (`supabase/functions/export-activities-to-azure/index.ts`)
+   - Queries Supabase activities → transforms to schema v1 → uploads to Azure blob
+   - Handles authentication with fallback approach
+   - Returns success/failure with event count and filename
+
+2. **React Export Utility & Triggers** 
+   - `src/features/desk/utils/exportActivitiesToAzure.js` — callable from anywhere
+   - **Login trigger**: Auto-exports 1 sec after user.id is set
+   - **Logout trigger**: Wraps logout to export before signing out
+   - **Manual button**: Dashboard "Export to Azure" with real-time status
+   - **Sample data**: Auto-exports after generation
+
+3. **Updated Files**
+   - `src/App.jsx` — login/logout hooks + wrapped logout handler
+   - `src/features/finalProject/FinalProjectShowcase.jsx` — manual export button + state
+   - `new changes.md` — this comprehensive changelog
+
+### 📖 How It Works (User Flow)
+```
+1. User logs in
+   → [Background] Auto-export recent activities to raw-events blob
+   
+2. User opens analytics dashboard
+   → Badge/charts show real Supabase data (if tables populated)
+   
+3. User interacts with app + generates sample data
+   → Activity accumulates in Supabase
+   
+4. User clicks "Export to Azure" (manual button)
+   → Real-time "Exporting..." status
+   → Success message with event count + filename
+   
+5. User logs out
+   → [Background] Final activity export before logout
+   → Logout completes
+```
+
+---
+
+## 2026-04-16 - AUTOMATIC ACTIVITY EXPORT TO AZURE (COMPLETED)
+
+### 📖 Implementation Details: Automatic Activity Export
+
+**Supabase Edge Function (`export-activities-to-azure/index.ts`)**:
+- Endpoint: `POST /export-activities-to-azure`
+- Input: `{ userId: string }`
+- Process:
+  1. Query Supabase `activity_events` table for all events matching user_id
+  2. Transform each event to schema v1 format (add defaults for optional fields)
+  3. Upload JSON payload to Azure Blob Storage `raw-events` container
+  4. Filename format: `activity_export_{userId}_{timestamp}.json`
+  5. Return success/failure with event count
+- Error Handling: Two-pass Azure authentication (direct, then shared-key fallback)
+- Environment Variables Required:
+  - `SUPABASE_URL` (auto-set by platform)
+  - `SUPABASE_SERVICE_ROLE_KEY` (auto-set by platform)
+  - `AZURE_STORAGE_ACCOUNT_NAME` (user-configured)
+  - `AZURE_STORAGE_ACCOUNT_KEY` (user-configured)
+
+**React Integration (`exportActivitiesToAzure.js`)**:
+- Wraps Supabase Functions client call
+- Handles error responses and exceptions gracefully
+- Returns normalized result object: `{ success, eventCount, filename?, error? }`
+
+**App-Level Triggers (`App.jsx` Desk component)**:
+1. **Login Trigger**: Effect watches `user?.id` and exports 1 second after user is defined
+   - Allows session state to fully stabilize before export
+   - Only runs if `ENABLE_FINAL_PROJECT` is true
+   - Logs success/count to console, swallows failures silently
+
+2. **Logout Trigger**: Wraps original `handleLogout` with `wrappedHandleLogout`
+   - Calls `exportActivitiesToAzure()` before proceeding to logout
+   - Uses async/await to ensure export completes (or times out)
+   - Proceeds with logout regardless of export success/failure
+   - Prevents logout blocking if export is slow/fails
+
+**Dashboard Triggers (`FinalProjectShowcase.jsx`)**:
+1. **Manual Export Button**: 
+   - Located in Engagement Dashboard section
+   - Shows loading state ("Exporting...") while in progress
+   - Displays success/error message with event count and filename
+   - Status message auto-clears after ~5 seconds (optional enhancement)
+
+2. **Auto-Export on Sample Data**:
+   - After `handleGenerateSampleData()` completes, calls `handleExportToAzure()`
+   - Exports the synthetic batch immediately so users can test full pipeline
+   - Status message updates to show export success
+
+**User Experience Flow**:
+```
+1. User logs in → Activity export triggered silently in background
+2. User opens analytics dashboard → Can see existing activity count
+3. User interacts with app or generates sample data → Activity accumulates
+4. User clicks "Export to Azure" → Sees real-time "Exporting..." then result
+5. User logs out → Final activity export triggered, then logout completes
+6. User generates sample data → Download starts + auto-export to Azure
+```
+
+---
+
+## HISTORICAL CHANGES (Earlier Sessions)
+
+### 2026-04-16 - Real Engagement Query Wiring (COMPLETED)
+- Replaced mock engagement data with real Supabase table queries
+- File: `src/features/desk/hooks/useDeskEngagementMetrics.js`
+- Reads from `user_engagement_tiers` and `user_engagement_metrics`
+- Includes safe fallback for demo/no-data users
+- Hardened numeric rendering in `EngagementTierBadge.jsx`
+
+### 2026-04-16 - Analytics Access Moved to Profile Link (COMPLETED)
+- Removed app-wide replacement when flag enabled
+- DoodleDesk stays default, analytics accessible via profile menu → "Open Analytics Page"
+- Files: `src/App.jsx`, `src/features/desk/components/DeskProfileMenu.jsx`
+
+### 2026-04-16 - Sample Data Generator (COMPLETED)
+- One-click generator in analytics dashboard
+- Generates 300/500/1000 schema-compatible events
+- Creates synthetic users/desks with realistic session patterns
+- File: `src/features/finalProject/FinalProjectShowcase.jsx`
+
+### 2026-04-15 - Azure Filename-Agnostic Ingestion (COMPLETED)
+- Updated ADF to use wildcard pattern `*.json` instead of fixed filenames
+- Added K-means automation helper script
+- Created expanded sample data scenarios
+- File: `docs/azure/AZURE_SETUP_GUIDE.md` (Phase 10)
+
+## 2026-04-16 - Azure Filename-Agnostic Ingestion + Expanded Sample Data (COMPLETED)
+
+### ✅ Added more realistic raw-event sample batches
+- Added three new JSON datasets for broader workflow testing:
+  - `docs/azure/sample_activity_events_2026-04-16_collab_burst.json`
+  - `docs/azure/sample_activity_events_2026-04-17_cross_desk_mobile.json`
+  - `docs/azure/sample_activity_events_2026-04-18_heavy_editor.json`
+- Scenarios now cover collaboration bursts, cross-desk mobile usage, and heavy editor behavior with longer sessions.
+
+### ✅ Updated Azure pipeline guidance for filename-agnostic ingestion
+- In `docs/azure/AZURE_SETUP_GUIDE.md`, updated ADF source guidance from fixed naming to wildcard ingestion:
+  - Source file pattern now `*.json`
+  - Added recursive traversal recommendation for subfolders
+  - Added trigger setup guidance (storage-event or schedule) so ingestion runs automatically
+
+### ✅ Updated model analysis guidance to be filename-agnostic
+- Replaced single-file notebook logic with multi-file Parquet scan/concat approach.
+- Added automatic event-to-user feature aggregation when curated data is event-level.
+- Added dynamic k fallback for tiny datasets so clustering/silhouette runs do not fail.
+
+### ✅ Added reusable automation helper
+- Added `docs/azure/kmeans_auto_from_curated.py`:
+  - Recursively scans all Parquet files under an input directory
+  - Builds user engagement metrics when needed
+  - Runs K-means with safe k selection
+  - Writes engagement tier CSV output
+
+### ✅ Updated Azure artifacts index
+- `docs/azure/README.md` now lists the new sample files and the automation script usage.
+
+## 2026-04-16 - Azure ML Notebook Pathing + K-Means Run (COMPLETED)
+
+### ✅ Curated data pathing issue resolved
+- Confirmed Azure ML workspace context and datastore resolution:
+  - Workspace: `doodledesk-aml`
+  - Datastore: `doodledeskcurated`
+- Successfully downloaded curated file from datastore:
+  - `curated_download/sample_activity_events_2026-04-15.parquet`
+
+### ✅ Data load and schema verification completed
+- Loaded Parquet in notebook runtime with shape `(12, 12)`.
+- Verified event-level columns present for aggregation workflow:
+  - `event_id`, `user_id`, `desk_id`, `event_type`, `event_ts_utc`, `session_id`, `note_id`, `edit_count`, `collaboration_count`, `session_seconds`, `device_type`, `platform`.
+
+### ✅ K-means executed with small-sample safeguard
+- Aggregated event-level data to user-level engagement features.
+- Due to only 3 user samples, dynamic cluster fallback used `k=2` for valid scoring.
+- Run output:
+  - Silhouette Score: `0.1061`
+  - Users clustered: `3`
+  - Tier distribution: `high=2`, `low=1`
+
+### ✅ Engagement tier output exported
+- Saved notebook output CSV:
+  - `/mnt/batch/tasks/shared/LS_root/mounts/clusters/doodledesk/code/Users/finirf/engagement_tiers_output.csv`
+
+### ✅ Assignment evidence uploaded to Blob
+- Uploaded `engagement_tiers_output.csv` to the `model-output` container.
+- Upload path target completed for Phase 10 evidence retention.
+
+### Next step
+- Optional: ingest `model-output/engagement_tiers_output.csv` into downstream SQL/table path used by dashboard integration.
+
+## 2026-04-15 - End of Session Checkpoint (Resume From Here)
+
+### Current status right now
+- Core code changes are complete and validated: lint pass + build pass.
+- Azure guide was updated to use raw-events -> curated-features as the default path.
+- Curated output format is now documented as Parquet.
+
+### Azure progress completed
+- ADF raw-to-curated pipeline exists and is being used.
+- ML datastore target name in guide is DoodleDeskCurated.
+
+### Current blocker at stop time
+- Azure notebook failed on local file path lookup:
+  - FileNotFoundError for sample_activity_events_2026-04-15.parquet
+- Root cause: notebook path did not point to actual Parquet file location in curated-features datastore.
+
+### First steps to run next session
+1. In Azure ML notebook, list files/paths from DoodleDeskCurated and confirm exact Parquet file or folder name.
+2. Replace placeholder path in notebook with the real Parquet path.
+3. Run pandas.read_parquet on that real path.
+4. Continue K-means training cell flow and capture silhouette score + cluster counts.
+
+### Quick reminder
+- If Spark quota errors appear again, use non-Spark Python compute and continue (Spark is optional for this scope).
+
+## 2026-04-15 - Activity Capture and Engagement Dashboard Implementation (COMPLETED)
+
+### ✅ Activity Capture System Implemented
+- **Created**: `useDeskActivityCapture.js` hook
+  - Tracks user interactions: note creation, edits, checklist toggles
+  - Records session metadata: device type, platform, app version
+  - Buffers events in memory for export
+  - Exports as CSV or JSON format matching schema v1
+  - Methods: `captureNoteCreate()`, `captureNoteEdit()`, `captureChecklistToggle()`, `captureCollaboration()`, `captureSessionStart()`, `captureSessionEnd()`
+  - Export methods: `exportAsJSON()`, `exportAsCSV()`, `downloadEvents(format)`
+
+### ✅ Engagement Metrics & Visualization Components Created
+- **`useDeskEngagementMetrics.js`**: Fetch user's engagement tier, activity metrics, and 7-day trends
+  - Returns: `engagementTier` (low/medium/high), `metrics` (daily breakdown, summary stats), `loading`, `error`
+  - Mock data structure ready for real SQL queries after Phase 1-4 setup
+  
+- **`EngagementTierBadge.jsx`**: Visual tier indicator with breakdown tooltip
+  - Color-coded: 🔴 Low, 🟡 Medium, 🟢 High
+  - Shows score (0-100), total notes/edits/sessions
+  - Responsive sizing (small/medium/large)
+
+- **`EngagementChart.jsx`**: Simple bar charts for activity analysis
+  - Weekly activity breakdown (notes, edits, collaborations)
+  - Daily trend chart (7 days)
+  - Summary stats (avg daily notes, peak edits, total activity)
+
+- **`ActivityExportDialog.jsx`**: Modal for downloading activity data
+  - Format selection (JSON or CSV)
+  - Helpful tips for Azure upload workflow
+  - Event counter display
+
+### ✅ FinalProjectShowcase Component Enhanced
+- Integrated `useDeskActivityCapture` for demo activity tracking
+- Integrated `useDeskEngagementMetrics` for tier/metrics display
+- Added new "Engagement Dashboard" section showing:
+  - Current user's engagement tier with visual badge
+  - 7-day activity breakdown and trends
+  - Demo activity export button
+- Demo effect captures sample note creation and edits on mount
+- Activity export dialog wired to download CSV/JSON
+
+### ✅ Feature Index Updated
+- Exported all new components: `ActivityExportDialog`, `EngagementTierBadge`, `EngagementChart`
+- Exported all new hooks: `useDeskActivityCapture`, `useDeskEngagementMetrics`
+- Maintains backward compatibility with existing exports
+
+### ✅ Code Quality Validated
+- Lint: ✅ Exit 0 (all new code follows eslint rules)
+- Build: ✅ Exit 0 (Vite production build successful, 165 modules)
+- No unused variables, no import issues
+- Components tree-shakeable and optimized
+
+### ✅ Azure Documentation Created
+- **`docs/azure/AZURE_SETUP_GUIDE.md`**: Complete 10-phase setup guide
+  - Phase 1: Resource Group creation
+  - Phase 2: Blob Storage with lifecycle policy
+  - Phase 3: Optional Azure SQL Database for later downstream reporting
+  - Phase 4: Optional SQL schema and table creation (full SQL scripts provided)
+  - Phase 5: Azure Data Factory creation and linked services
+  - Phase 6: Data Factory copy pipeline for raw blob → curated-features
+  - Phase 7: Sample data upload and curated output verification
+  - Phase 8: Azure ML workspace setup
+  - Phase 9: K-means clustering training from curated Blob data
+  - Phase 10: End-to-end curated pipeline validation
+  - Includes: Cost estimates, troubleshooting guide, free tier options
+
+### Next Execution Items (External Azure Portal Work)
+
+Follow the detailed click-by-click instructions in `docs/azure/AZURE_SETUP_GUIDE.md` for:
+
+1. **Phases 1-4**: Create Azure infrastructure
+   - Resource Group, Storage Account, SQL Database
+   - Create 4 tables with provided SQL scripts
+   - Estimated time: 30 min
+
+2. **Phase 5-6**: Set up Data Factory
+   - Create linked services (Blob + SQL)
+   - Create copy pipeline
+   - Test with sample data
+   - Estimated time: 30 min
+
+3. **Phase 7**: Upload sample activity data
+   - Use `docs/azure/sample_activity_events_2026-04-15.json`
+   - Verify data in SQL
+   - Estimated time: 5 min
+
+4. **Phase 8-9**: Set up ML and train model
+   - Create ML workspace
+   - Train K-means with provided Python code
+   - Verify silhouette score > 0.4
+   - Estimated time: 45 min
+
+5. **Phase 10**: Full pipeline test
+   - Trigger Data Factory pipeline
+   - Verify all tables have data
+   - Check engagement tier assignments
+   - Estimated time: 10 min
+
+## 2026-04-15 - Final Assignment Working Changelog (DoodleDesk Analytics on Azure)
+
+### ✅ Scope alignment and project direction finalized
+- **Decision**: Locked final assignment scope to DoodleDesk Analytics (Azure edition), centered on app activity data instead of retail-first framing.
+- **Primary analytics intent**: Track note creation, edit volume, session activity, and collaboration behavior, then surface engagement insights in-app.
+- **ML direction**: Use K-means clustering for low/medium/high engagement tiers, with silhouette score review for cluster quality.
+
+### ✅ Feature-flagged assignment mode implemented and preserved as removable
+- **Implementation**: Kept the final-project mode behind `VITE_ENABLE_FINAL_PROJECT` so the assignment view can be enabled for submission and disabled later without affecting core DoodleDesk behavior.
+- **Toggle behavior**:
+  - `VITE_ENABLE_FINAL_PROJECT=true` -> shows assignment submission shell
+  - `VITE_ENABLE_FINAL_PROJECT=false` -> shows standard DoodleDesk app
+- **Files in assignment mode path**:
+  - `src/config.js`
+  - `src/App.jsx`
+  - `src/features/finalProject/FinalProjectShowcase.jsx`
+  - `src/features/finalProject/FinalProjectShowcase.css`
+  - `src/features/finalProject/index.js`
+
+### ✅ Final-project shell upgraded from retail draft to DoodleDesk Analytics proposal shell
+- **What changed**:
+  - Replaced earlier retail-oriented copy/metrics with DoodleDesk analytics language.
+  - Added explicit Azure pipeline stages (Blob -> Data Factory -> Azure ML -> app dashboard).
+  - Added assignment coverage section mapping work to required categories.
+  - Added submission checklist section with concrete final upload expectations.
+- **Result**: The deployed assignment mode now communicates the intended architecture, model plan, and deliverable strategy clearly.
+
+### ✅ Documentation and project records updated
+- **README update**: Clarified that enabling `VITE_ENABLE_FINAL_PROJECT` now opens the DoodleDesk Analytics submission shell.
+- **Repo history update**: Added and revised final-project entries in this changelog to reflect the scope pivot and completed assignment preparation work.
+
+### ✅ Validation completed after code changes
+- **Checks run**:
+  - `npm run lint`
+  - `npm run build`
+- **Status**: Both passed after the assignment shell rewrite.
+
+### ✅ Local Azure assignment artifacts created in the codespace
+- **Files added**:
+  - `docs/azure/activity_event_schema_v1.json`
+  - `docs/azure/sample_activity_events_2026-04-15.json`
+  - `docs/azure/README.md`
+- **Purpose**: Keep the assignment schema and a realistic sample activity batch versioned with the repo so the Azure Blob upload, Data Factory ingest, and ML pipeline steps have concrete local source files.
+- **Sample content**: Includes realistic session starts, note creation, edits, checklist toggles, collaboration events, and session ends across multiple users/desks.
+
+### ✅ Azure implementation guidance delivered in detail (chat deliverable)
+- **Delivered**: Step-by-step Azure Portal instructions for Step 1 through Step 5, including recommended settings and validation checkpoints.
+- **Covered services**:
+  - Resource Group and cost controls
+  - Blob container structure and lifecycle policy
+  - Activity schema staging and first data upload path
+  - First Data Factory pipeline setup and debug/monitor verification
+
+### ✅ Hosting strategy clarified for current production architecture
+- **Clarification**: Azure App Service is optional because DoodleDesk is already internet-accessible on Vercel with Supabase backend.
+- **Decision guidance**:
+  - Keep Vercel + Supabase for web/backend hosting unless instructor explicitly requires Azure hosting.
+  - If Azure hosting is explicitly required, use Node 20 LTS on Linux for App Service, or prefer Azure Static Web Apps for static Vite frontend hosting.
+
+### ✅ Copy raw activity to created_features pipeline completed
+- **Status**: Data Factory pipeline successfully executing raw event copy to created_features dataset.
+- **Next Phase**: Data quality filtering and user-level aggregation.
+
+### Next execution items (roadmap for remaining implementation)
+- **Step 1: Add Data Quality Filtering (Data Factory)**
+  - Add Filter activity to clean data: remove incomplete sessions, exclude sessions < 30 seconds, filter test accounts, validate timestamps.
+  - Output to "cleaned_features" dataset.
+
+- **Step 2: Aggregate to User-Level Features (Data Factory or SQL)**
+  - Transform raw events into per-user metrics: total notes, total edits, total sessions, avg session duration, collaboration events, device distribution.
+  - Output to "user_engagement_metrics" table in SQL Database.
+
+- **Step 3: Prepare ML Dataset (Azure ML)**
+  - Load user_engagement_metrics into Azure ML workspace.
+  - Normalize/scale numeric features (0-1 range).
+  - Handle missing values and create train/validation split (80/20).
+
+- **Step 4: Run K-Means Clustering (Azure ML)**
+  - Train K-means with k=3 (low/medium/high engagement tiers).
+  - Calculate silhouette score for cluster quality validation.
+  - Review cluster centers and define engagement tier thresholds.
+  - Export model and cluster assignments.
+
+- **Step 5: Store Cluster Results**
+  - Write cluster assignments back to SQL Database (user_engagement_tiers table).
+  - Store model metadata (silhouette score, cluster centers, thresholds).
+
+- **Step 6: Dashboard Integration (DoodleDesk App)**
+  - Query user_engagement_tiers during desk load.
+  - Display engagement tier badge/label in UI.
+  - Show engagement insights in-app.
+
+## 2026-04-14 - DoodleDesk Analytics Proposal Shell
+
+### ✅ Final project mode now matches the DoodleDesk Azure proposal
+- **Change**: Reworked the feature-flagged submission shell so it now describes the DoodleDesk Analytics project instead of the earlier retail demo.
+- **Coverage**: The page now maps directly to the assignment requirements: Azure Blob Storage, Azure Data Factory, Azure Machine Learning, K-means clustering, dashboard output, and the model write-up.
+- **Toggle**: The entire mode remains removable through `VITE_ENABLE_FINAL_PROJECT`, so you can deploy with or without the proposal shell later.
+- **Files Updated**:
+  - `src/features/finalProject/FinalProjectShowcase.jsx`
+  - `README.md`
+  - `new changes.md`
+
+### ✅ Submission guidance included in-app
+- **Change**: Added a dedicated checklist for what to include in the final upload and clarified that an extra retail dataset is optional, not the core scope.
+
+## 2026-04-14 - Optional Final Project Submission Shell
+
+### ✅ Added a feature-flagged retail project view for submission prep
+- **Change**: Added a new Azure retail final-project showcase page with a data-pull table, search, upload controls, dashboard cards, basket-analysis signals, and the required ML write-up section.
+- **Toggle**: The page is enabled only when `VITE_ENABLE_FINAL_PROJECT=true`, so it can be included in the deployed app or removed later without touching the rest of the desk product.
+- **Files Added**:
+  - `src/config.js`
+  - `src/features/finalProject/FinalProjectShowcase.jsx`
+  - `src/features/finalProject/FinalProjectShowcase.css`
+  - `src/features/finalProject/index.js`
+- **Files Updated**:
+  - `src/App.jsx`
+  - `README.md`
+
+### ✅ Submission-oriented UI included
+- **Coverage**: Web server fields, datastore loading, sample data pull for household 10, dashboard views, and a short CLV model write-up are all represented in the new mode.
+- **Result**: One flag now controls whether the deployed build shows the submission shell or the existing DoodleDesk app.
+
 ## 2026-04-08 - Safe Dependency Refresh (Patch/Minor)
 
 ### ✅ Updated core frontend and lint toolchain dependencies

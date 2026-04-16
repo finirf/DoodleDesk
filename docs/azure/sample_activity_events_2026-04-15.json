@@ -1,0 +1,217 @@
+[
+  {
+    "event_id": "evt_20260415_0001",
+    "user_id": "user_1024",
+    "desk_id": "desk_main_planning",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-15T13:02:11Z",
+    "session_id": "sess_20260415_u1024_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Windows 11",
+    "metadata_json": {
+      "app_version": "1.8.3",
+      "entry_point": "dashboard"
+    }
+  },
+  {
+    "event_id": "evt_20260415_0002",
+    "user_id": "user_1024",
+    "desk_id": "desk_main_planning",
+    "event_type": "note_create",
+    "event_ts_utc": "2026-04-15T13:03:08Z",
+    "session_id": "sess_20260415_u1024_a",
+    "note_id": "note_88f41c",
+    "edit_count": 1,
+    "collaboration_count": 0,
+    "session_seconds": 57,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Windows 11",
+    "metadata_json": {
+      "note_type": "text",
+      "color": "#f6d365"
+    }
+  },
+  {
+    "event_id": "evt_20260415_0003",
+    "user_id": "user_1024",
+    "desk_id": "desk_main_planning",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-15T13:04:22Z",
+    "session_id": "sess_20260415_u1024_a",
+    "note_id": "note_88f41c",
+    "edit_count": 4,
+    "collaboration_count": 0,
+    "session_seconds": 131,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Windows 11",
+    "metadata_json": {
+      "fields_changed": ["text", "font_weight", "font_size"]
+    }
+  },
+  {
+    "event_id": "evt_20260415_0004",
+    "user_id": "user_1024",
+    "desk_id": "desk_main_planning",
+    "event_type": "checklist_toggle",
+    "event_ts_utc": "2026-04-15T13:05:09Z",
+    "session_id": "sess_20260415_u1024_a",
+    "note_id": "check_12d8aa",
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 178,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Windows 11",
+    "metadata_json": {
+      "item_state": "checked",
+      "checklist_item_count": 6
+    }
+  },
+  {
+    "event_id": "evt_20260415_0005",
+    "user_id": "user_1024",
+    "desk_id": "desk_main_planning",
+    "event_type": "collaboration",
+    "event_ts_utc": "2026-04-15T13:06:14Z",
+    "session_id": "sess_20260415_u1024_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 2,
+    "session_seconds": 243,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Windows 11",
+    "metadata_json": {
+      "action": "member_comment",
+      "peer_user_id": "user_2048"
+    }
+  },
+  {
+    "event_id": "evt_20260415_0006",
+    "user_id": "user_2048",
+    "desk_id": "desk_main_planning",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-15T13:06:49Z",
+    "session_id": "sess_20260415_u2048_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "entry_point": "shared_link",
+      "app_version": "1.8.3"
+    }
+  },
+  {
+    "event_id": "evt_20260415_0007",
+    "user_id": "user_2048",
+    "desk_id": "desk_main_planning",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-15T13:08:02Z",
+    "session_id": "sess_20260415_u2048_a",
+    "note_id": "note_8ba210",
+    "edit_count": 2,
+    "collaboration_count": 1,
+    "session_seconds": 73,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "fields_changed": ["text", "color"],
+      "shared_edit": true
+    }
+  },
+  {
+    "event_id": "evt_20260415_0008",
+    "user_id": "user_1024",
+    "desk_id": "desk_main_planning",
+    "event_type": "session_end",
+    "event_ts_utc": "2026-04-15T13:14:56Z",
+    "session_id": "sess_20260415_u1024_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 464,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Windows 11",
+    "metadata_json": {
+      "idle_timeout": false,
+      "autosave_status": "saved"
+    }
+  },
+  {
+    "event_id": "evt_20260415_0009",
+    "user_id": "user_2048",
+    "desk_id": "desk_main_planning",
+    "event_type": "note_create",
+    "event_ts_utc": "2026-04-15T14:21:17Z",
+    "session_id": "sess_20260415_u2048_b",
+    "note_id": "note_91c0f3",
+    "edit_count": 1,
+    "collaboration_count": 0,
+    "session_seconds": 39,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "note_type": "checklist",
+      "priority": "medium"
+    }
+  },
+  {
+    "event_id": "evt_20260415_0010",
+    "user_id": "user_2048",
+    "desk_id": "desk_main_planning",
+    "event_type": "collaboration",
+    "event_ts_utc": "2026-04-15T14:23:05Z",
+    "session_id": "sess_20260415_u2048_b",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 3,
+    "session_seconds": 147,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "action": "reaction_and_reply",
+      "peer_user_id": "user_1024"
+    }
+  },
+  {
+    "event_id": "evt_20260415_0011",
+    "user_id": "user_3055",
+    "desk_id": "desk_design_review",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-15T15:02:09Z",
+    "session_id": "sess_20260415_u3055_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "desktop",
+    "platform": "Edge 134 / Windows 11",
+    "metadata_json": {
+      "entry_point": "notification",
+      "app_version": "1.8.3"
+    }
+  },
+  {
+    "event_id": "evt_20260415_0012",
+    "user_id": "user_3055",
+    "desk_id": "desk_design_review",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-15T15:04:33Z",
+    "session_id": "sess_20260415_u3055_a",
+    "note_id": "note_54bb9d",
+    "edit_count": 5,
+    "collaboration_count": 1,
+    "session_seconds": 144,
+    "device_type": "desktop",
+    "platform": "Edge 134 / Windows 11",
+    "metadata_json": {
+      "fields_changed": ["position", "rotation", "text_color"],
+      "shared_edit": false
+    }
+  }
+]

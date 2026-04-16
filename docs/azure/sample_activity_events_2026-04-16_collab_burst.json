@@ -1,0 +1,290 @@
+[
+  {
+    "event_id": "evt_20260416_1001",
+    "user_id": "user_1101",
+    "desk_id": "desk_product_launch",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-16T08:01:12Z",
+    "session_id": "sess_20260416_u1101_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Windows 11",
+    "metadata_json": {
+      "entry_point": "dashboard",
+      "app_version": "1.8.4"
+    }
+  },
+  {
+    "event_id": "evt_20260416_1002",
+    "user_id": "user_1101",
+    "desk_id": "desk_product_launch",
+    "event_type": "note_create",
+    "event_ts_utc": "2026-04-16T08:03:42Z",
+    "session_id": "sess_20260416_u1101_a",
+    "note_id": "note_pl_001",
+    "edit_count": 1,
+    "collaboration_count": 0,
+    "session_seconds": 150,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Windows 11",
+    "metadata_json": {
+      "note_type": "text",
+      "priority": "high"
+    }
+  },
+  {
+    "event_id": "evt_20260416_1003",
+    "user_id": "user_2202",
+    "desk_id": "desk_product_launch",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-16T08:05:08Z",
+    "session_id": "sess_20260416_u2202_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "tablet",
+    "platform": "Safari 18 / iPadOS 18",
+    "metadata_json": {
+      "entry_point": "shared_link",
+      "app_version": "1.8.4"
+    }
+  },
+  {
+    "event_id": "evt_20260416_1004",
+    "user_id": "user_2202",
+    "desk_id": "desk_product_launch",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-16T08:06:51Z",
+    "session_id": "sess_20260416_u2202_a",
+    "note_id": "note_pl_001",
+    "edit_count": 3,
+    "collaboration_count": 1,
+    "session_seconds": 103,
+    "device_type": "tablet",
+    "platform": "Safari 18 / iPadOS 18",
+    "metadata_json": {
+      "fields_changed": ["text", "font_style"],
+      "shared_edit": true
+    }
+  },
+  {
+    "event_id": "evt_20260416_1005",
+    "user_id": "user_3303",
+    "desk_id": "desk_product_launch",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-16T08:08:20Z",
+    "session_id": "sess_20260416_u3303_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "entry_point": "notification",
+      "app_version": "1.8.4"
+    }
+  },
+  {
+    "event_id": "evt_20260416_1006",
+    "user_id": "user_3303",
+    "desk_id": "desk_product_launch",
+    "event_type": "checklist_toggle",
+    "event_ts_utc": "2026-04-16T08:09:31Z",
+    "session_id": "sess_20260416_u3303_a",
+    "note_id": "check_pl_010",
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 71,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "item_state": "checked",
+      "checklist_item_count": 9
+    }
+  },
+  {
+    "event_id": "evt_20260416_1007",
+    "user_id": "user_4404",
+    "desk_id": "desk_product_launch",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-16T08:10:44Z",
+    "session_id": "sess_20260416_u4404_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "desktop",
+    "platform": "Edge 134 / Windows 11",
+    "metadata_json": {
+      "entry_point": "dashboard",
+      "app_version": "1.8.4"
+    }
+  },
+  {
+    "event_id": "evt_20260416_1008",
+    "user_id": "user_4404",
+    "desk_id": "desk_product_launch",
+    "event_type": "collaboration",
+    "event_ts_utc": "2026-04-16T08:12:22Z",
+    "session_id": "sess_20260416_u4404_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 2,
+    "session_seconds": 98,
+    "device_type": "desktop",
+    "platform": "Edge 134 / Windows 11",
+    "metadata_json": {
+      "action": "comment_thread",
+      "peer_user_id": "user_1101"
+    }
+  },
+  {
+    "event_id": "evt_20260416_1009",
+    "user_id": "user_1101",
+    "desk_id": "desk_product_launch",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-16T08:13:33Z",
+    "session_id": "sess_20260416_u1101_a",
+    "note_id": "note_pl_001",
+    "edit_count": 5,
+    "collaboration_count": 1,
+    "session_seconds": 441,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Windows 11",
+    "metadata_json": {
+      "fields_changed": ["text", "position", "text_color"],
+      "shared_edit": true
+    }
+  },
+  {
+    "event_id": "evt_20260416_1010",
+    "user_id": "user_2202",
+    "desk_id": "desk_product_launch",
+    "event_type": "collaboration",
+    "event_ts_utc": "2026-04-16T08:14:17Z",
+    "session_id": "sess_20260416_u2202_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 3,
+    "session_seconds": 549,
+    "device_type": "tablet",
+    "platform": "Safari 18 / iPadOS 18",
+    "metadata_json": {
+      "action": "reaction_and_reply",
+      "peer_user_id": "user_4404"
+    }
+  },
+  {
+    "event_id": "evt_20260416_1011",
+    "user_id": "user_3303",
+    "desk_id": "desk_product_launch",
+    "event_type": "note_create",
+    "event_ts_utc": "2026-04-16T08:15:10Z",
+    "session_id": "sess_20260416_u3303_a",
+    "note_id": "note_pl_014",
+    "edit_count": 1,
+    "collaboration_count": 0,
+    "session_seconds": 410,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "note_type": "checklist",
+      "priority": "medium"
+    }
+  },
+  {
+    "event_id": "evt_20260416_1012",
+    "user_id": "user_4404",
+    "desk_id": "desk_product_launch",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-16T08:16:39Z",
+    "session_id": "sess_20260416_u4404_a",
+    "note_id": "note_pl_014",
+    "edit_count": 2,
+    "collaboration_count": 1,
+    "session_seconds": 355,
+    "device_type": "desktop",
+    "platform": "Edge 134 / Windows 11",
+    "metadata_json": {
+      "fields_changed": ["text", "font_weight"],
+      "shared_edit": true
+    }
+  },
+  {
+    "event_id": "evt_20260416_1013",
+    "user_id": "user_1101",
+    "desk_id": "desk_product_launch",
+    "event_type": "session_end",
+    "event_ts_utc": "2026-04-16T08:18:01Z",
+    "session_id": "sess_20260416_u1101_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 1009,
+    "device_type": "desktop",
+    "platform": "Chrome 135 / Windows 11",
+    "metadata_json": {
+      "idle_timeout": false,
+      "autosave_status": "saved"
+    }
+  },
+  {
+    "event_id": "evt_20260416_1014",
+    "user_id": "user_2202",
+    "desk_id": "desk_product_launch",
+    "event_type": "session_end",
+    "event_ts_utc": "2026-04-16T08:18:24Z",
+    "session_id": "sess_20260416_u2202_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 796,
+    "device_type": "tablet",
+    "platform": "Safari 18 / iPadOS 18",
+    "metadata_json": {
+      "idle_timeout": false,
+      "autosave_status": "saved"
+    }
+  },
+  {
+    "event_id": "evt_20260416_1015",
+    "user_id": "user_3303",
+    "desk_id": "desk_product_launch",
+    "event_type": "session_end",
+    "event_ts_utc": "2026-04-16T08:18:46Z",
+    "session_id": "sess_20260416_u3303_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 626,
+    "device_type": "mobile",
+    "platform": "Safari 18 / iPhone 15",
+    "metadata_json": {
+      "idle_timeout": false,
+      "autosave_status": "saved"
+    }
+  },
+  {
+    "event_id": "evt_20260416_1016",
+    "user_id": "user_4404",
+    "desk_id": "desk_product_launch",
+    "event_type": "session_end",
+    "event_ts_utc": "2026-04-16T08:19:12Z",
+    "session_id": "sess_20260416_u4404_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 508,
+    "device_type": "desktop",
+    "platform": "Edge 134 / Windows 11",
+    "metadata_json": {
+      "idle_timeout": false,
+      "autosave_status": "saved"
+    }
+  }
+]

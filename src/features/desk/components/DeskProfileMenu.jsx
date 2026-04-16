@@ -65,7 +65,9 @@ export default function DeskProfileMenu({
   activityFeed,
   getActivityActionLabel,
   formatDate,
-  handleLogout
+  handleLogout,
+  enableFinalProject,
+  onOpenFinalProject
 }) {
   return (
     <div ref={profileMenuRef} style={{ position: 'relative', width: 'auto', flexShrink: 0, zIndex: menuLayerZIndex }}>
@@ -427,6 +429,19 @@ export default function DeskProfileMenu({
           )}
 
           <div style={menuSectionDividerStyle}>
+            {enableFinalProject && (
+              <DeskMenuItemButton
+                type="button"
+                onClick={() => {
+                  setShowProfileMenu(false)
+                  onOpenFinalProject?.()
+                }}
+                fullWidth={false}
+                style={{ ...menuSubtleActionStyle, marginBottom: 6 }}
+              >
+                Open Analytics Page
+              </DeskMenuItemButton>
+            )}
             <a
               href="/privacy.html"
               target="_blank"

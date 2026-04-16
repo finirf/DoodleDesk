@@ -1,4 +1,5 @@
 ﻿import React from 'react'
+import { ENABLE_FINAL_PROJECT } from './config'
 import { useAuthSession } from './features/auth'
 import {
   BUILT_IN_SHELVES,
@@ -51,10 +52,13 @@ import {
   withTimeout
 } from './features/desk'
 import { AppAuthBoundary } from './features/auth'
+import { FinalProjectShowcase } from './features/finalProject'
+import { exportActivitiesToAzure } from './features/desk/utils/exportActivitiesToAzure'
 import { supabase } from './supabase'
 
 export default function App() {
   const { session, loading, isRecoveryFlow, exitRecoveryFlow } = useAuthSession()
+
   return (
     <AppAuthBoundary
       loading={loading}
@@ -70,6 +74,25 @@ export default function App() {
 }
 
 function Desk({ user }) {
+  const [showFinalProjectOverlay, setShowFinalProjectOverlay] = React.useState(false)
+
+  // Export activities to Azure on login
+  React.useEffect(() => {
+    if (ENABLE_FINAL_PROJECT && user?.id) {
+      // Small delay to ensure session is fully established
+      const timer = setTimeout(() => {
+        exportActivitiesToAzure(user.id)
+          .then((result) => {
+            if (result.success && result.eventCount > 0) {
+              console.log(`[Analytics] Exported ${result.eventCount} activities on login to ${result.filename}`)
+            }
+          })
+          .catch((error) => console.warn('[Analytics] Login export failed:', error))
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [user?.id])
+
   const { desks, setDesks, selectedDeskId, setSelectedDeskId, notes, setNotes, editingId, setEditingId, editValue, setEditValue, editColor, setEditColor, editTextColor, setEditTextColor, editFontSize, setEditFontSize, editFontFamily, setEditFontFamily, editFontWeight, setEditFontWeight, editFontStyle, setEditFontStyle, showStyleEditor, setShowStyleEditor, checklistEditItems, setChecklistEditItems, newChecklistItemText, setNewChecklistItemText, showNewNoteMenu, setShowNewNoteMenu, showDeskMenu, setShowDeskMenu, showProfileMenu, setShowProfileMenu, profileTab, setProfileTab, newShelfNameInput, setNewShelfNameInput, newShelfParentId, setNewShelfParentId, shelfActionError, setShelfActionError, showShelfHierarchyTools, setShowShelfHierarchyTools, backgroundMode, setBackgroundMode, customBackgroundUrl, setCustomBackgroundUrl, customBackgroundInput, setCustomBackgroundInput, setBackgroundMenuError, deskMenuMessage, setDeskMenuMessage, deskMenuError, setDeskMenuError, snapToGrid, setSnapToGrid, confirmDialog, setConfirmDialog, confirmDialogLoading, setConfirmDialogLoading, friends, setFriends, incomingFriendRequests, setIncomingFriendRequests, outgoingFriendRequests, setOutgoingFriendRequests, friendEmailInput, setFriendEmailInput, friendMessage, setFriendMessage, friendError, setFriendError, friendsLoading, setFriendsLoading, friendSubmitting, setFriendSubmitting, friendActionLoadingId, setFriendActionLoadingId, profileStats, setProfileStats, profileStatsLoading, setProfileStatsLoading, activityFeed, setActivityFeed, activityLoading, setActivityLoading, activityError, setActivityError, activeDecorationHandleId, setActiveDecorationHandleId, viewportWidth, sectionHeight, canvasWidth, canvasHeight, setCanvasWidth, setCanvasHeight, deferredRemoteNotesRef, historySyncingRef, notesRef, fetchDesksRef, fetchDeskItemsRef, fetchDeskActivityRef, resetDeskHistoryRef, clearSelectedDeskStateRef, syncDeskShelfPrefsRef, undoNotesActionRef, redoNotesActionRef, flushDeferredNotesRef, autoSaveStatusTimeoutRef, newNoteMenuRef, deskMenuRef, profileMenuRef, shelfSupabaseSyncEnabledRef, shelfSyncTimeoutRef, deskCanvasRef, importDeskInputRef, historySyncing, setHistorySyncing, forceSaveInProgress, setForceSaveInProgress, autoSaveStatus, setAutoSaveStatus, selectedDeskMemberRole, setSelectedDeskMemberRole, selectedDeskMemberRoleLoading, setSelectedDeskMemberRoleLoading, deskMembers, setDeskMembers, deskMembersLoading, setDeskMembersLoading, deskMembersError, setDeskMembersError, deskMemberRequests, setDeskMemberRequests, deskMemberRequestsLoading, setDeskMemberRequestsLoading, deskMemberRequestsError, setDeskMemberRequestsError, deskMemberActionLoadingId, setDeskMemberActionLoadingId, deskMembersMessage, setDeskMembersMessage, isSavingEdit, setIsSavingEdit, editSaveError, setEditSaveError, deskShelves, setDeskShelves, deskShelfAssignments, setDeskShelfAssignments, expandedDeskShelves, setExpandedDeskShelves, shelfPrefsHydrated, setShelfPrefsHydrated } = useDeskStateOrchestration({ getViewportMetrics })
 
     const { pendingDeleteId, setPendingDeleteId, deleteAccountDialog, setDeleteAccountDialog, deleteAccountDeleting, deleteAccountError, setDeleteAccountError, deleteAccountConfirmationMatches, deskMembersDialogOpen, setDeskMembersDialogOpen, tutorialDialogOpen, setTutorialDialogOpen } = useDeskModalState()
@@ -121,6 +144,21 @@ function Desk({ user }) {
 
     setShelfRenameDialog({ isOpen: false, shelfId: null, value: '', originalName: '' })
   }, [commitDeskShelfRename, shelfRenameDialog, setShelfRenameDialog])
+
+  // Wrap handleLogout to export activities before logging out
+  const wrappedHandleLogout = React.useCallback(async () => {
+    if (ENABLE_FINAL_PROJECT && user?.id) {
+      await exportActivitiesToAzure(user.id)
+        .then((result) => {
+          if (result.success) {
+            console.log(`[Analytics] Exported activities on logout (${result.eventCount} events)`)
+          }
+        })
+        .catch((error) => console.warn('[Analytics] Logout export failed:', error))
+    }
+    // Proceed with logout regardless of export success/failure
+    handleLogout()
+  }, [user?.id, handleLogout])
 
   const { isMobileLayout, isTouchInteractionMode, isCurrentUserViewer, pendingFriendRequestCount, totalItemsCount, joinDate, topOverlayTop, topMenuTop, newNoteDesktopTop, mobileNoteMaxWidth, autoSaveLabel, autoSaveBadgeStyle, menuInputStyle, menuCompactInputStyle, menuPrimaryActionStyle, menuSubtleActionStyle, menuSuccessActionStyle, menuDangerActionStyle, menuNeutralActionStyle, menuSectionDividerStyle, renderDeskShelfTree, renderShelfOrganizerPanel, showCommandPalette, commandPaletteQuery, commandPaletteActiveIndex, commandPaletteInputRef, commandPaletteFilteredActions, setCommandPaletteQuery, setCommandPaletteActiveIndex, closeCommandPalette, executeCommandPaletteAction } = useDeskUiOrchestration({ derivedValues: { desks, getDeskNameValue, viewportWidth, currentDesk, userId: user.id, selectedDeskMemberRole, selectedDeskMemberRoleLoading, incomingFriendRequests, notes, userCreatedAt: user.created_at, formatDate, getDeskEffectiveShelfId, getCustomShelfOptions, historySyncing, isSavingEdit, autoSaveStatus }, shelfTreeRenderers: { builtInShelves: BUILT_IN_SHELVES, handleSelectDesk, selectedDeskId, getDeskNameValue, getDeskGroupLabel, getChildDeskShelves, expandedDeskShelves, toggleDeskShelfExpanded, showShelfHierarchyTools, setShowShelfHierarchyTools, newShelfNameInput, setNewShelfNameInput, setShelfActionError, createDeskShelf, newShelfParentId, setNewShelfParentId, currentDesk, getDeskAssignedCustomShelfId, setSelectedDeskCustomShelf, shelfActionError, renameDeskShelf: openShelfRenameDialog, deleteDeskShelf }, commandPalette: { hasModalOpen, selectedDeskId, canCurrentUserEditDeskItems, snapToGrid, setSnapToGrid, forceSaveInProgress, historySyncing, canUndo, canRedo, getDeskNameValue, handleSelectDesk, fetchCurrentUserProfile, fetchDeskActivity, addStickyNote, addChecklistNote, addDecoration, decorationOptions: DECORATION_OPTIONS, forceSaveAndClearHistory, undoNotesChange, redoNotesChange, setShowDeskMenu, setShowProfileMenu, setShowNewNoteMenu } })
 
@@ -309,7 +347,9 @@ function Desk({ user }) {
           activityFeed={activityFeed}
           getActivityActionLabel={getActivityActionLabel}
           formatDate={formatDate}
-          handleLogout={handleLogout}
+          handleLogout={wrappedHandleLogout}
+          enableFinalProject={ENABLE_FINAL_PROJECT}
+          onOpenFinalProject={() => setShowFinalProjectOverlay(true)}
         />
 
         <DeskMoreMenu
@@ -520,6 +560,39 @@ function Desk({ user }) {
         tutorialDialogOpen={tutorialDialogOpen}
         closeTutorialDialog={closeTutorialDialog}
       />
+
+      {showFinalProjectOverlay && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: menuLayerZIndex + 100,
+            background: 'rgba(10, 12, 16, 0.75)',
+            overflowY: 'auto'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: 16 }}>
+            <button
+              type="button"
+              onClick={() => setShowFinalProjectOverlay(false)}
+              style={{
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#0f172a',
+                borderRadius: 8,
+                padding: '8px 12px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Close Analytics
+            </button>
+          </div>
+          <FinalProjectShowcase />
+        </div>
+      )}
     </DeskCanvasContainer>
   )
 }

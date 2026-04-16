@@ -110,9 +110,11 @@ Create a `.env` file in the project root with:
 ```bash
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_ENABLE_FINAL_PROJECT=false
 ```
 
 The app will throw a startup error if either value is missing (enforced in `src/supabase.js`).
+Set `VITE_ENABLE_FINAL_PROJECT=true` to show the DoodleDesk Analytics submission shell instead of the desk app.
 
 ### 3) Run the app
 

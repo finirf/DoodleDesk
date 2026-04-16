@@ -1,0 +1,254 @@
+[
+  {
+    "event_id": "evt_20260417_2001",
+    "user_id": "user_5070",
+    "desk_id": "desk_weekly_ops",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-17T12:10:05Z",
+    "session_id": "sess_20260417_u5070_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "mobile",
+    "platform": "Chrome 136 / Android 15",
+    "metadata_json": {
+      "entry_point": "notification",
+      "network": "5g"
+    }
+  },
+  {
+    "event_id": "evt_20260417_2002",
+    "user_id": "user_5070",
+    "desk_id": "desk_weekly_ops",
+    "event_type": "note_create",
+    "event_ts_utc": "2026-04-17T12:11:19Z",
+    "session_id": "sess_20260417_u5070_a",
+    "note_id": "note_ops_001",
+    "edit_count": 1,
+    "collaboration_count": 0,
+    "session_seconds": 74,
+    "device_type": "mobile",
+    "platform": "Chrome 136 / Android 15",
+    "metadata_json": {
+      "note_type": "text",
+      "template": "daily-standup"
+    }
+  },
+  {
+    "event_id": "evt_20260417_2003",
+    "user_id": "user_6191",
+    "desk_id": "desk_weekly_ops",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-17T12:12:01Z",
+    "session_id": "sess_20260417_u6191_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "desktop",
+    "platform": "Firefox 137 / macOS 15",
+    "metadata_json": {
+      "entry_point": "dashboard",
+      "app_version": "1.8.4"
+    }
+  },
+  {
+    "event_id": "evt_20260417_2004",
+    "user_id": "user_6191",
+    "desk_id": "desk_weekly_ops",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-17T12:13:54Z",
+    "session_id": "sess_20260417_u6191_a",
+    "note_id": "note_ops_001",
+    "edit_count": 2,
+    "collaboration_count": 1,
+    "session_seconds": 113,
+    "device_type": "desktop",
+    "platform": "Firefox 137 / macOS 15",
+    "metadata_json": {
+      "fields_changed": ["text", "text_color"],
+      "shared_edit": true
+    }
+  },
+  {
+    "event_id": "evt_20260417_2005",
+    "user_id": "user_5070",
+    "desk_id": "desk_client_handoff",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-17T14:02:44Z",
+    "session_id": "sess_20260417_u5070_b",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "mobile",
+    "platform": "Chrome 136 / Android 15",
+    "metadata_json": {
+      "entry_point": "deep_link",
+      "network": "wifi"
+    }
+  },
+  {
+    "event_id": "evt_20260417_2006",
+    "user_id": "user_5070",
+    "desk_id": "desk_client_handoff",
+    "event_type": "checklist_toggle",
+    "event_ts_utc": "2026-04-17T14:03:21Z",
+    "session_id": "sess_20260417_u5070_b",
+    "note_id": "check_handoff_3",
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 37,
+    "device_type": "mobile",
+    "platform": "Chrome 136 / Android 15",
+    "metadata_json": {
+      "item_state": "unchecked",
+      "checklist_item_count": 11
+    }
+  },
+  {
+    "event_id": "evt_20260417_2007",
+    "user_id": "user_7842",
+    "desk_id": "desk_client_handoff",
+    "event_type": "session_start",
+    "event_ts_utc": "2026-04-17T14:04:10Z",
+    "session_id": "sess_20260417_u7842_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 0,
+    "device_type": "desktop",
+    "platform": "Edge 135 / Windows 11",
+    "metadata_json": {
+      "entry_point": "shared_link",
+      "app_version": "1.8.4"
+    }
+  },
+  {
+    "event_id": "evt_20260417_2008",
+    "user_id": "user_7842",
+    "desk_id": "desk_client_handoff",
+    "event_type": "collaboration",
+    "event_ts_utc": "2026-04-17T14:05:05Z",
+    "session_id": "sess_20260417_u7842_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 2,
+    "session_seconds": 55,
+    "device_type": "desktop",
+    "platform": "Edge 135 / Windows 11",
+    "metadata_json": {
+      "action": "comment_thread",
+      "peer_user_id": "user_5070"
+    }
+  },
+  {
+    "event_id": "evt_20260417_2009",
+    "user_id": "user_5070",
+    "desk_id": "desk_client_handoff",
+    "event_type": "note_edit",
+    "event_ts_utc": "2026-04-17T14:06:47Z",
+    "session_id": "sess_20260417_u5070_b",
+    "note_id": "note_handoff_6",
+    "edit_count": 3,
+    "collaboration_count": 1,
+    "session_seconds": 243,
+    "device_type": "mobile",
+    "platform": "Chrome 136 / Android 15",
+    "metadata_json": {
+      "fields_changed": ["text", "position"],
+      "shared_edit": true
+    }
+  },
+  {
+    "event_id": "evt_20260417_2010",
+    "user_id": "user_6191",
+    "desk_id": "desk_weekly_ops",
+    "event_type": "collaboration",
+    "event_ts_utc": "2026-04-17T14:08:12Z",
+    "session_id": "sess_20260417_u6191_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 3,
+    "session_seconds": 371,
+    "device_type": "desktop",
+    "platform": "Firefox 137 / macOS 15",
+    "metadata_json": {
+      "action": "reaction_and_reply",
+      "peer_user_id": "user_7842"
+    }
+  },
+  {
+    "event_id": "evt_20260417_2011",
+    "user_id": "user_7842",
+    "desk_id": "desk_client_handoff",
+    "event_type": "note_create",
+    "event_ts_utc": "2026-04-17T14:10:03Z",
+    "session_id": "sess_20260417_u7842_a",
+    "note_id": "note_handoff_7",
+    "edit_count": 1,
+    "collaboration_count": 0,
+    "session_seconds": 353,
+    "device_type": "desktop",
+    "platform": "Edge 135 / Windows 11",
+    "metadata_json": {
+      "note_type": "text",
+      "priority": "low"
+    }
+  },
+  {
+    "event_id": "evt_20260417_2012",
+    "user_id": "user_5070",
+    "desk_id": "desk_client_handoff",
+    "event_type": "session_end",
+    "event_ts_utc": "2026-04-17T14:11:55Z",
+    "session_id": "sess_20260417_u5070_b",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 551,
+    "device_type": "mobile",
+    "platform": "Chrome 136 / Android 15",
+    "metadata_json": {
+      "idle_timeout": false,
+      "autosave_status": "saved"
+    }
+  },
+  {
+    "event_id": "evt_20260417_2013",
+    "user_id": "user_6191",
+    "desk_id": "desk_weekly_ops",
+    "event_type": "session_end",
+    "event_ts_utc": "2026-04-17T14:12:20Z",
+    "session_id": "sess_20260417_u6191_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 619,
+    "device_type": "desktop",
+    "platform": "Firefox 137 / macOS 15",
+    "metadata_json": {
+      "idle_timeout": false,
+      "autosave_status": "saved"
+    }
+  },
+  {
+    "event_id": "evt_20260417_2014",
+    "user_id": "user_7842",
+    "desk_id": "desk_client_handoff",
+    "event_type": "session_end",
+    "event_ts_utc": "2026-04-17T14:12:48Z",
+    "session_id": "sess_20260417_u7842_a",
+    "note_id": null,
+    "edit_count": 0,
+    "collaboration_count": 0,
+    "session_seconds": 518,
+    "device_type": "desktop",
+    "platform": "Edge 135 / Windows 11",
+    "metadata_json": {
+      "idle_timeout": false,
+      "autosave_status": "saved"
+    }
+  }
+]
