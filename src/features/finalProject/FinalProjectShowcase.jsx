@@ -224,6 +224,8 @@ export default function FinalProjectShowcase() {
   const [exportDialogOpen, setExportDialogOpen] = React.useState(false)
   const [sampleTargetSize, setSampleTargetSize] = React.useState(500)
   const [sampleGenerationMessage, setSampleGenerationMessage] = React.useState('')
+  // Store generated sample events for export
+  const sampleEventsRef = React.useRef(null)
   const [exportingToAzure, setExportingToAzure] = React.useState(false)
   const [exportMessage, setExportMessage] = React.useState('')
   const initialEventCountRef = React.useRef(null)
@@ -239,19 +241,6 @@ export default function FinalProjectShowcase() {
     setFileName(file ? file.name : 'No file selected')
   }
 
-  const handleLoadLatestDataset = (event) => {
-    event.preventDefault()
-    setLastLoadedAt(new Date().toLocaleString())
-    if (typeof refresh === 'function') refresh()
-  }
-
-  const handleExportActivity = (format) => {
-    return new Promise((resolve) => {
-      downloadEvents(format)
-      resolve()
-    })
-  }
-
   const handleGenerateSampleData = async () => {
     // Get current user ID
     const { data: userData, error: userError } = await supabase.auth.getUser()
@@ -261,47 +250,27 @@ export default function FinalProjectShowcase() {
     }
     const myUserId = userData.user.id
 
-    // Fetch a real desk_id UUID for this user
-    let realDeskId = null
-    const { data: deskRows, error: deskError } = await supabase
-      .from('desk_activity')
-      .select('desk_id')
-      .eq('actor_user_id', myUserId)
-      .limit(1)
-    if (deskError) {
-      setSampleGenerationMessage('Failed to fetch a valid desk_id for your user.')
-      return
-    }
-    if (deskRows && deskRows.length > 0 && deskRows[0].desk_id) {
-      realDeskId = deskRows[0].desk_id
-    } else {
-      setSampleGenerationMessage('No valid desk_id found for your user. Please create a desk or activity first.')
-      return
-    }
-
-    // Generate events for the current user only, using a valid desk_id
+    // Generate events for the current user only (use a fake UUID for desk_id for export only)
+    const fakeDeskId = '00000000-0000-0000-0000-000000000001'
     const events = createSyntheticActivityBatch(Number(sampleTargetSize) || 500).map(e => ({
       ...e,
       user_id: myUserId,
-      actor_user_id: myUserId, // for desk_activity schema
-      desk_id: realDeskId,
-    }))
-
-    // Insert into desk_activity table
-    const deskActivityRows = events.map(e => ({
-      desk_id: e.desk_id,
       actor_user_id: myUserId,
-      action_type: e.event_type,
-      // Always provide a non-null item_type (default to 'note' if not checklist)
-      item_type: e.note_id ? (e.note_id.startsWith('check') ? 'checklist' : 'note') : 'note',
-      item_id: e.note_id,
-      details: e.metadata_json || {},
-      created_at: e.event_ts_utc,
+      desk_id: fakeDeskId,
     }))
+    sampleEventsRef.current = events
 
-    let insertError = null
-    if (deskActivityRows.length > 0) {
-      const { error } = await supabase.from('desk_activity').insert(deskActivityRows)
+    // Save sample file name and message
+    const generatedAt = Date.now()
+    const filename = `sample_activity_events_generated_${generatedAt}.json`
+    setRawFileName(filename)
+    setSampleGenerationMessage(`Generated ${events.length} sample events for your user. Click \"Export to Azure\" to upload.`)
+
+    // Optionally, trigger export to Azure with these events (if ENABLE_FINAL_PROJECT)
+    // You may need to adapt exportActivitiesToAzure to accept events directly if required
+    // No auto-export; user must click export button
+    // sampleEventsRef will be used by export
+  }
       if (error) insertError = error
     }
 
@@ -335,7 +304,33 @@ export default function FinalProjectShowcase() {
         setExportMessage('Export failed: No user id.')
         return
       }
-      const result = await exportActivitiesToAzure(exportUserId)
+      // If sample events exist, export those; otherwise, use default export
+      let result
+      if (sampleEventsRef.current && Array.isArray(sampleEventsRef.current) && sampleEventsRef.current.length > 0) {
+        // Custom export: upload sampleEventsRef.current directly to Azure
+        // We'll simulate the exportActivitiesToAzure API here
+        const timestamp = Date.now()
+        const filename = `activity_export_${exportUserId}_${timestamp}.json`
+        const content = JSON.stringify(sampleEventsRef.current, null, 2)
+        // Use Supabase Edge Function directly via fetch
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+        const response = await fetch(`${supabaseUrl}/functions/v1/export-activities-to-azure`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': anonKey,
+            'Authorization': `Bearer ${anonKey}`,
+          },
+          body: JSON.stringify({ userId: exportUserId, events: sampleEventsRef.current, filename }),
+        })
+        result = await response.json()
+        // Clear sampleEventsRef after export
+        sampleEventsRef.current = null
+      } else {
+        // Default: export real activities from Supabase
+        result = await exportActivitiesToAzure(exportUserId)
+      }
       if (result.success) {
         setExportMessage(`✓ Exported ${result.eventCount} activities to Azure.`)
       } else {
