@@ -110,61 +110,66 @@ async function uploadToAzure(
   }
 }
 
-async function exportActivitiesToAzure(userId: string): Promise<{ success: boolean; eventCount: number; filename?: string; error?: string }> {
+
+// Accepts events override for direct export
+async function exportActivitiesToAzure(userId: string, eventsOverride?: ActivityEvent[]): Promise<{ success: boolean; eventCount: number; filename?: string; error?: string }> {
   try {
-    // Prefer activity_events if present; fallback to desk_activity for current schema.
-    let events: ActivityEvent[] | null = null
-
-    const { data: activityRows, error: activityEventsError } = await supabase
-      .from('activity_events')
-      .select('*')
-      .eq('user_id', userId)
-      .order('event_ts_utc', { ascending: true })
-
-    if (!activityEventsError) {
-      events = (activityRows || []) as ActivityEvent[]
+    let events: ActivityEvent[] | null = null;
+    if (Array.isArray(eventsOverride) && eventsOverride.length > 0) {
+      events = eventsOverride;
     } else {
-      const tableMissing = /Could not find the table 'public\.activity_events'|relation .*activity_events.* does not exist/i.test(
-        activityEventsError.message || ''
-      )
-
-      if (!tableMissing) {
-        return { success: false, eventCount: 0, error: `Query error: ${activityEventsError.message}` }
-      }
-
-      const { data: deskRows, error: deskActivityError } = await supabase
-        .from('desk_activity')
+      // Prefer activity_events if present; fallback to desk_activity for current schema.
+      const { data: activityRows, error: activityEventsError } = await supabase
+        .from('activity_events')
         .select('*')
-        .eq('actor_user_id', userId)
-        .order('created_at', { ascending: true })
+        .eq('user_id', userId)
+        .order('event_ts_utc', { ascending: true })
 
-      if (deskActivityError) {
-        return { success: false, eventCount: 0, error: `Query error: ${deskActivityError.message}` }
+      if (!activityEventsError) {
+        events = (activityRows || []) as ActivityEvent[];
+      } else {
+        const tableMissing = /Could not find the table 'public\.activity_events'|relation .*activity_events.* does not exist/i.test(
+          activityEventsError.message || ''
+        );
+
+        if (!tableMissing) {
+          return { success: false, eventCount: 0, error: `Query error: ${activityEventsError.message}` };
+        }
+
+        const { data: deskRows, error: deskActivityError } = await supabase
+          .from('desk_activity')
+          .select('*')
+          .eq('actor_user_id', userId)
+          .order('created_at', { ascending: true });
+
+        if (deskActivityError) {
+          return { success: false, eventCount: 0, error: `Query error: ${deskActivityError.message}` };
+        }
+
+        events = (deskRows || []).map((row: DeskActivityRow) => ({
+          event_id: row.id || `desk_evt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+          user_id: row.actor_user_id || userId,
+          desk_id: row.desk_id || 'unknown',
+          event_type: row.action_type ? `desk_${row.action_type}` : 'desk_activity',
+          event_ts_utc: row.created_at || new Date().toISOString(),
+          session_id: null,
+          note_id: row.item_id || null,
+          edit_count: row.action_type === 'edited' ? 1 : 0,
+          collaboration_count: row.action_type === 'collaboration' ? 1 : 0,
+          session_seconds: 0,
+          device_type: 'unknown',
+          platform: 'doodledesk-web',
+          metadata_json: {
+            source_table: 'desk_activity',
+            item_type: row.item_type || 'item',
+            details: row.details || {},
+          },
+        }));
       }
-
-      events = (deskRows || []).map((row: DeskActivityRow) => ({
-        event_id: row.id || `desk_evt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-        user_id: row.actor_user_id || userId,
-        desk_id: row.desk_id || 'unknown',
-        event_type: row.action_type ? `desk_${row.action_type}` : 'desk_activity',
-        event_ts_utc: row.created_at || new Date().toISOString(),
-        session_id: null,
-        note_id: row.item_id || null,
-        edit_count: row.action_type === 'edited' ? 1 : 0,
-        collaboration_count: row.action_type === 'collaboration' ? 1 : 0,
-        session_seconds: 0,
-        device_type: 'unknown',
-        platform: 'doodledesk-web',
-        metadata_json: {
-          source_table: 'desk_activity',
-          item_type: row.item_type || 'item',
-          details: row.details || {},
-        },
-      }))
     }
 
     if (!events || events.length === 0) {
-      return { success: true, eventCount: 0, filename: 'no-events' }
+      return { success: true, eventCount: 0, filename: 'no-events' };
     }
 
     // Transform to activity_event_schema_v1 format
@@ -182,30 +187,30 @@ async function exportActivitiesToAzure(userId: string): Promise<{ success: boole
       device_type: event.device_type || 'unknown',
       platform: event.platform || 'unknown',
       metadata_json: event.metadata_json || {},
-    }))
+    }));
 
     // Upload to Azure with timestamp-based filename
-    const timestamp = Date.now()
-    const filename = `activity_export_${userId}_${timestamp}.json`
-    const content = JSON.stringify(formattedEvents, null, 2)
+    const timestamp = Date.now();
+    const filename = `activity_export_${userId}_${timestamp}.json`;
+    const content = JSON.stringify(formattedEvents, null, 2);
 
-    const uploadResult = await uploadToAzure(filename, content)
+    const uploadResult = await uploadToAzure(filename, content);
 
     if (!uploadResult.success) {
-      return { success: false, eventCount: 0, error: uploadResult.error }
+      return { success: false, eventCount: 0, error: uploadResult.error };
     }
 
     return {
       success: true,
       eventCount: formattedEvents.length,
       filename,
-    }
+    };
   } catch (error) {
     return {
       success: false,
       eventCount: 0,
       error: `Export error: ${error instanceof Error ? error.message : String(error)}`,
-    }
+    };
   }
 }
 
@@ -224,7 +229,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    let body: { userId?: string } = {}
+    let body: { userId?: string, events?: ActivityEvent[] } = {}
     try {
       body = await req.json()
     } catch {
@@ -235,6 +240,7 @@ Deno.serve(async (req) => {
     }
 
     const userId = body?.userId
+    const events = body?.events
 
     if (!userId) {
       return new Response(JSON.stringify({ success: false, eventCount: 0, error: 'userId is required' }), {
@@ -257,7 +263,8 @@ Deno.serve(async (req) => {
       })
     }
 
-    const result = await exportActivitiesToAzure(userId)
+    // If events are provided in the body, export those directly
+    const result = await exportActivitiesToAzure(userId, events)
 
     return new Response(JSON.stringify(result), {
       status: 200,
