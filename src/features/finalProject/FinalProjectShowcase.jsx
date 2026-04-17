@@ -222,7 +222,7 @@ export default function FinalProjectShowcase() {
     downloadEvents,
   } = useDeskActivityCapture({ userId: mockUserId, selectedDeskId: mockDeskId })
 
-  const { engagementTier, metrics, loading: metricsLoading } = useDeskEngagementMetrics({
+  const { engagementTier, metrics, loading: metricsLoading, refresh } = useDeskEngagementMetrics({
     userId: mockUserId,
   })
 
@@ -258,6 +258,9 @@ export default function FinalProjectShowcase() {
   function handleLoadLatestDataset(event) {
     event.preventDefault()
     setLastLoadedAt(new Date().toLocaleString())
+    if (typeof refresh === 'function') {
+      refresh()
+    }
   }
 
   function handleExportActivity(format) {
