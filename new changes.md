@@ -1,3 +1,16 @@
+## 2026-04-17
+
+### Progress
+- clustering_script.py updated to generate output CSV names matching the input file timestamp.
+- ADF Web Activity updated to use a dynamic blobName expression.
+- Model-output container checked for correct CSV files.
+
+### In Progress
+- Testing the full end-to-end pipeline to ensure correct CSV sync.
+
+### Future Todos
+- Document the pipeline and naming logic for future maintenance.
+- Add error handling/logging for missing or mismatched files.
 # New Changes
 
 ---
