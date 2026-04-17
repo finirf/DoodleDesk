@@ -292,7 +292,8 @@ export default function FinalProjectShowcase() {
       desk_id: e.desk_id,
       actor_user_id: myUserId,
       action_type: e.event_type,
-      item_type: e.note_id ? (e.note_id.startsWith('check') ? 'checklist' : 'note') : null,
+      // Always provide a non-null item_type (default to 'note' if not checklist)
+      item_type: e.note_id ? (e.note_id.startsWith('check') ? 'checklist' : 'note') : 'note',
       item_id: e.note_id,
       details: e.metadata_json || {},
       created_at: e.event_ts_utc,
