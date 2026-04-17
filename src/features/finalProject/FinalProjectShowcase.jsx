@@ -360,7 +360,14 @@ export default function FinalProjectShowcase() {
         const filename = `activity_export_${exportUserId}_${timestamp}.json`
         const payload = { userId: exportUserId, events: sampleEventsRef.current, filename }
         console.log('[DEBUG] Azure export payload:', payload)
-        // Use Supabase Edge Function directly via fetch
+        // Get the current user's access token
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !sessionData?.session?.access_token) {
+          setExportMessage('Export failed: Unable to get access token.')
+          setExportingToAzure(false)
+          return
+        }
+        const accessToken = sessionData.session.access_token;
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
         const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
         const response = await fetch(`${supabaseUrl}/functions/v1/export-activities-to-azure`, {
@@ -368,7 +375,7 @@ export default function FinalProjectShowcase() {
           headers: {
             'Content-Type': 'application/json',
             'apikey': anonKey,
-            'Authorization': `Bearer ${anonKey}`,
+            'Authorization': `Bearer ${accessToken}`,
           },
           body: JSON.stringify(payload),
         })

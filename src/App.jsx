@@ -235,12 +235,13 @@ function Desk({ user }) {
     >
       {snapToGrid && <DeskSnapToGridOverlay gridSize={gridSize} />}
 
+      {/* Use very high z-index for menuLayerZIndex and menuPanelZIndex to ensure menus are always above desk items/notes/decorations */}
       <DeskTopControls
         isMobileLayout={isMobileLayout}
         topOverlayTop={topOverlayTop}
         desktopTop={newNoteDesktopTop}
         desktopLeft={165}
-        menuLayerZIndex={menuLayerZIndex}
+        menuLayerZIndex={9999}
         canUndo={canUndo}
         canRedo={canRedo}
         hasModalOpen={hasModalOpen}
@@ -258,13 +259,13 @@ function Desk({ user }) {
       <DeskTopMenuShell
         isMobileLayout={isMobileLayout}
         topMenuTop={topMenuTop}
-        menuLayerZIndex={menuLayerZIndex}
+        menuLayerZIndex={9999}
       >
         <DeskWorkspaceMenu
           deskMenuRef={deskMenuRef}
           isMobileLayout={isMobileLayout}
-          menuLayerZIndex={menuLayerZIndex}
-          menuPanelZIndex={menuPanelZIndex}
+          menuLayerZIndex={9999}
+          menuPanelZIndex={10000}
           showDeskMenu={showDeskMenu}
           setShowDeskMenu={setShowDeskMenu}
           setShowProfileMenu={setShowProfileMenu}
@@ -290,8 +291,8 @@ function Desk({ user }) {
         <DeskProfileMenu
           profileMenuRef={profileMenuRef}
           isMobileLayout={isMobileLayout}
-          menuLayerZIndex={menuLayerZIndex}
-          menuPanelZIndex={menuPanelZIndex}
+          menuLayerZIndex={9999}
+          menuPanelZIndex={10000}
           showProfileMenu={showProfileMenu}
           setShowProfileMenu={setShowProfileMenu}
           setFriendError={setFriendError}
@@ -356,8 +357,8 @@ function Desk({ user }) {
         <DeskMoreMenu
           moreMenuRef={moreMenuRef}
           isMobileLayout={isMobileLayout}
-          menuLayerZIndex={menuLayerZIndex}
-          menuPanelZIndex={menuPanelZIndex}
+          menuLayerZIndex={9999}
+          menuPanelZIndex={10000}
           showMoreMenu={showMoreMenu}
           setShowMoreMenu={setShowMoreMenu}
           setShowDeskMenu={setShowDeskMenu}
@@ -403,8 +404,8 @@ function Desk({ user }) {
         onAddChecklist={addChecklistNote}
         decorationOptions={DECORATION_OPTIONS}
         onAddDecoration={addDecoration}
-        menuLayerZIndex={menuLayerZIndex}
-        menuPanelZIndex={menuPanelZIndex}
+        menuLayerZIndex={9999}
+        menuPanelZIndex={10000}
         desktopTop={newNoteDesktopTop}
         desktopLeft={20}
       />
