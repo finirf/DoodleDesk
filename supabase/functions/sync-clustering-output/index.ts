@@ -338,23 +338,6 @@ async function handleBlobTrigger(
  */
 serve(async (req: Request) => {
   if (req.method === "POST") {
-    // Debug endpoint: print access token if requested
-    const url = new URL(req.url);
-    if (url.pathname.endsWith("/debug-token")) {
-      try {
-        // Try to extract Authorization header
-        const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
-        return new Response(
-          JSON.stringify({ access_token: authHeader }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      } catch (error) {
-        return new Response(
-          JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-          { status: 500, headers: { "Content-Type": "application/json" } }
-        );
-      }
-    }
     try {
       const { blobName } = await req.json();
 
