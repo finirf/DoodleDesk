@@ -261,11 +261,30 @@ export default function FinalProjectShowcase() {
     }
     const myUserId = userData.user.id
 
-    // Generate events for the current user only
+    // Fetch a real desk_id UUID for this user
+    let realDeskId = null
+    const { data: deskRows, error: deskError } = await supabase
+      .from('desk_activity')
+      .select('desk_id')
+      .eq('actor_user_id', myUserId)
+      .limit(1)
+    if (deskError) {
+      setSampleGenerationMessage('Failed to fetch a valid desk_id for your user.')
+      return
+    }
+    if (deskRows && deskRows.length > 0 && deskRows[0].desk_id) {
+      realDeskId = deskRows[0].desk_id
+    } else {
+      setSampleGenerationMessage('No valid desk_id found for your user. Please create a desk or activity first.')
+      return
+    }
+
+    // Generate events for the current user only, using a valid desk_id
     const events = createSyntheticActivityBatch(Number(sampleTargetSize) || 500).map(e => ({
       ...e,
       user_id: myUserId,
       actor_user_id: myUserId, // for desk_activity schema
+      desk_id: realDeskId,
     }))
 
     // Insert into desk_activity table
