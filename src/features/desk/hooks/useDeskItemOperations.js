@@ -547,6 +547,7 @@ export function useDeskItemOperations({
     [notesRef, selectedDeskId, supabase, markAutoSaveSaving, markAutoSaveSaved, markAutoSaveError]
   )
 
+
   const persistItemPosition = useCallback(
     async (itemKey, x, y) => {
       const item = notesRef.current.find((row) => getItemKey(row) === itemKey)
@@ -563,19 +564,26 @@ export function useDeskItemOperations({
       markAutoSaveSaving()
 
       const table = getItemTableName(item)
-      const { error } = await supabase
-        .from(table)
-        .update({ x: normalizedX, y: normalizedY })
-        .eq('id', item.id)
-        .eq('desk_id', selectedDeskId)
+      let attempt = 0
+      let lastError = null
+      while (attempt < 3) {
+        const { error } = await supabase
+          .from(table)
+          .update({ x: normalizedX, y: normalizedY })
+          .eq('id', item.id)
+          .eq('desk_id', selectedDeskId)
 
-      if (error) {
-        console.error('Failed to save item position:', error)
-        markAutoSaveError(error?.message || 'Failed to save position.')
-        return
+        if (!error) {
+          markAutoSaveSaved()
+          return
+        }
+        lastError = error
+        attempt++
+        // Wait 200ms before retrying
+        await new Promise((res) => setTimeout(res, 200))
       }
-
-      markAutoSaveSaved()
+      console.error('Failed to save item position after retries:', lastError)
+      markAutoSaveError(lastError?.message || 'Failed to save position after retries.')
     },
     [notesRef, selectedDeskId, supabase, markAutoSaveSaving, markAutoSaveSaved, markAutoSaveError]
   )
