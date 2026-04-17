@@ -354,11 +354,12 @@ export default function FinalProjectShowcase() {
       // If sample events exist, export those; otherwise, use default export
       let result
       if (sampleEventsRef.current && Array.isArray(sampleEventsRef.current) && sampleEventsRef.current.length > 0) {
-        // Custom export: upload sampleEventsRef.current directly to Azure
-        // We'll simulate the exportActivitiesToAzure API here
+        // Debug: Log sample events before export
+        console.log('[DEBUG] Exporting sampleEventsRef.current:', sampleEventsRef.current)
         const timestamp = Date.now()
         const filename = `activity_export_${exportUserId}_${timestamp}.json`
-        const content = JSON.stringify(sampleEventsRef.current, null, 2)
+        const payload = { userId: exportUserId, events: sampleEventsRef.current, filename }
+        console.log('[DEBUG] Azure export payload:', payload)
         // Use Supabase Edge Function directly via fetch
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
         const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -369,9 +370,11 @@ export default function FinalProjectShowcase() {
             'apikey': anonKey,
             'Authorization': `Bearer ${anonKey}`,
           },
-          body: JSON.stringify({ userId: exportUserId, events: sampleEventsRef.current, filename }),
+          body: JSON.stringify(payload),
         })
         result = await response.json()
+        // Debug: Log Azure export result
+        console.log('[DEBUG] Azure export result:', result)
         // Clear sampleEventsRef after export
         sampleEventsRef.current = null
       } else {
