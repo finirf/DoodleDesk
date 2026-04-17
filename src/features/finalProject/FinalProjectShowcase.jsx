@@ -252,13 +252,48 @@ export default function FinalProjectShowcase() {
     })
   }
 
-  const handleGenerateSampleData = () => {
-    const events = createSyntheticActivityBatch(Number(sampleTargetSize) || 500)
+  const handleGenerateSampleData = async () => {
+    // Get current user ID
+    const { data: userData, error: userError } = await supabase.auth.getUser()
+    if (userError || !userData?.user?.id) {
+      setSampleGenerationMessage('Failed to get user ID for sample data.')
+      return
+    }
+    const myUserId = userData.user.id
+
+    // Generate events for the current user only
+    const events = createSyntheticActivityBatch(Number(sampleTargetSize) || 500).map(e => ({
+      ...e,
+      user_id: myUserId,
+      actor_user_id: myUserId, // for desk_activity schema
+    }))
+
+    // Insert into desk_activity table
+    const deskActivityRows = events.map(e => ({
+      desk_id: e.desk_id,
+      actor_user_id: myUserId,
+      action_type: e.event_type,
+      item_type: e.note_id ? (e.note_id.startsWith('check') ? 'checklist' : 'note') : null,
+      item_id: e.note_id,
+      details: e.metadata_json || {},
+      created_at: e.event_ts_utc,
+    }))
+
+    let insertError = null
+    if (deskActivityRows.length > 0) {
+      const { error } = await supabase.from('desk_activity').insert(deskActivityRows)
+      if (error) insertError = error
+    }
+
     const generatedAt = Date.now()
     const filename = `sample_activity_events_generated_${generatedAt}.json`
     setRawFileName(filename)
-    setSampleGenerationMessage(`Generated ${events.length} events. Click "Export to Azure" to upload.`)
-    if (ENABLE_FINAL_PROJECT) handleExportToAzure()
+    if (insertError) {
+      setSampleGenerationMessage(`Error inserting sample data: ${insertError.message}`)
+    } else {
+      setSampleGenerationMessage(`Inserted ${events.length} events for your user. Click "Export to Azure" to upload.`)
+      if (ENABLE_FINAL_PROJECT) handleExportToAzure()
+    }
   }
 
   async function resolveExportUserId() {
