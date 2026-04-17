@@ -250,13 +250,39 @@ export default function FinalProjectShowcase() {
     }
     const myUserId = userData.user.id
 
-    // Generate events for the current user only (use a fake UUID for desk_id for export only)
-    const fakeDeskId = '00000000-0000-0000-0000-000000000001'
+    // Try to fetch a real desk_id from the user's desks table first
+    let realDeskId = null
+    let deskRows, deskError
+    // Try 'desks' table first
+    const { data: userDesks, error: userDesksError } = await supabase
+      .from('desks')
+      .select('id')
+      .eq('owner_id', myUserId)
+      .limit(1)
+    if (!userDesksError && userDesks && userDesks.length > 0 && userDesks[0].id) {
+      realDeskId = userDesks[0].id
+    } else {
+      // Fallback to desk_activity if no desk found
+      ({ data: deskRows, error: deskError } = await supabase
+        .from('desk_activity')
+        .select('desk_id')
+        .eq('actor_user_id', myUserId)
+        .limit(1))
+      if (!deskError && deskRows && deskRows.length > 0 && deskRows[0].desk_id) {
+        realDeskId = deskRows[0].desk_id
+      }
+    }
+    if (!realDeskId) {
+      setSampleGenerationMessage('No valid desk_id found for your user. Please create a desk first.')
+      return
+    }
+
+    // Generate events for the current user only, using a valid desk_id
     const events = createSyntheticActivityBatch(Number(sampleTargetSize) || 500).map(e => ({
       ...e,
       user_id: myUserId,
       actor_user_id: myUserId,
-      desk_id: fakeDeskId,
+      desk_id: realDeskId,
     }))
     sampleEventsRef.current = events
 
