@@ -230,12 +230,12 @@ export default function FinalProjectShowcase() {
   const [exportMessage, setExportMessage] = React.useState('')
   const initialEventCountRef = React.useRef(null)
 
+
   const filteredRows = React.useMemo(() => {
     const normalizedQuery = searchValue.trim().toLowerCase()
     if (!normalizedQuery) return pipelineRows
     return pipelineRows.filter((row) => row.some((value) => value.toLowerCase().includes(normalizedQuery)))
   }, [searchValue])
-
 
   const handleDatasetSelection = (setFileName) => (event) => {
     const file = event.target.files?.[0]
@@ -247,6 +247,14 @@ export default function FinalProjectShowcase() {
     event.preventDefault()
     setLastLoadedAt(new Date().toLocaleString())
     if (typeof refresh === 'function') refresh()
+  }
+
+  // Fix: Add missing handleExportActivity for ActivityExportDialog
+  const handleExportActivity = (format) => {
+    return new Promise((resolve) => {
+      downloadEvents(format)
+      resolve()
+    })
   }
 
   const handleGenerateSampleData = async () => {
