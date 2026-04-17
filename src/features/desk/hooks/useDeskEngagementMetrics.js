@@ -148,9 +148,52 @@ export default function useDeskEngagementMetrics({ userId }) {
     }
   }, [userId])
 
+
   useEffect(() => {
     fetchEngagementMetrics()
   }, [fetchEngagementMetrics])
+
+  // Realtime subscription for auto-refresh
+  useEffect(() => {
+    if (!userId) return
+    // Subscribe to changes in user_engagement_tiers and user_engagement_metrics for this user
+    const tierSub = supabase
+      .channel('realtime-engagement-tier-' + userId)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_engagement_tiers',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          fetchEngagementMetrics()
+        }
+      )
+      .subscribe()
+
+    const metricsSub = supabase
+      .channel('realtime-engagement-metrics-' + userId)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_engagement_metrics',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          fetchEngagementMetrics()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(tierSub)
+      supabase.removeChannel(metricsSub)
+    }
+  }, [userId, fetchEngagementMetrics])
 
   // Refresh metrics (manual trigger)
   const refresh = useCallback(() => {
