@@ -226,6 +226,14 @@ export default function FinalProjectShowcase() {
     userId: mockUserId,
   })
 
+  // Debug: Log fetched engagement data
+  React.useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[Analytics Debug] engagementTier:', engagementTier)
+    // eslint-disable-next-line no-console
+    console.log('[Analytics Debug] metrics:', metrics)
+  }, [engagementTier, metrics])
+
   // Local state
   const [searchValue, setSearchValue] = React.useState('activity')
   const [rawFileName, setRawFileName] = React.useState('No file selected')
