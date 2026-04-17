@@ -291,24 +291,6 @@ export default function FinalProjectShowcase() {
     const filename = `sample_activity_events_generated_${generatedAt}.json`
     setRawFileName(filename)
     setSampleGenerationMessage(`Generated ${events.length} sample events for your user. Click \"Export to Azure\" to upload.`)
-
-    // Optionally, trigger export to Azure with these events (if ENABLE_FINAL_PROJECT)
-    // You may need to adapt exportActivitiesToAzure to accept events directly if required
-    // No auto-export; user must click export button
-    // sampleEventsRef will be used by export
-  }
-      if (error) insertError = error
-    }
-
-    const generatedAt = Date.now()
-    const filename = `sample_activity_events_generated_${generatedAt}.json`
-    setRawFileName(filename)
-    if (insertError) {
-      setSampleGenerationMessage(`Error inserting sample data: ${insertError.message}`)
-    } else {
-      setSampleGenerationMessage(`Inserted ${events.length} events for your user. Click "Export to Azure" to upload.`)
-      if (ENABLE_FINAL_PROJECT) handleExportToAzure()
-    }
   }
 
   async function resolveExportUserId() {
