@@ -266,10 +266,10 @@ export default function FinalProjectShowcase() {
     }
     const myUserId = userData.user.id
 
-    // Try to fetch a real desk_id from the user's desks table first
+    // Try to fetch a real desk_id from the user's desks table, desk_activity, or notes
     let realDeskId = null
     let deskRows, deskError
-    // Try 'desks' table first
+    // 1. Try 'desks' table as owner
     const { data: userDesks, error: userDesksError } = await supabase
       .from('desks')
       .select('id')
@@ -277,8 +277,20 @@ export default function FinalProjectShowcase() {
       .limit(1)
     if (!userDesksError && userDesks && userDesks.length > 0 && userDesks[0].id) {
       realDeskId = userDesks[0].id
-    } else {
-      // Fallback to desk_activity if no desk found
+    }
+    // 2. Try 'desks' table as collaborator (if you have a collaborators/participants column)
+    if (!realDeskId) {
+      const { data: collabDesks, error: collabDesksError } = await supabase
+        .from('desks')
+        .select('id, collaborators')
+        .contains('collaborators', [myUserId])
+        .limit(1)
+      if (!collabDesksError && collabDesks && collabDesks.length > 0 && collabDesks[0].id) {
+        realDeskId = collabDesks[0].id
+      }
+    }
+    // 3. Fallback to desk_activity
+    if (!realDeskId) {
       ({ data: deskRows, error: deskError } = await supabase
         .from('desk_activity')
         .select('desk_id')
@@ -288,8 +300,19 @@ export default function FinalProjectShowcase() {
         realDeskId = deskRows[0].desk_id
       }
     }
+    // 4. Fallback to notes table (if exists)
     if (!realDeskId) {
-      setSampleGenerationMessage('No valid desk_id found for your user. Please create a desk first.')
+      const { data: noteRows, error: noteError } = await supabase
+        .from('notes')
+        .select('desk_id')
+        .eq('user_id', myUserId)
+        .limit(1)
+      if (!noteError && noteRows && noteRows.length > 0 && noteRows[0].desk_id) {
+        realDeskId = noteRows[0].desk_id
+      }
+    }
+    if (!realDeskId) {
+      setSampleGenerationMessage('No valid desk_id found for your user. Please create or join a desk, or create a note.')
       return
     }
 
