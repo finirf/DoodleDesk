@@ -1,4 +1,8 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4'
+
+// Disable auth for debugging JWT/session issues
+export const config = { auth: false };
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL') || '',
