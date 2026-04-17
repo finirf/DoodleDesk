@@ -210,9 +210,20 @@ function formatPercent(value) {
   return `${value}%`
 }
 
-export default function FinalProjectShowcase() {
-  const mockUserId = 'user_1024' // Matches sample Azure datasets for real-tier dashboard validation
-  const mockDeskId = 'desk_main_planning'
+
+  // Get the real authenticated user ID
+  const [userId, setUserId] = React.useState(null)
+  const deskId = 'desk_main_planning'
+
+  React.useEffect(() => {
+    async function fetchUserId() {
+      const { data, error } = await supabase.auth.getUser()
+      if (!error && data?.user?.id) {
+        setUserId(data.user.id)
+      }
+    }
+    fetchUserId()
+  }, [])
 
   // Activity capture and engagement tracking
   const {
@@ -220,10 +231,10 @@ export default function FinalProjectShowcase() {
     captureNoteEdit,
     getEventCount,
     downloadEvents,
-  } = useDeskActivityCapture({ userId: mockUserId, selectedDeskId: mockDeskId })
+  } = useDeskActivityCapture({ userId, selectedDeskId: deskId })
 
   const { engagementTier, metrics, loading: metricsLoading, refresh } = useDeskEngagementMetrics({
-    userId: mockUserId,
+    userId,
   })
 
   // Debug: Log fetched engagement data
@@ -232,7 +243,9 @@ export default function FinalProjectShowcase() {
     console.log('[Analytics Debug] engagementTier:', engagementTier)
     // eslint-disable-next-line no-console
     console.log('[Analytics Debug] metrics:', metrics)
-  }, [engagementTier, metrics])
+    // eslint-disable-next-line no-console
+    console.log('[Analytics Debug] userId:', userId)
+  }, [engagementTier, metrics, userId])
 
   // Local state
   const [searchValue, setSearchValue] = React.useState('activity')
