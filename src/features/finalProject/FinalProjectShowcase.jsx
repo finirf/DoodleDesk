@@ -269,25 +269,14 @@ export default function FinalProjectShowcase() {
     // Try to fetch a real desk_id from the user's desks table, desk_activity, or notes
     let realDeskId = null
     let deskRows, deskError
-    // 1. Try 'desks' table as owner
+    // 1. Try 'desks' table as owner (user_id)
     const { data: userDesks, error: userDesksError } = await supabase
       .from('desks')
       .select('id')
-      .eq('owner_id', myUserId)
+      .eq('user_id', myUserId)
       .limit(1)
     if (!userDesksError && userDesks && userDesks.length > 0 && userDesks[0].id) {
       realDeskId = userDesks[0].id
-    }
-    // 2. Try 'desks' table as collaborator (if you have a collaborators/participants column)
-    if (!realDeskId) {
-      const { data: collabDesks, error: collabDesksError } = await supabase
-        .from('desks')
-        .select('id, collaborators')
-        .contains('collaborators', [myUserId])
-        .limit(1)
-      if (!collabDesksError && collabDesks && collabDesks.length > 0 && collabDesks[0].id) {
-        realDeskId = collabDesks[0].id
-      }
     }
     // 3. Fallback to desk_activity
     if (!realDeskId) {
