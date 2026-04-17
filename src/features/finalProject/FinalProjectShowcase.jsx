@@ -236,9 +236,17 @@ export default function FinalProjectShowcase() {
     return pipelineRows.filter((row) => row.some((value) => value.toLowerCase().includes(normalizedQuery)))
   }, [searchValue])
 
+
   const handleDatasetSelection = (setFileName) => (event) => {
     const file = event.target.files?.[0]
     setFileName(file ? file.name : 'No file selected')
+  }
+
+  // Fix: Add missing handler for the upload form
+  const handleLoadLatestDataset = (event) => {
+    event.preventDefault()
+    setLastLoadedAt(new Date().toLocaleString())
+    if (typeof refresh === 'function') refresh()
   }
 
   const handleGenerateSampleData = async () => {
