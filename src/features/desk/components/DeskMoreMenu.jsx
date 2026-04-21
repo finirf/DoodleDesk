@@ -34,7 +34,7 @@ export default function DeskMoreMenu({
   onOpenTutorial
 }) {
   return (
-    <div ref={moreMenuRef} style={{ position: 'relative', width: 'auto', flexShrink: 0, zIndex: menuLayerZIndex }}>
+    <div ref={moreMenuRef} style={{ position: 'relative', width: 'auto', flexShrink: 0, zIndex: 1100 }}>
       <DeskMenuTriggerButton
         type="button"
         onClick={() => {

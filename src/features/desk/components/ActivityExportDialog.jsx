@@ -35,7 +35,7 @@ export default function ActivityExportDialog({ isOpen, onClose, onExport, eventC
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 10000,
+        zIndex: 5000,
       }}
       onClick={onClose}
     >

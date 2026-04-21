@@ -312,7 +312,7 @@ export default function DeskModals({
         <div
           style={{
             ...modalOverlayStyle,
-            zIndex: 1200
+            zIndex: deskNameDialog.mode === 'create' ? 5000 : 1200
           }}
           role="dialog"
           aria-labelledby="desk-name-dialog-title"

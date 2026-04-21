@@ -34,7 +34,7 @@ export default function NewNoteMenu({
         right: 12,
         bottom: 12,
         display: 'inline-block',
-        zIndex: menuLayerZIndex
+        zIndex: 1100
       }
     : {
         position: 'fixed',
@@ -42,7 +42,7 @@ export default function NewNoteMenu({
         left: desktopLeft,
         right: 'auto',
         display: 'inline-block',
-        zIndex: menuLayerZIndex
+        zIndex: 1100
       }
 
   function runAndClose(action) {

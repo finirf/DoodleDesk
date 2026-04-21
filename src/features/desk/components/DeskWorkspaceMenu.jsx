@@ -31,7 +31,7 @@ export default function DeskWorkspaceMenu({
   deskMenuError
 }) {
   return (
-    <div ref={deskMenuRef} style={{ position: 'relative', width: 'auto', flexShrink: 0, zIndex: menuLayerZIndex }}>
+    <div ref={deskMenuRef} style={{ position: 'relative', width: 'auto', flexShrink: 0, zIndex: 1100 }}>
       <DeskMenuTriggerButton
         onClick={() => {
           const nextOpen = !showDeskMenu

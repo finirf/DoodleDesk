@@ -16,7 +16,7 @@ export default function DeskTopMenuShell({
         gap: isMobileLayout ? 6 : 8,
         alignItems: 'center',
         flexWrap: 'nowrap',
-        zIndex: menuLayerZIndex
+        zIndex: 1100
       }}
     >
       {children}

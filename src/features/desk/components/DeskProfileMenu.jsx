@@ -70,7 +70,7 @@ export default function DeskProfileMenu({
   onOpenFinalProject
 }) {
   return (
-    <div ref={profileMenuRef} style={{ position: 'relative', width: 'auto', flexShrink: 0, zIndex: menuLayerZIndex }}>
+    <div ref={profileMenuRef} style={{ position: 'relative', width: 'auto', flexShrink: 0, zIndex: 1100 }}>
       <DeskMenuTriggerButton
         type="button"
         onClick={() => {

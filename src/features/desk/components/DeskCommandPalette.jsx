@@ -19,7 +19,7 @@ export default function DeskCommandPalette({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: menuLayerZIndex + 30,
+        zIndex: 1200,
         background: 'rgba(8, 14, 26, 0.42)',
         backdropFilter: 'blur(6px)',
         display: 'flex',
