@@ -1,3 +1,20 @@
+// --- Retail Data Pull Demo ---
+// Simulated retail data for demo (replace with real fetch if backend available)
+const sampleHouseholds = [
+  { hshd_num: 10, loyalty: 'Gold', income: '80K+', region: 'West', children: 2 },
+  { hshd_num: 11, loyalty: 'Silver', income: '60-80K', region: 'East', children: 1 },
+]
+const sampleTransactions = [
+  { hshd_num: 10, basket_num: 1001, date: '2020-08-15', product_num: 501, department: 'Grocery', commodity: 'Cereal', spend: 4.99 },
+  { hshd_num: 10, basket_num: 1002, date: '2020-08-16', product_num: 502, department: 'Dairy', commodity: 'Milk', spend: 2.99 },
+  { hshd_num: 11, basket_num: 1003, date: '2020-08-17', product_num: 503, department: 'Bakery', commodity: 'Bread', spend: 3.49 },
+]
+const sampleProducts = [
+  { product_num: 501, brand: 'National', organic: false },
+  { product_num: 502, brand: 'Private', organic: true },
+  { product_num: 503, brand: 'Private', organic: false },
+]
+
 import React from 'react'
 import './FinalProjectShowcase.css'
 import { 
@@ -191,6 +208,41 @@ function formatPercent(value) {
 // --- Main Component ---
 
 export default function FinalProjectShowcase() {
+  if (!ENABLE_FINAL_PROJECT) {
+    // Hide all UI if not enabled
+    return null;
+  }
+  // Retail Data Pull state
+  const [hshdSearch, setHshdSearch] = React.useState('')
+  const [retailResults, setRetailResults] = React.useState([])
+
+  // Demo: join sample data by Hshd_num
+  const handleRetailSearch = (e) => {
+    e.preventDefault()
+    const num = Number(hshdSearch)
+    if (!num) return setRetailResults([])
+    // Join logic: get household, transactions, products for hshd_num
+    const hh = sampleHouseholds.find(h => h.hshd_num === num)
+    const txns = sampleTransactions.filter(t => t.hshd_num === num)
+    const rows = txns.map(txn => {
+      const prod = sampleProducts.find(p => p.product_num === txn.product_num) || {}
+      return {
+        ...hh,
+        ...txn,
+        ...prod,
+      }
+    })
+    // Sort as rubric: Hshd_num, Basket_num, Date, Product_num, Department, Commodity
+    rows.sort((a, b) =>
+      a.hshd_num - b.hshd_num ||
+      a.basket_num - b.basket_num ||
+      a.date.localeCompare(b.date) ||
+      a.product_num - b.product_num ||
+      a.department.localeCompare(b.department) ||
+      a.commodity.localeCompare(b.commodity)
+    )
+    setRetailResults(rows)
+  }
   const [userId, setUserId] = React.useState(null)
   const deskId = 'desk_main_planning'
 
@@ -390,6 +442,76 @@ export default function FinalProjectShowcase() {
 
   return (
     <main className="final-project-shell">
+      {/* Retail Data Pull Section */}
+      <section className="final-project-panel" id="retail-data-pull">
+        <div className="panel-heading">
+          <h2>Retail Data Pull (Demo)</h2>
+          <p>Search for a household (Hshd_num) and view joined/sorted transactions.</p>
+        </div>
+        <form style={{ display: 'flex', gap: 8, marginBottom: 12 }} onSubmit={handleRetailSearch}>
+          <input
+            type="number"
+            min="1"
+            placeholder="Enter Hshd_num (e.g. 10)"
+            value={hshdSearch}
+            onChange={e => setHshdSearch(e.target.value)}
+            style={{ padding: 6, borderRadius: 4, border: '1px solid #ccc', width: 120 }}
+          />
+          <button type="submit">Search</button>
+        </form>
+        {retailResults.length > 0 ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="final-project-table">
+              <thead>
+                <tr>
+                  <th>Hshd_num</th><th>Loyalty</th><th>Income</th><th>Region</th><th>Children</th>
+                  <th>Basket_num</th><th>Date</th><th>Product_num</th><th>Department</th><th>Commodity</th>
+                  <th>Brand</th><th>Organic</th><th>Spend</th>
+                </tr>
+              </thead>
+              <tbody>
+                {retailResults.map((row, i) => (
+                  <tr key={i}>
+                    <td>{row.hshd_num}</td><td>{row.loyalty}</td><td>{row.income}</td><td>{row.region}</td><td>{row.children}</td>
+                    <td>{row.basket_num}</td><td>{row.date}</td><td>{row.product_num}</td><td>{row.department}</td><td>{row.commodity}</td>
+                    <td>{row.brand}</td><td>{row.organic ? 'Yes' : 'No'}</td><td>${row.spend?.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : hshdSearch ? <div>No results found for Hshd_num {hshdSearch}.</div> : null}
+      </section>
+            {/* Basket Analysis Section */}
+            <section className="final-project-panel" id="basket-analysis">
+              <div className="panel-heading">
+                <h2>Basket Analysis (Demo)</h2>
+                <p>Common product combinations and cross-selling opportunities (sample data).</p>
+              </div>
+              <ul>
+                <li>Most common basket: Cereal + Milk (Household 10)</li>
+                <li>Private label products are often bought with organic items</li>
+                <li>Cross-sell: Suggest bread with dairy for similar households</li>
+              </ul>
+              <div style={{ fontSize: 13, color: '#666', marginTop: 8 }}>
+                <strong>ML Model:</strong> Association rules (Apriori) or tree-based models can identify frequent itemsets and recommend cross-sells.
+              </div>
+            </section>
+
+            {/* Churn Prediction Section */}
+            <section className="final-project-panel" id="churn-prediction">
+              <div className="panel-heading">
+                <h2>Churn Prediction (Demo)</h2>
+                <p>Identify customers at risk of disengaging (sample logic).</p>
+              </div>
+              <ul>
+                <li>Households with declining spend over 3+ months are flagged as at-risk</li>
+                <li>Low engagement tier + no purchases in last 60 days = high churn risk</li>
+              </ul>
+              <div style={{ fontSize: 13, color: '#666', marginTop: 8 }}>
+                <strong>ML Model:</strong> Gradient boosting or logistic regression can predict churn probability using spend, recency, and engagement features.
+              </div>
+            </section>
       <section className="final-project-hero">
         <div className="final-project-hero-copy">
           <div className="final-project-badge">Final Project Submission Mode</div>

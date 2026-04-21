@@ -14,6 +14,11 @@ const AZURE_STORAGE_ACCOUNT = Deno.env.get('AZURE_STORAGE_ACCOUNT_NAME') || ''
 const AZURE_STORAGE_KEY = Deno.env.get('AZURE_STORAGE_ACCOUNT_KEY') || ''
 const AZURE_CONTAINER = 'raw-events'
 
+// Final project enable flag (match frontend env var name)
+const ENABLE_FINAL_PROJECT = ['1', 'true', 'yes', 'on'].includes(
+  String(Deno.env.get('VITE_ENABLE_FINAL_PROJECT') ?? '').trim().toLowerCase()
+)
+
 interface ActivityEvent {
   event_id: string
   user_id: string
@@ -248,6 +253,17 @@ Deno.serve(async (req) => {
 
     if (!userId) {
       return new Response(JSON.stringify({ success: false, eventCount: 0, error: 'userId is required' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+
+    // Check if final project mode is enabled
+    if (!ENABLE_FINAL_PROJECT) {
+      const errorMsg = 'Final project export is disabled by environment variable.'
+      console.warn(`[export-activities] ${errorMsg}`)
+      return new Response(JSON.stringify({ success: false, eventCount: 0, error: errorMsg }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })

@@ -78,7 +78,8 @@ function Desk({ user }) {
 
   // Export activities to Azure on login
   React.useEffect(() => {
-    if (ENABLE_FINAL_PROJECT && user?.id) {
+    if (!ENABLE_FINAL_PROJECT) return;
+    if (user?.id) {
       // Small delay to ensure session is fully established
       const timer = setTimeout(() => {
         exportActivitiesToAzure(user.id)
@@ -564,7 +565,7 @@ function Desk({ user }) {
       />
     </DeskCanvasContainer>
 
-    {showFinalProjectOverlay && (
+    {ENABLE_FINAL_PROJECT && showFinalProjectOverlay && (
       <div
         role="dialog"
         aria-modal="true"

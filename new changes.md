@@ -1,3 +1,5 @@
+## [2026-04-18] Stricter final project/azure disable
+- **Security/UX**: When `VITE_ENABLE_FINAL_PROJECT` is false, all final project UI and Azure export actions are now fully disabled both in the frontend and backend (Supabase Edge Function). The backend checks an `ENABLE_FINAL_PROJECT` env variable and blocks export if not enabled.
 ## 2026-04-17
 
 ### Progress
